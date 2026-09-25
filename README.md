@@ -1,0 +1,165 @@
+# iphonectl
+
+Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** No jailbreak, no Xcode, no app on the phone.
+
+```bash
+iphonectl list
+iphonectl screenshot -o home.png          # 0.1s after the first call
+iphonectl tap 414 896                     # screenshot pixels
+iphonectl swipe 414 1400 414 600
+iphonectl type "hello"
+iphonectl key enter
+```
+
+```
+                USB (QuickTime screen capture) ──▶ screenshots
+Mac ── iphonectl daemon ─┤
+                Bluetooth LE HID mouse + keyboard ──▶ AssistiveTouch pointer on the iPhone
+```
+
+## Features
+
+- **Screenshots** over USB, PNG or JPEG, about 0.1s each once the capture is open
+- **Tap, swipe, key, type** through a Bluetooth mouse and keyboard served by the Mac
+- **Several iPhones at once**, each controlled on its own
+- **HTTP API** described by OpenAPI, usable from any language
+- **Remote daemon** over TCP with a bearer token and HTTPS
+
+## Setup (once per iPhone)
+
+Screenshots work right after you plug in the iPhone. **Taps and swipes need two steps on the iPhone first.**
+
+### 1. Plug in and trust
+
+Connect the iPhone over USB, unlock it, and tap **Trust**. Then check:
+
+```bash
+iphonectl list
+```
+
+### 2. Turn on AssistiveTouch
+
+**Settings > Accessibility > Touch > AssistiveTouch: ON.**
+
+iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). Keep it on: tap and swipe need it all the time, not only during setup.
+
+**Hide the floating button.** On the same page, turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. You do not need its Home action: swipe up from the bottom edge, like on any iPhone without a Home button.
+
+```bash
+# go home: drag from the bottom edge up (1180x2556 screen)
+iphonectl swipe 590 2550 590 1500 --duration 250
+```
+
+### 3. Pair the Mac as a pointer device
+
+Run any input command. The daemon waits for pairing and prints the steps:
+
+```bash
+iphonectl tap 100 100
+```
+
+On the iPhone, open **AssistiveTouch > Pointer Devices > Devices**, tap the Mac's name (for example "MacBook Pro") or `iphonectl`, then **Pair**.
+
+- **Settings > Bluetooth does not list the Mac** when the iPhone uses the same Apple ID. Only the Pointer Devices page lists it.
+- The Mac appears in that list a few seconds after the command starts. The daemon opens a Bluetooth link to nearby iPhones it knows; without that link, the iPhone never finds the Mac.
+- **Pairing** means iOS accepts the Mac as its mouse and keyboard. Before pairing, the iPhone can connect and even subscribe, but iOS drops all input (tested).
+
+After pairing, the command continues by itself. Later runs reconnect in about 2s.
+
+### 4. More iPhones
+
+**Multiple iPhones work after steps 1 to 3 on each one.** Pass the device with `-d`:
+
+```bash
+iphonectl list
+# 7EF219AD-...  Morse's iPhone  (bluetooth C27E57E9, connected)
+# E8AC634A-...  Morse's iPhone  (bluetooth BA5C7328, connected)
+
+iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
+iphonectl tap 413 665 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
+```
+
+The Mac is one Bluetooth mouse for all iPhones, but each report goes to one iPhone only. Input to one phone never reaches another.
+
+## How a phone is matched
+
+USB ids and Bluetooth ids are unrelated. On the first input to a USB iPhone, the daemon **matches** it: it moves each connected pointer (no click) to two spots and looks for the change in that iPhone's screenshots.
+
+```
+pointer check: change at A 39%, at B 54%, whole screen 0.2%
+matched: Bluetooth device BA5C7328 is Morse's iPhone
+```
+
+The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, because it looks for the pointer. `iphonectl forget -d <id>` removes a match.
+
+## CLI
+
+| Command | Does |
+|---|---|
+| `list` | iPhones on USB and their Bluetooth match |
+| `screenshot [-o file.png\|.jpg]` | save the screen |
+| `tap <x> <y>` | tap at screenshot pixels |
+| `swipe <x1> <y1> <x2> <y2> [--duration ms]` | drag with the button held |
+| `key <combo>` | `enter`, `esc`, `backspace`, arrows, `volumeup`, `mute` |
+| `type <text>` | US-ASCII text |
+| `forget` | remove the Bluetooth match |
+| `daemon start\|stop\|restart\|status\|run` | manage the background daemon |
+
+The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
+
+## HTTP API
+
+The daemon serves HTTP on a unix socket. The spec is at `GET /v1/openapi.yaml`.
+
+```bash
+S=~/.iphonectl/daemon.sock
+curl --unix-socket $S http://localhost/v1/devices
+curl --unix-socket $S http://localhost/v1/devices/default/screenshot -o s.png
+curl --unix-socket $S -H 'content-type: application/json' \
+  -d '{"x":414,"y":896}' http://localhost/v1/devices/default/tap
+```
+
+- `{device}` is the USB id, the name, or `default` when one iPhone is connected.
+- Input routes return JSON. Send `Accept: text/event-stream` to get progress as server-sent events.
+- Errors are always `application/problem+json` with a stable `code`.
+
+### Remote daemon
+
+```bash
+# on the Mac with the iPhones
+IPHONECTL_TOKEN=secret iphonectl daemon start --port 7420 --host 0.0.0.0 \
+  --tls-cert cert.pem --tls-key key.pem
+
+# anywhere else
+iphonectl --url https://mac.local:7420 --token secret --ca cert.pem list
+```
+
+A host other than localhost needs TLS, so the token never crosses the network in clear text.
+
+## Limits
+
+- **AssistiveTouch must stay on** for tap, swipe, and matching. Its floating button can be hidden (see setup step 2).
+- **Keyboard without AssistiveTouch** is not tested.
+- **`cmd+space` and `cmd+h`** did nothing in tests.
+- **Screen off or locked:** no frames. Unlock the iPhone.
+- **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
+
+<details>
+<summary>Architecture</summary>
+
+```
+CLI / curl / any language
+   │ HTTP over ~/.iphonectl/daemon.sock (mode 0600, no token)
+   │ HTTP or HTTPS over TCP with --port (Bearer token)
+   ▼
+Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──▶ Controller
+                                                                  ├─ FrameStream per iPhone (AVFoundation)
+                                                                  └─ BLEMouse (CoreBluetooth HID peripheral)
+                                                                       └─ LinkKeeper (Mac-initiated LE links)
+```
+
+- `Sources/iphonectl/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.
+- AVFoundation and CoreBluetooth need the main run loop, so HTTP runs in a detached task.
+- Files: `~/.iphonectl/daemon.sock`, `daemon.log`, `daemon.lock`, `state.json`.
+
+</details>

@@ -27,7 +27,7 @@ Mac ── iphonectl daemon ─┤
 
 ## Install
 
-Needs macOS 14 or later and Swift 5.9 or later. Tested with Xcode 26 (Swift 6.3); Command Line Tools alone is not tested.
+Needs macOS 14 or later and Swift 5.9 or later. Xcode is not needed: the Command Line Tools (`xcode-select --install`) build it too. Tested with Command Line Tools (Swift 6.1) and Xcode 26 (Swift 6.3).
 
 ```bash
 git clone https://github.com/remorses/iphone-usb-control

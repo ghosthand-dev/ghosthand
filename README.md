@@ -74,7 +74,7 @@ iphonectl tap 100 100
 On the iPhone, open **AssistiveTouch > Pointer Devices > Devices**, tap the Mac's name (for example "MacBook Pro") or `iphonectl`, then **Pair**.
 
 - **Settings > Bluetooth does not list the Mac** when the iPhone uses the same Apple ID. Only the Pointer Devices page lists it.
-- The Mac appears in that list a few seconds after the command starts. While a new iPhone waits, the daemon opens Bluetooth links to nearby Apple devices the Mac knows by name (your iPad too, briefly). Without such a link, the iPhone never finds the Mac. The links close when the wait ends.
+- The Mac appears in that list a few seconds after the command starts, because the daemon opens the Bluetooth link from the Mac (see [How the Mac becomes a mouse](#how-the-mac-becomes-a-mouse)).
 - **Pairing** means iOS accepts the Mac as its mouse and keyboard. Before pairing, the iPhone can connect and even subscribe, but iOS drops all input (tested).
 
 After pairing, the command continues by itself. Later runs reconnect in about 2s.
@@ -93,6 +93,41 @@ iphonectl tap 413 665 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
 ```
 
 The Mac is one Bluetooth mouse for all iPhones, but each report goes to one iPhone only. Input to one phone never reaches another.
+
+## How the Mac becomes a mouse
+
+The daemon uses CoreBluetooth to publish a standard **HID over GATT** service, the same Bluetooth service a real mouse and keyboard use. The iPhone subscribes to it and treats the Mac as its mouse and keyboard.
+
+```
+Mac (daemon)                                   iPhone
+┌────────────────────────────┐                ┌─────────────────────────────┐
+│ HID over GATT service      │ ◀─subscribes── │ AssistiveTouch              │
+│  report 1: mouse (absolute)│ ──reports────▶ │  pointer + clicks = touches │
+│  report 2: keyboard        │                │                             │
+│  report 6: media keys      │                │                             │
+└────────────────────────────┘                └─────────────────────────────┘
+```
+
+The mouse is **absolute**: X and Y go from 0 to 32767. A screenshot pixel converts directly to a pointer position, so no calibration is needed.
+
+### Why the Mac first connects to the iPhone
+
+An iPhone on the same Apple ID **does not connect to the Mac by itself**. It connects only when Apple's own device-to-device features need a link. Without a link, it never reads the Mac's services, so the Mac is missing from Pointer Devices > Devices (tested).
+
+The daemon fixes this by opening the link from the Mac:
+
+```
+1. Mac ──connect──▶ iPhone             the daemon opens the Bluetooth link
+2. iPhone reads the Mac's services     finds the mouse service
+3. Mac shows up in Pointer Devices > Devices
+4. you tap it → Pair                   iOS now accepts input from the Mac
+5. daemon matches the phone            USB id ↔ Bluetooth id (next section)
+```
+
+- **Discovery.** While a USB iPhone has no match, the daemon scans for Apple devices that send the "nearby device" signal (manufacturer data `4C 00 10`) and that the Mac knows by name. It connects to each one. Other people's phones had no name in tests, so they are skipped. Your iPad passes the filter and gets a short link too.
+- **Cleanup.** Discovery runs only while a request waits for pairing. When the last waiting request ends, scanning stops and the extra links close. Matched iPhones keep their link and reconnect when it drops.
+- **Pairing** (step 4) is the only step where iOS agrees to take input. Before it, the iPhone can connect and subscribe, but it ignores every click and key.
+- **Other Apple IDs:** the Mac has no name for these phones, so discovery skips them. This case is not tested.
 
 ## How a phone is matched
 

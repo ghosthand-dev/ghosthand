@@ -25,6 +25,19 @@ Mac ── iphonectl daemon ─┤
 - **HTTP API** described by OpenAPI, usable from any language
 - **Remote daemon** over TCP with a bearer token and HTTPS
 
+## Install
+
+Needs macOS 14 or later and Swift 5.9 or later. Tested with Xcode 26 (Swift 6.3); Command Line Tools alone is not tested.
+
+```bash
+git clone https://github.com/remorses/iphone-usb-control
+cd iphone-usb-control
+swift build -c release
+cp .build/release/iphonectl /usr/local/bin/
+```
+
+The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
+
 ## Setup (once per iPhone)
 
 Screenshots work right after you plug in the iPhone. **Taps and swipes need two steps on the iPhone first.**
@@ -61,7 +74,7 @@ iphonectl tap 100 100
 On the iPhone, open **AssistiveTouch > Pointer Devices > Devices**, tap the Mac's name (for example "MacBook Pro") or `iphonectl`, then **Pair**.
 
 - **Settings > Bluetooth does not list the Mac** when the iPhone uses the same Apple ID. Only the Pointer Devices page lists it.
-- The Mac appears in that list a few seconds after the command starts. The daemon opens a Bluetooth link to nearby iPhones it knows; without that link, the iPhone never finds the Mac.
+- The Mac appears in that list a few seconds after the command starts. While a new iPhone waits, the daemon opens Bluetooth links to nearby Apple devices the Mac knows by name (your iPad too, briefly). Without such a link, the iPhone never finds the Mac. The links close when the wait ends.
 - **Pairing** means iOS accepts the Mac as its mouse and keyboard. Before pairing, the iPhone can connect and even subscribe, but iOS drops all input (tested).
 
 After pairing, the command continues by itself. Later runs reconnect in about 2s.
@@ -121,7 +134,7 @@ curl --unix-socket $S -H 'content-type: application/json' \
 
 - `{device}` is the USB id, the name, or `default` when one iPhone is connected.
 - Input routes return JSON. Send `Accept: text/event-stream` to get progress as server-sent events.
-- Errors are always `application/problem+json` with a stable `code`.
+- Errors are `application/problem+json` with a stable `code`. In event-stream mode the status is 200 and the problem arrives as the final `error` event.
 
 ### Remote daemon
 

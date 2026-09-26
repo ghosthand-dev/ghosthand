@@ -9,6 +9,9 @@ iphonectl tap 414 896                     # screenshot pixels
 iphonectl swipe 414 1400 414 600
 iphonectl type "hello"
 iphonectl key enter
+iphonectl screentext --language it-IT     # OCR: x,y wxh text per line
+IPHONECTL_PASSCODE=123456 iphonectl unlock
+iphonectl lock
 ```
 
 ```
@@ -21,6 +24,9 @@ Mac ── iphonectl daemon ─┤
 
 - **Screenshots** over USB, PNG or JPEG, about 0.1s each once the capture is open
 - **Tap, swipe, key, type** through a Bluetooth mouse and keyboard served by the Mac
+- **Screen text** with on-device OCR (Vision), boxes in screenshot pixels
+- **Unlock** a locked iPhone with its passcode, no touch; lock state in `list`
+- **Lock** over the Bluetooth keyboard, verified over USB
 - **Several iPhones at once**, each controlled on its own
 - **HTTP API** described by OpenAPI, usable from any language
 - **Remote daemon** over TCP with a bearer token and HTTPS
@@ -144,16 +150,35 @@ The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, bec
 
 | Command | Does |
 |---|---|
-| `list` | iPhones on USB and their Bluetooth match |
+| `list` | iPhones on USB, `[locked]`, and their Bluetooth match |
 | `screenshot [-o file.png\|.jpg]` | save the screen |
+| `screentext [--language it-IT] [--json]` | OCR of the screen: `x,y wxh text` per line. English is always included |
 | `tap <x> <y>` | tap at screenshot pixels |
 | `swipe <x1> <y1> <x2> <y2> [--duration ms]` | drag with the button held |
 | `key <combo>` | `enter`, `esc`, `backspace`, arrows, `volumeup`, `mute` |
 | `type <text>` | US-ASCII text |
+| `unlock [passcode]` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
+| `lock` | lock over Bluetooth with Control-Command-Q |
 | `forget` | remove the Bluetooth match |
 | `daemon start\|stop\|restart\|status\|run` | manage the background daemon |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
+
+## Unlock
+
+**`unlock` uses no touch when Bluetooth wakes the display.** Everything goes over the same Bluetooth mouse and keyboard:
+
+```
+click ──▶ screen on ──▶ two fast swipes up ──▶ wait for Face ID ──▶ type once
+                                                                   │
+                                                                   └─ check lock state over USB
+```
+
+- **Keys cannot wake the screen.** iOS treats our keys as coming from a mouse and drops them on the lock screen. A click usually wakes it.
+- **Face ID runs first.** The passcode screen shows only after the scan fails, up to about 4 s. The passcode is typed once after this delay. Locked-screen USB capture is unavailable, so the command cannot confirm which screen is shown before typing.
+- **Lock state** comes over USB from lockdown (`PasswordProtected`) through the private `MobileDevice.framework`. `list` shows `[locked]`; `unlock` checks it before and after.
+- **A wrong passcode is never retried.** Failed tries count toward the iPhone lockout. The passcode is not stored.
+- **Locked screenshots fail immediately.** USB capture does not return frames from this phone while locked; `screenshot` and `screentext` check the lock state first.
 
 ## HTTP API
 
@@ -189,7 +214,8 @@ A host other than localhost needs TLS, so the token never crosses the network in
 - **AssistiveTouch must stay on** for tap, swipe, and matching. Its floating button can be hidden (see setup step 2).
 - **Keyboard without AssistiveTouch** is not tested.
 - **`cmd+space` and `cmd+h`** did nothing in tests.
-- **Screen off or locked:** no frames. Unlock the iPhone.
+- **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
+- **Lock state** is matched by device name. Two iPhones with the same name show no lock state.
 - **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
 
 <details>
@@ -201,13 +227,15 @@ CLI / curl / any language
    │ HTTP or HTTPS over TCP with --port (Bearer token)
    ▼
 Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──▶ Controller
-                                                                  ├─ FrameStream per iPhone (AVFoundation)
+                                                                  ├─ FrameStream per iPhone (AVFoundation), OCR (Vision)
+                                                                  ├─ Lockdown lock state (MobileDevice.framework)
                                                                   └─ BLEMouse (CoreBluetooth HID peripheral)
                                                                        └─ LinkKeeper (Mac-initiated LE links)
 ```
 
 - `Sources/iphonectl/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.
 - AVFoundation and CoreBluetooth need the main run loop, so HTTP runs in a detached task.
+- Each request runs on its own thread. Capture, OCR, and lock state have per-iPhone locks; input sequences (`unlock`, taps) are serialized per iPhone. Different iPhones run in parallel.
 - Files: `~/.iphonectl/daemon.sock`, `daemon.log`, `daemon.lock`, `state.json`.
 
 </details>

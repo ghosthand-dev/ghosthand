@@ -9,9 +9,9 @@ iphonectl tap 414 896                     # screenshot pixels
 iphonectl swipe 414 1400 414 600
 iphonectl type "hello"
 iphonectl key enter
+iphonectl tap 414 896 --screenshot after.png  # act, then save fresh screen
 iphonectl screentext --language it-IT     # OCR: x,y wxh text per line
-IPHONECTL_PASSCODE=123456 iphonectl unlock
-iphonectl lock
+IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock
 ```
 
 ```
@@ -46,7 +46,7 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 
 ## Setup (once per iPhone)
 
-Screenshots work right after you plug in the iPhone. **Taps and swipes need two steps on the iPhone first.**
+Screenshots work after you plug in, trust, and unlock the iPhone, while its display is awake. **Taps and swipes need two steps on the iPhone first.**
 
 ### 1. Plug in and trust
 
@@ -92,7 +92,7 @@ After pairing, the command continues by itself. Later runs reconnect in about 2s
 ```bash
 iphonectl list
 # 7EF219AD-...  Morse's iPhone  (bluetooth C27E57E9, connected)
-# E8AC634A-...  Morse's iPhone  (bluetooth BA5C7328, connected)
+# E8AC634A-...  Test iPhone     (bluetooth BA5C7328, connected)
 
 iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
 iphonectl tap 413 665 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
@@ -164,21 +164,53 @@ The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, bec
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
 
+## Devices in `list`
+
+**Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone.
+
+```text
+7EF219AD-69B4-423E-B8C4-4F4A6140822F  Morse’s iPhone (2)  [locked]  (bluetooth C27E57E9, connected)
+   USB capture ID                        name                 USB lock state   saved BLE match + live link
+```
+
+**Locked phones stay listed.** The daemon reads `PasswordProtected` from iOS lockdown over the trusted USB connection using macOS's private `MobileDevice.framework`. It does not need a screen frame. `[locked]` means the passcode is required; its absence means lockdown reports unlocked. If the lock state cannot be read, the field is absent. Capture and lockdown IDs differ, so the state is matched by device name; two phones with the same name have no reliable lock state.
+
+**One-phone example:** this Mac listed one iPhone with `[locked]` at the start of the test. After `unlock`, the same device remained listed without `[locked]`. The Bluetooth suffix means the previously paired mouse/keyboard is connected. It is not a second device.
+
+## Agent feedback loop
+
+**Leave the iPhone unlocked.** Do not run `iphonectl lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
+
+**Agents:** read the local, ignored `.passcode` file when unlocking this phone. Pass it through `IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock` so it is not in the command arguments. Never print or commit the file. Create it locally if this checkout does not have one.
+
+```bash
+iphonectl list
+iphonectl tap 414 896 --screenshot after.png
+# Read after.png to see what changed before choosing the next tap.
+iphonectl screentext --language it-IT
+# Read the recognized text and pixel boxes before choosing a text-based action.
+```
+
+- **Visual actions:** use `--screenshot [path]` with `tap`, `swipe`, `key`, `type`, or `unlock`. The CLI runs the action, then requests a fresh screenshot (default `screenshot.png`). Read that image before the next action. If capture fails, the error says **action completed**; do not repeat it blindly.
+- **Text-only actions or data reading:** use `screentext --language it-IT` instead of interpreting image pixels. It returns `x,y widthxheight text`; `--json` also returns confidence and screen size. English is always included. Use the text and coordinates to decide whether to tap, type, or stop. `screentext` is a separate read, not an automatic step inside actions.
+- **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, the display or USB capture stream may be off. Do not treat a successful action response as proof of what appeared on screen.
+
 ## Unlock
 
-**`unlock` uses no touch when Bluetooth wakes the display.** Everything goes over the same Bluetooth mouse and keyboard:
+**`unlock` does not use OCR.** USB screen capture does not yield frames while this iPhone is locked, so it cannot inspect the passcode screen. The Bluetooth mouse and keyboard run a timed sequence:
 
 ```
-click ──▶ screen on ──▶ two fast swipes up ──▶ wait for Face ID ──▶ type once
-                                                                   │
-                                                                   └─ check lock state over USB
+click ──▶ screen on ──▶ two fast swipes up ──▶ check USB lock state for 4 s
+                                              ├─ unlocked by Face ID ──▶ done
+                                              └─ still locked ──▶ type passcode once ──▶ check lock state
 ```
 
 - **Keys cannot wake the screen.** iOS treats our keys as coming from a mouse and drops them on the lock screen. A click usually wakes it.
-- **Face ID runs first.** The passcode screen shows only after the scan fails, up to about 4 s. The passcode is typed once after this delay. Locked-screen USB capture is unavailable, so the command cannot confirm which screen is shown before typing.
+- **Face ID runs first.** The first swipe can show notifications; the second opens the passcode flow. `unlock` polls the USB lock state for up to 4 s, returns if Face ID already unlocked the phone, then types the passcode once if it is still locked. It cannot confirm which screen is shown before typing.
 - **Lock state** comes over USB from lockdown (`PasswordProtected`) through the private `MobileDevice.framework`. `list` shows `[locked]`; `unlock` checks it before and after.
 - **A wrong passcode is never retried.** Failed tries count toward the iPhone lockout. The passcode is not stored.
 - **Locked screenshots fail immediately.** USB capture does not return frames from this phone while locked; `screenshot` and `screentext` check the lock state first.
+- **OCR is for the agent loop after unlock**, not for the locked-screen sequence. For example, `screentext` can find a button label and its pixel box; the agent chooses the next tap based on that result.
 
 ## HTTP API
 

@@ -44,6 +44,21 @@ cp .build/release/iphonectl /usr/local/bin/
 
 The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
 
+## iOS versions
+
+**Tested on iOS 18.7 (iPhone XR) and iOS 15.8.4 (iPhone 6s).** The iPhone sees the Mac as a normal Bluetooth LE mouse and keyboard (HID over GATT). The only difference between versions is how the **pointer** moves.
+
+| iOS | Pointer | Tap cost | Accuracy |
+|---|---|---|---|
+| 18.7 | **absolute**: report 1 says "go to X, Y" | one report | exact |
+| 15.8 | **relative**: iOS ignores absolute X/Y, so report 7 moves in steps | ~1-3 s (corner push + steps) | about 5 px, at most half a step (~9 px) |
+
+- The mode is **found by itself** when a phone is first matched: absolute first, then relative. `list` shows it: `(bluetooth 1BAD6347, connected, relative pointer)`.
+- Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing: the phone subscribes to report 1 but the pointer stays still.
+- In relative mode, `swipe --duration` is ignored. Steps are always sent every 16 ms, because iOS pointer acceleration depends on step size and speed.
+- A phone paired with an older iphonectl may have the old report map cached (no report 7). The log then says to forget `iphonectl` on the iPhone and pair again.
+- The pairing page name can differ by iOS version. Apple's guide calls it **AssistiveTouch > Devices > Bluetooth Devices**: https://support.apple.com/en-us/111775
+
 ## Setup (once per iPhone)
 
 Screenshots work after you plug in, trust, and unlock the iPhone, while its display is awake. **Taps and swipes need two steps on the iPhone first.**
@@ -91,8 +106,8 @@ After pairing, the command continues by itself. Later runs reconnect in about 2s
 
 ```bash
 iphonectl list
-# 7EF219AD-...  Morse's iPhone  (bluetooth C27E57E9, connected)
-# E8AC634A-...  Test iPhone     (bluetooth BA5C7328, connected)
+# 7EF219AD-...  Morse's iPhone  iPhone11,8 iOS 18.7  (bluetooth C27E57E9, connected, absolute pointer)
+# 42B874EC-...  Test iPhone     iPhone8,1 iOS 15.8.4  (bluetooth 1BAD6347, connected, relative pointer)
 
 iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
 iphonectl tap 413 665 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
@@ -109,12 +124,22 @@ Mac (daemon)                                   iPhone
 ┌────────────────────────────┐                ┌─────────────────────────────┐
 │ HID over GATT service      │ ◀─subscribes── │ AssistiveTouch              │
 │  report 1: mouse (absolute)│ ──reports────▶ │  pointer + clicks = touches │
+│  report 7: mouse (relative)│                │                             │
 │  report 2: keyboard        │                │                             │
 │  report 6: media keys      │                │                             │
 └────────────────────────────┘                └─────────────────────────────┘
 ```
 
-The mouse is **absolute**: X and Y go from 0 to 32767. A screenshot pixel converts directly to a pointer position, so no calibration is needed.
+The service has **two mice**. Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts directly to a pointer position (iOS 18). Report 7 is relative, for iOS versions that ignore absolute positions (iOS 15):
+
+```
+match:  push pointer into the top-left corner (iOS clamps it at the edges)
+        15 steps down ──▶ screenshot A ──▶ 15 steps right ──▶ screenshot B
+        pointer blob in B ──▶ screen fraction per step (saved in state.json)
+tap:    corner push ──▶ whole steps along x, then y ──▶ click
+```
+
+Every step is 10 units, sent every 16 ms, as during measurement: iOS accelerates bigger or faster steps more. Screen size and Tracking Speed do not matter, because the step size is measured in screen fractions.
 
 ### Why the Mac first connects to the iPhone
 
@@ -169,9 +194,18 @@ The daemon starts by itself on the first command. After a rebuild, the CLI resta
 **Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone.
 
 ```text
-7EF219AD-69B4-423E-B8C4-4F4A6140822F  Morse’s iPhone (2)  [locked]  (bluetooth C27E57E9, connected)
-   USB capture ID                        name                 USB lock state   saved BLE match + live link
+42B874EC-D690-4D1E-80E4-1A8434DACC3D  iPhone di Carla (2)  iPhone8,1 iOS 15.8.4  [locked]  (bluetooth 1BAD6347, connected, relative pointer)
+   USB capture ID                        name                 model and iOS (USB)   lock      saved BLE match, live link, pointer mode
 ```
+
+**No phone fails fast.** When screen capture lists nothing, the daemon asks USB lockdown why, in about 0.1 s, instead of waiting 25 s:
+
+```text
+error: No iPhone in macOS screen capture. USB check:
+- iPhone di Carla (2): on USB but not trusted (AMDeviceStartSession 0xe8000025). Unlock it and tap Trust on the iPhone; ...
+```
+
+It waits (up to 25 s) only for a trusted phone, which capture can list a few seconds after a daemon start.
 
 **Locked phones stay listed.** The daemon reads `PasswordProtected` from iOS lockdown over the trusted USB connection using macOS's private `MobileDevice.framework`. It does not need a screen frame. `[locked]` means the passcode is required; its absence means lockdown reports unlocked. If the lock state cannot be read, the field is absent. Capture and lockdown IDs differ, so the state is matched by device name; two phones with the same name have no reliable lock state.
 
@@ -249,6 +283,34 @@ A host other than localhost needs TLS, so the token never crosses the network in
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
 - **Lock state** is matched by device name. Two iPhones with the same name show no lock state.
 - **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
+
+### USB screen capture stops (iOS bug): restart the iPhone
+
+**iOS can stop sending its screen over USB** while macOS still lists it. `list` works and the lock state is correct, but `screenshot` gets no frame and no error:
+
+```text
+error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames since open). ...
+```
+
+- **Fix: restart the iPhone.** Replugging the cable or restarting the daemon does not help (tested on iOS 18.7).
+- This is an iOS bug, not iphonectl. A plain AVFoundation program gets no frames either, and QuickTime Player **crashed** when it opened the same iPhone screen.
+- Known Apple reports with the same symptom: [FB21608780](https://github.com/feedback-assistant/reports/issues/778) (after "Stop Mirroring" in Control Center, fixed only by a reboot) and [FB22281473](https://github.com/feedback-assistant/reports/issues/781) (screen capture trust revoked).
+- After the restart, **unlock the iPhone by hand once**. Before the first unlock, iOS ignores the Bluetooth keyboard, so `iphonectl unlock` fails.
+
+**Check with QuickTime Player** which sources the Mac sees. Stop the daemon first (the iPhone serves its screen to one app at a time):
+
+1. `iphonectl daemon stop`
+2. QuickTime Player > **File > New Movie Recording**
+3. Click the **⌄** arrow next to the record button. Under **Camera**:
+
+| Entry | What it is |
+|---|---|
+| `Morse’s iPhone (2)` | the iPhone **screen** over USB (what iphonectl uses) |
+| `Morse’s iPhone (2) Camera` | the iPhone camera (Continuity Camera), not the screen |
+
+- **Screen entry shows the live screen:** capture works; the problem is on the Mac side.
+- **Screen entry is black, missing, or QuickTime crashes:** iOS stopped serving the screen. Restart the iPhone.
+- Two iPhones with the same name both show up as `... Camera`. Only the one on USB has a screen entry.
 
 <details>
 <summary>Architecture</summary>

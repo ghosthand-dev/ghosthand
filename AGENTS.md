@@ -8,3 +8,13 @@
   ```
 
 - Check the iPhone with `iphonectl list` before input. A wrong passcode is not retried because failed attempts count toward lockout.
+
+# CLI help is the agent manual
+
+Agents learn iphonectl from `iphonectl --help` and `iphonectl <command> --help` before they read the README. So every rule an agent needs to use a command correctly goes into the CLI help, in `Sources/iphonectl/main.swift`:
+
+- `description`: one line, what the command does. Shown in the root command list.
+- `details`: usage notes and rules, shown only by `<command> --help`: what the output means, what to do on common errors, limits found in tests (for example "Home Screen labels do not open apps").
+- `agentLoopHelp`: the rules for every command (coordinate space, `--screenshot` after actions, leave the phone unlocked). Shown by `iphonectl --help`.
+
+When you find a new limit or a rule while testing on a real iPhone, add it to the matching command's `details` first, then to the README if a human needs it too. Keep help text short and concrete: say what to do, not only what went wrong.

@@ -233,6 +233,14 @@ The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, bec
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
 
+**Environment variables** set a default for every command; a flag overrides them:
+
+| Variable | Same as | Example |
+|---|---|---|
+| `IPHONECTL_LANGUAGE` | `--language` (OCR in `screentext`, `--screentext`, `tap --text`) | `it-IT` |
+| `IPHONECTL_SCALE` | `--scale` (image and coordinate size) | `1` for native pixels |
+| `IPHONECTL_PASSCODE` | `unlock <passcode>` | read from `.passcode` |
+
 ## Coordinates: screen points
 
 **Screenshots, `screentext` boxes, `tap` and `swipe` use one space: iOS screen points.** A point is 2 native pixels on @2x iPhones and 3 on @3x ones, so an iPhone XR (828x1792) gives a 414x896 image. Plus models are the exception: they render at 1080 px for 414 points, and iphonectl knows the native size of each iPhone screen. Read a spot in the image, send the same numbers.
@@ -292,12 +300,15 @@ It waits (up to 25 s) only for a trusted phone, which capture can list a few sec
 ```
 
 ```bash
+export IPHONECTL_LANGUAGE=it-IT     # phone language for OCR, same as --language
 iphonectl list
-iphonectl screentext --language it-IT
-iphonectl tap --text "Tommaso De Rossi" --language it-IT --screenshot s.png --screentext
+iphonectl screentext
+iphonectl tap --text "Tommaso De Rossi" --screenshot s.png --screentext
 iphonectl tap 200 610 --screenshot s.png --screentext          # x,y read from s.png
-iphonectl type "ciao" --enter --screentext --language it-IT
+iphonectl type "ciao" --enter --screentext
 ```
+
+**Set the OCR language once** for a non-English phone: `IPHONECTL_LANGUAGE=it-IT` (a BCP 47 tag) applies to `screentext`, `--screentext` and `tap --text`. `--language` overrides it. English is always included. Without it, accents and local words are misread.
 
 - **Text first, image when needed.** `--screentext` output is cheap and often enough to decide (a new title, a sent message). Read `s.png` for icons, layout, or text OCR misses.
 - **Both flags wait for a still screen:** the CLI waits until two frames 150 ms apart match (up to 2 s, so slide animations are done). With both, the screenshot and the text come from the same still screen. A launching app can look still while blank; if the output is empty, take one more.

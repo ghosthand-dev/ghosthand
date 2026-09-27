@@ -4,12 +4,13 @@ Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** 
 
 ```bash
 iphonectl list
-iphonectl screenshot -o home.png          # 0.1s after the first call
-iphonectl tap 414 896                     # screenshot pixels
-iphonectl swipe 414 1400 414 600
-iphonectl type "hello"
-iphonectl key enter
-iphonectl tap 414 896 --screenshot after.png  # act, then save fresh screen
+iphonectl screenshot -o home.png          # 414x896 on an iPhone XR: screen points
+iphonectl tap 207 448                     # same coordinates as the screenshot
+iphonectl swipe 207 700 207 300
+iphonectl tap --text "Settings"          # OCR finds the text, taps its center
+iphonectl type "hello" --enter
+iphonectl key home                        # Home Screen, no AssistiveTouch menu
+iphonectl tap 207 448 --screenshot after.png  # act, wait until still, save
 iphonectl screentext --language it-IT     # OCR: x,y wxh text per line
 IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock
 ```
@@ -24,7 +25,8 @@ Mac ── iphonectl daemon ─┤
 
 - **Screenshots** over USB, PNG or JPEG, about 0.1s each once the capture is open
 - **Tap, swipe, key, type** through a Bluetooth mouse and keyboard served by the Mac
-- **Screen text** with on-device OCR (Vision), boxes in screenshot pixels
+- **Screen points by default**: screenshots, OCR boxes and taps share one small coordinate space, sized for LLM vision
+- **Screen text** with on-device OCR (Vision), boxes in screenshot coordinates
 - **Unlock** a locked iPhone with its passcode, no touch; lock state in `list`
 - **Lock** over the Bluetooth keyboard, verified over USB
 - **Several iPhones at once**, each controlled on its own
@@ -51,13 +53,45 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 | iOS | Pointer | Tap cost | Accuracy |
 |---|---|---|---|
 | 18.7 | **absolute**: report 1 says "go to X, Y" | one report | exact |
-| 15.8 | **relative**: iOS ignores absolute X/Y, so report 7 moves in steps | ~1-3 s (corner push + steps) | about 5 px, at most half a step (~9 px) |
+| 15.8 | **relative**: iOS ignores absolute X/Y, so report 7 moves in steps | ~0.3-1 s from the last spot; ~1-3 s every 6th move (corner push to reset drift) | about 5 px, at most half a step (~9 px) |
 
 - The mode is **found by itself** when a phone is first matched: absolute first, then relative. `list` shows it: `(bluetooth 1BAD6347, connected, relative pointer)`.
 - Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing: the phone subscribes to report 1 but the pointer stays still.
 - In relative mode, `swipe --duration` is ignored. Steps are always sent every 16 ms, because iOS pointer acceleration depends on step size and speed.
 - A phone paired with an older iphonectl may have the old report map cached (no report 7). The log then says to forget `iphonectl` on the iPhone and pair again.
 - The pairing page name can differ by iOS version. Apple's guide calls it **AssistiveTouch > Devices > Bluetooth Devices**: https://support.apple.com/en-us/111775
+
+### Which iPhones get fast taps
+
+**Pick an iPhone XS or XR or newer for automation.** Absolute pointers work from **iOS 17**, and iOS 17 needs an A12 chip or newer.
+
+| iPhone | Last iOS | Pointer | Tap |
+|---|---|---|---|
+| 6s, 6s Plus, 7, 7 Plus, SE (1st gen) | 15 | relative | ~2-3 s, ~5 px off |
+| 8, 8 Plus, X | 16 | relative | ~2-3 s, ~5 px off |
+| **XS, XS Max, XR, SE (2nd gen, 2020)** and newer | 17+ | **absolute** | ~0.3 s, exact |
+
+- iOS 15 (6s) and iOS 18 (XR) are tested. The iOS 17 cutoff comes from a vendor of ESP32 Bluetooth HID firmware, not from Apple: https://ieasyclick.net/blog/en/ios-ble-hid-no-signature/. iOS 16 and 17 are not tested here.
+- An iPhone that can run iOS 17 but still runs 16 uses the relative pointer. Update it.
+
+### Relative tap limits
+
+A relative tap does not know where the pointer is, so each tap starts again from the corner:
+
+```
+tap 461,1240 on a 6s:
+  corner push      25 reports x 16 ms      ~0.45 s
+  34 steps right   10 units each           ~0.55 s
+  91 steps down    x first, then y         ~1.45 s
+  click + waits                            ~0.35 s
+                                           ~2.8 s total
+```
+
+- **Slow:** ~2-3 s per tap, more for targets far from the top-left corner.
+- **Less exact:** a tap can miss by up to half a step (~9 px on a 6s). Small buttons need care.
+- **Fixed swipe speed:** `swipe --duration` is ignored.
+- **First match is slower:** ~3-4 s per Bluetooth device, because the pointer is moved to 4 spots and checked in screenshots.
+- Big or fast steps would be quicker, but iOS accelerates them, so the measured step size would be wrong. That is why every step is 10 units at 16 ms.
 
 ## Setup (once per iPhone)
 
@@ -77,11 +111,10 @@ iphonectl list
 
 iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). Keep it on: tap and swipe need it all the time, not only during setup.
 
-**Hide the floating button.** On the same page, turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. You do not need its Home action: swipe up from the bottom edge, like on any iPhone without a Home button.
+**Hide the floating button (recommended).** On the same page, turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots. You do not need its Home action; the keyboard has one:
 
 ```bash
-# go home: drag from the bottom edge up (1180x2556 screen)
-iphonectl swipe 590 2550 590 1500 --duration 250
+iphonectl key home   # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 ```
 
 ### 3. Pair the Mac as a pointer device
@@ -106,14 +139,22 @@ After pairing, the command continues by itself. Later runs reconnect in about 2s
 
 ```bash
 iphonectl list
-# 7EF219AD-...  Morse's iPhone  iPhone11,8 iOS 18.7  (bluetooth C27E57E9, connected, absolute pointer)
-# 42B874EC-...  Test iPhone     iPhone8,1 iOS 15.8.4  (bluetooth 1BAD6347, connected, relative pointer)
+# 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth C27E57E9, connected, absolute pointer)
+# 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth 1BAD6347, connected, relative pointer)
 
 iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
-iphonectl tap 413 665 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
+iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
 ```
 
 The Mac is one Bluetooth mouse for all iPhones, but each report goes to one iPhone only. Input to one phone never reaches another.
+
+**Give every iPhone a different name.** The daemon uses the name to match a USB phone to its lock state and to its Bluetooth device. Two phones called `Morse’s iPhone (2)` get no lock state in `list`, and the first match must move the pointer of both to tell them apart.
+
+```
+Settings > General > About > Name   →   "Morse XR", "Test 6s"
+```
+
+Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-iphone-iphf256af64f/ios. The new name reaches USB and Bluetooth at once. If the Mac still shows the old name, unplug and plug in the cable again, then run `iphonectl forget -d <id>` so the phone is matched again.
 
 ## How the Mac becomes a mouse
 
@@ -131,6 +172,8 @@ Mac (daemon)                                   iPhone
 ```
 
 The service has **two mice**. Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts directly to a pointer position (iOS 18). Report 7 is relative, for iOS versions that ignore absolute positions (iOS 15):
+
+**Clicks in absolute mode go in both reports.** With two mouse collections in the map, iOS 18 moves the pointer from report 1 but ignores the button bits of report 1 (tested on iOS 18.7). So a press and release are sent in report 1 and, with zero movement, in report 7.
 
 ```
 match:  push pointer into the top-left corner (iOS clamps it at the edges)
@@ -176,12 +219,13 @@ The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, bec
 | Command | Does |
 |---|---|
 | `list` | iPhones on USB, `[locked]`, and their Bluetooth match |
-| `screenshot [-o file.png\|.jpg]` | save the screen |
+| `screenshot [-o file.png\|.jpg] [--settle]` | save the screen; `--settle` waits until it stops changing |
 | `screentext [--language it-IT] [--json]` | OCR of the screen: `x,y wxh text` per line. English is always included |
-| `tap <x> <y>` | tap at screenshot pixels |
+| `tap <x> <y>` | tap at screenshot coordinates |
+| `tap --text <text> [--index n]` | tap the center of an OCR text line (exact line wins, else contains) |
 | `swipe <x1> <y1> <x2> <y2> [--duration ms]` | drag with the button held |
-| `key <combo>` | `enter`, `esc`, `backspace`, arrows, `volumeup`, `mute` |
-| `type <text>` | US-ASCII text |
+| `key <combo>` | `home`, `enter`, `esc`, `backspace`, arrows, `volumeup`, `mute` |
+| `type <text> [--enter]` | US-ASCII text, then optionally Enter (sends in Messages) |
 | `unlock [passcode]` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
 | `lock` | lock over Bluetooth with Control-Command-Q |
 | `forget` | remove the Bluetooth match |
@@ -189,12 +233,33 @@ The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, bec
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
 
+## Coordinates: screen points
+
+**Screenshots, `screentext` boxes, `tap` and `swipe` use one space: iOS screen points.** A point is 2 native pixels on @2x iPhones and 3 on @3x ones, so an iPhone XR (828x1792) gives a 414x896 image. Plus models are the exception: they render at 1080 px for 414 points, and iphonectl knows the native size of each iPhone screen. Read a spot in the image, send the same numbers.
+
+| iPhone | Native pixels | Default (points) | Claude tokens | GPT tokens (32 px patches x1.2) |
+|---|---|---|---|---|
+| 6s (@2x) | 750x1334 | 375x667 | 336 | 303 |
+| XR (@2x) | 828x1792 | 414x896 | 480 | 437 |
+| 14 Pro (@3x) | 1179x2556 | 393x852 | 465 | 422 |
+
+**Why points:** UI text stays readable (17 pt body text is 17 px). A screenshot costs about a quarter of the native tokens on @2x iPhones and an eighth on @3x. It also stays under every model's resize limit, so the model sees exactly the pixels the CLI maps back. Claude models before 4.7 shrink anything over 1568 px or 1568 tokens (28 px patches), and an XR screen at native size would be shrunk to an unknown scale ([Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision#resolution-and-token-cost), [OpenAI vision](https://platform.openai.com/docs/guides/images-vision#calculating-costs)).
+
+**Other sizes** with `--scale` (a fraction of native pixels) or `IPHONECTL_SCALE`. Use the same value for every command, because it also changes how `tap` reads coordinates:
+
+```bash
+iphonectl screenshot -o full.png --scale 1    # native pixels, 828x1792
+IPHONECTL_SCALE=1 iphonectl tap 414 896       # native pixel coordinates
+```
+
+`screentext` always runs OCR on native pixels (small text reads better), then scales the boxes.
+
 ## Devices in `list`
 
 **Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone.
 
 ```text
-42B874EC-D690-4D1E-80E4-1A8434DACC3D  iPhone di Carla (2)  iPhone8,1 iOS 15.8.4  [locked]  (bluetooth 1BAD6347, connected, relative pointer)
+42B874EC-D690-4D1E-80E4-1A8434DACC3D  iPhone di Carla (2)  iPhone 6s (iPhone8,1) iOS 15.8.4  [locked]  (bluetooth 1BAD6347, connected, relative pointer)
    USB capture ID                        name                 model and iOS (USB)   lock      saved BLE match, live link, pointer mode
 ```
 
@@ -219,13 +284,14 @@ It waits (up to 25 s) only for a trusted phone, which capture can list a few sec
 
 ```bash
 iphonectl list
-iphonectl tap 414 896 --screenshot after.png
+iphonectl tap 207 448 --screenshot after.png
 # Read after.png to see what changed before choosing the next tap.
 iphonectl screentext --language it-IT
-# Read the recognized text and pixel boxes before choosing a text-based action.
+# Read the recognized text and boxes before choosing a text-based action.
 ```
 
-- **Visual actions:** use `--screenshot [path]` with `tap`, `swipe`, `key`, `type`, or `unlock`. The CLI runs the action, then requests a fresh screenshot (default `screenshot.png`). Read that image before the next action. If capture fails, the error says **action completed**; do not repeat it blindly.
+- **Tap text, not pixels:** `tap --text "Tommaso De Rossi"` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
+- **Visual actions:** use `--screenshot [path]` with `tap`, `swipe`, `key`, `type`, or `unlock`. The CLI runs the action, waits until two frames 150 ms apart match (up to 2 s, so slide animations are done), then saves the screenshot (default `screenshot.png`). A launching app can look still while blank; take one more screenshot if it is empty. Read that image before the next action. If capture fails, the error says **action completed**; do not repeat it blindly.
 - **Text-only actions or data reading:** use `screentext --language it-IT` instead of interpreting image pixels. It returns `x,y widthxheight text`; `--json` also returns confidence and screen size. English is always included. Use the text and coordinates to decide whether to tap, type, or stop. `screentext` is a separate read, not an automatic step inside actions.
 - **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, the display or USB capture stream may be off. Do not treat a successful action response as proof of what appeared on screen.
 
@@ -255,7 +321,7 @@ S=~/.iphonectl/daemon.sock
 curl --unix-socket $S http://localhost/v1/devices
 curl --unix-socket $S http://localhost/v1/devices/default/screenshot -o s.png
 curl --unix-socket $S -H 'content-type: application/json' \
-  -d '{"x":414,"y":896}' http://localhost/v1/devices/default/tap
+  -d '{"x":207,"y":448}' http://localhost/v1/devices/default/tap   # screen points, like the screenshot
 ```
 
 - `{device}` is the USB id, the name, or `default` when one iPhone is connected.
@@ -281,7 +347,7 @@ A host other than localhost needs TLS, so the token never crosses the network in
 - **Keyboard without AssistiveTouch** is not tested.
 - **`cmd+space` and `cmd+h`** did nothing in tests.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
-- **Lock state** is matched by device name. Two iPhones with the same name show no lock state.
+- **Lock state** is matched by device name. Two iPhones with the same name show no lock state. Rename one (see [More iPhones](#4-more-iphones)).
 - **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
 
 ### USB screen capture stops (iOS bug): restart the iPhone

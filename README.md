@@ -10,7 +10,7 @@ iphonectl swipe 207 700 207 300
 iphonectl tap --text "Settings"          # OCR finds the text, taps its center
 iphonectl type "hello" --enter
 iphonectl key home                        # Home Screen, no AssistiveTouch menu
-iphonectl tap 207 448 --screenshot after.png  # act, wait until still, save
+iphonectl tap 207 448 --screenshot s.png --screentext  # act, then see the result
 iphonectl screentext --language it-IT     # OCR: x,y wxh text per line
 IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock
 ```
@@ -278,22 +278,36 @@ It waits (up to 25 s) only for a trusted phone, which capture can list a few sec
 
 ## Agent feedback loop
 
-**Leave the iPhone unlocked.** Do not run `iphonectl lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
+**Each tool call is the slow part**, not the phone. So an action returns the new screen in the same call: `--screenshot` saves it, `--screentext` prints its text. One call per step instead of three.
 
-**Agents:** read the local, ignored `.passcode` file when unlocking this phone. Pass it through `IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock` so it is not in the command arguments. Never print or commit the file. Create it locally if this checkout does not have one.
+```
+      ┌──────────────────────────────────────────────────────────────┐
+      ▼                                                              │
+ 1. see the screen          screentext (text + boxes, no image)       │
+                            or screenshot -o s.png (~500 tokens)      │
+ 2. act, and see the result tap / swipe / key / type                  │
+                            + --screenshot s.png --screentext         │
+ 3. read the printed text, and s.png if the text is not enough        │
+ 4. decide the next action toward the user's task  ───────────────────┘
+```
 
 ```bash
 iphonectl list
-iphonectl tap 207 448 --screenshot after.png
-# Read after.png to see what changed before choosing the next tap.
 iphonectl screentext --language it-IT
-# Read the recognized text and boxes before choosing a text-based action.
+iphonectl tap --text "Tommaso De Rossi" --language it-IT --screenshot s.png --screentext
+iphonectl tap 200 610 --screenshot s.png --screentext          # x,y read from s.png
+iphonectl type "ciao" --enter --screentext --language it-IT
 ```
 
-- **Tap text, not pixels:** `tap --text "Tommaso De Rossi"` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
-- **Visual actions:** use `--screenshot [path]` with `tap`, `swipe`, `key`, `type`, or `unlock`. The CLI runs the action, waits until two frames 150 ms apart match (up to 2 s, so slide animations are done), then saves the screenshot (default `screenshot.png`). A launching app can look still while blank; take one more screenshot if it is empty. Read that image before the next action. If capture fails, the error says **action completed**; do not repeat it blindly.
-- **Text-only actions or data reading:** use `screentext --language it-IT` instead of interpreting image pixels. It returns `x,y widthxheight text`; `--json` also returns confidence and screen size. English is always included. Use the text and coordinates to decide whether to tap, type, or stop. `screentext` is a separate read, not an automatic step inside actions.
-- **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, the display or USB capture stream may be off. Do not treat a successful action response as proof of what appeared on screen.
+- **Text first, image when needed.** `--screentext` output is cheap and often enough to decide (a new title, a sent message). Read `s.png` for icons, layout, or text OCR misses.
+- **Both flags wait for a still screen:** the CLI waits until two frames 150 ms apart match (up to 2 s, so slide animations are done). With both, the screenshot and the text come from the same still screen. A launching app can look still while blank; if the output is empty, take one more.
+- **Tap text, not pixels:** `tap --text "..."` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
+- **Failed capture after an action:** the error says **action completed**. Do not repeat the action blindly; take a screenshot first.
+- **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, see [USB screen capture stops](#usb-screen-capture-stops-ios-bug-restart-the-iphone).
+
+**Leave the iPhone unlocked.** Do not run `iphonectl lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
+
+**Agents:** read the local, ignored `.passcode` file when unlocking this phone. Pass it through `IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock` so it is not in the command arguments. Never print or commit the file. Create it locally if this checkout does not have one.
 
 ## Unlock
 

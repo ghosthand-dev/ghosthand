@@ -261,7 +261,7 @@ CLI / curl / any language
 Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──▶ Controller
                                                                   ├─ FrameStream per iPhone (AVFoundation), OCR (Vision)
                                                                   ├─ Lockdown lock state (MobileDevice.framework)
-                                                                  └─ BLEMouse (CoreBluetooth HID peripheral)
+                                                                  └─ HIDPeripheral (CoreBluetooth HID over GATT)
                                                                        └─ LinkKeeper (Mac-initiated LE links)
 ```
 

@@ -50,48 +50,46 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 
 **Tested on iOS 18.7 (iPhone XR) and iOS 15.8.4 (iPhone 6s).** The iPhone sees the Mac as a normal Bluetooth LE mouse and keyboard (HID over GATT). The only difference between versions is how the **pointer** moves.
 
-| iOS | Pointer | Tap cost | Accuracy |
+| iOS | Pointer | Tap | Accuracy |
 |---|---|---|---|
-| 18.7 | **absolute**: report 1 says "go to X, Y" | one report | exact |
-| 15.8 | **relative**: iOS ignores absolute X/Y, so report 7 moves in steps | ~0.3-1 s from the last spot; ~1-3 s every 6th move (corner push to reset drift) | about 5 px, at most half a step (~9 px) |
+| 18.7 | **absolute**: report 1 says "go to X, Y" | ~0.3 s | exact |
+| 15.8 | **relative**: iOS ignores absolute X/Y, so report 7 moves by computed steps | ~0.45 s | 0.2 pt mean, 0.4 pt max (40 targets) |
 
 - The mode is **found by itself** when a phone is first matched: absolute first, then relative. `list` shows it: `(bluetooth 1BAD6347, connected, relative pointer)`.
 - Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing: the phone subscribes to report 1 but the pointer stays still.
-- In relative mode, `swipe --duration` is ignored. Steps are always sent every 16 ms, because iOS pointer acceleration depends on step size and speed.
+- In relative mode the daemon knows **exactly** how far each report moves the pointer, from Apple's own acceleration table. See [Relative pointer](#relative-pointer-ios-15).
 - A phone paired with an older iphonectl may have the old report map cached (no report 7). The log then says to forget `iphonectl` on the iPhone and pair again.
 - The pairing page name can differ by iOS version. Apple's guide calls it **AssistiveTouch > Devices > Bluetooth Devices**: https://support.apple.com/en-us/111775
 
-### Which iPhones get fast taps
+### Which iPhones get which pointer
 
-**Pick an iPhone XS or XR or newer for automation.** Absolute pointers work from **iOS 17**, and iOS 17 needs an A12 chip or newer.
+Absolute pointers work from **iOS 17**, and iOS 17 needs an A12 chip or newer. Older iPhones get the relative pointer, which is now almost as fast and exact.
 
 | iPhone | Last iOS | Pointer | Tap |
 |---|---|---|---|
-| 6s, 6s Plus, 7, 7 Plus, SE (1st gen) | 15 | relative | ~2-3 s, ~5 px off |
-| 8, 8 Plus, X | 16 | relative | ~2-3 s, ~5 px off |
+| 6s, 6s Plus, 7, 7 Plus, SE (1st gen) | 15 | relative | ~0.45 s, < 0.5 pt off (6s tested) |
+| 8, 8 Plus, X | 16 | relative | not tested |
 | **XS, XS Max, XR, SE (2nd gen, 2020)** and newer | 17+ | **absolute** | ~0.3 s, exact |
 
 - iOS 15 (6s) and iOS 18 (XR) are tested. The iOS 17 cutoff comes from a vendor of ESP32 Bluetooth HID firmware, not from Apple: https://ieasyclick.net/blog/en/ios-ble-hid-no-signature/. iOS 16 and 17 are not tested here.
 - An iPhone that can run iOS 17 but still runs 16 uses the relative pointer. Update it.
 
-### Relative tap limits
+### Relative pointer (iOS 15)
 
-A relative tap does not know where the pointer is, so each tap starts again from the corner:
+**iOS turns each relative report into a fixed distance.** It looks up the report's size in IOHIDFamily's built-in acceleration table. Time does not count, and fractions of a point add up. So the daemon computes the reports for any move:
 
 ```
-tap 461,1240 on a 6s:
-  corner push      25 reports x 16 ms      ~0.45 s
-  34 steps right   10 units each           ~0.55 s
-  91 steps down    x first, then y         ~1.45 s
-  click + waits                            ~0.35 s
-                                           ~2.8 s total
+tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
+  (+169,+248) (+170,+247) ── speed 300, past the flat end of the table ──▶ 214.9 pt each
+  (+16,+24)               ── speed 28 ─────────────────────────────────▶ 30.0 pt
+  (0,-1)                  ── speed 1: 0.2 pt, lands within 0.2 pt
+  100 ms pause, then click                                   ~0.45 s in total
 ```
 
-- **Slow:** ~2-3 s per tap, more for targets far from the top-left corner.
-- **Less exact:** a tap can miss by up to half a step (~9 px on a 6s). Small buttons need care.
-- **Fixed swipe speed:** `swipe --duration` is ignored.
-- **First match is slower:** ~3-4 s per Bluetooth device, because the pointer is moved to 4 spots and checked in screenshots.
-- Big or fast steps would be quicker, but iOS accelerates them, so the measured step size would be wrong. That is why every step is 10 units at 16 ms.
+- **Measured on an iPhone 6s** (iOS 15.8.4): 15 report sizes, diagonals, and bursts vs 100 ms gaps all matched the table to 0.5 pt. 40 taps in a row landed 0.2 pt from the target on average, with no drift. Details: [docs/relative-pointer.md](docs/relative-pointer.md).
+- **The daemon remembers where the pointer is.** Only when it does not know (daemon start, Bluetooth reconnect, rotation, 60 s idle) does it push the pointer into the top-left corner first (+0.3 s).
+- **Tracking Speed:** matching measures a `gain` (1.000 at the default speed) and scales the table by it. Other speeds are not tested.
+- **Swipes follow `--duration`**: reports are spread over it and sized so the drag ends exactly at the target.
 
 ## Setup (once per iPhone)
 
@@ -176,13 +174,10 @@ The service has **two mice**. Report 1 is absolute: X and Y go from 0 to 32767, 
 **Clicks in absolute mode go in both reports.** With two mouse collections in the map, iOS 18 moves the pointer from report 1 but ignores the button bits of report 1 (tested on iOS 18.7). So a press and release are sent in report 1 and, with zero movement, in report 7.
 
 ```
-match:  push pointer into the top-left corner (iOS clamps it at the edges)
-        15 steps down ──▶ screenshot A ──▶ 15 steps right ──▶ screenshot B
-        pointer blob in B ──▶ screen fraction per step (saved in state.json)
-tap:    corner push ──▶ whole steps along x, then y ──▶ click
+match:  corner ──▶ move (80,120) pt ──▶ screenshot P1 ──▶ corner ──▶ move (160,120) pt ──▶ P2
+        pointer found in P1 and P2 ──▶ gain = measured / computed (saved in state.json)
+tap:    computed reports from the last known spot ──▶ 100 ms pause ──▶ click
 ```
-
-Every step is 10 units, sent every 16 ms, as during measurement: iOS accelerates bigger or faster steps more. Screen size and Tracking Speed do not matter, because the step size is measured in screen fractions.
 
 ### Why the Mac first connects to the iPhone
 

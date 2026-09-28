@@ -18,3 +18,7 @@ Agents learn iphonectl from `iphonectl --help` and `iphonectl <command> --help` 
 - `agentLoopHelp`: the rules for every command (coordinate space, `--screenshot` after actions, leave the phone unlocked). Shown by `iphonectl --help`.
 
 When you find a new limit or a rule while testing on a real iPhone, add it to the matching command's `details` first, then to the README if a human needs it too. Keep help text short and concrete: say what to do, not only what went wrong.
+
+# Relative pointer (iOS 15)
+
+Read `docs/relative-pointer.md` before changing relative pointer code: the acceleration table, the measurements, and the timing rules (150 ms after homing, 100 ms before a press).

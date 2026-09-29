@@ -150,7 +150,7 @@ iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
 
 The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goes to one iPhone only (its own L2CAP channel). Input to one phone never reaches another.
 
-**Give every iPhone a different name.** The daemon uses the name to find a USB phone's lockdown data (lock state, Bluetooth address). Two phones called `Morse’s iPhone (2)` get no lock state in `list`, and the first match must move the pointer of both to tell them apart.
+**Give every iPhone a different name.** The daemon uses the name to find a USB phone's lockdown data (lock state, Bluetooth address). Two phones called `Morse’s iPhone (2)` get no lock state and no Bluetooth link in `list`.
 
 ```
 Settings > General > About > Name   →   "Morse XR", "Test 6s"
@@ -239,7 +239,7 @@ Each iPhone reports its **Bluetooth address** over USB lockdown. Its HID link to
 USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bluetooth HID link
 ```
 
-`~/.iphonectl/state.json` keeps only the pointer mode per address. `iphonectl forget -d <id>` clears it, so the next tap checks it again.
+`~/.iphonectl/state.json` keeps only the pointer mode per address. `iphonectl forget -d <id>` clears it and removes the Mac's Bluetooth bond (see [Pairing no longer works](#pairing-no-longer-works-forget-on-both-sides)).
 
 ## CLI
 
@@ -256,7 +256,7 @@ USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bl
 | `unlock [passcode]` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
 | `assistivetouch [on\|off]` | show or set AssistiveTouch over USB; pointer input turns it on by itself |
 | `lock` | lock over Bluetooth with Control-Command-Q |
-| `forget` | check the pointer mode again on the next tap |
+| `forget` | remove the Mac's Bluetooth bond with the iPhone, to pair again |
 | `daemon start\|stop\|restart\|status\|run` | manage the background daemon |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
@@ -454,7 +454,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 **Fix: remove the bond on both sides, then pair again.**
 
 1. iPhone: Settings > Bluetooth > the Mac > (i) > **Forget This Device**.
-2. Mac: System Settings > Bluetooth > the iPhone > (i) > **Forget This Device** (or `blueutil --unpair <address>`; the address is `bluetooth.address` in `curl --unix-socket ~/.iphonectl/daemon.sock http://localhost/v1/devices`).
+2. Mac: `iphonectl forget -d <id>`. It removes the Mac's bond (same as System Settings > Bluetooth > the iPhone > (i) > **Forget This Device**).
 3. Run any input command, for example `iphonectl key home -d <id>`. It makes the Mac discoverable and waits.
 4. iPhone: Settings > Bluetooth, tap the Mac under Other Devices, then **Pair**.
 

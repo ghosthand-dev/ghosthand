@@ -55,7 +55,7 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 | 18.7 | **absolute**: report 1 says "go to X, Y" | ~0.3 s | exact |
 | 15.8 | **relative** over BLE (iOS ignored absolute X/Y); **not tested yet over Classic** | ~0.45 s | 0.2 pt mean, 0.4 pt max (40 targets) |
 
-- The mode is **found by itself** when a phone is first matched: absolute first, then relative. `list` shows it: `(bluetooth 1BAD6347, connected, relative pointer)`.
+- The mode is **found by itself** on the first tap: iOS 17 and later use absolute; older versions are checked by moving the pointer. `list` shows it: `(bluetooth connected, relative pointer)`.
 - Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing over BLE: the phone read report 1 but the pointer stayed still.
 - In relative mode the daemon knows **exactly** how far each report moves the pointer, from Apple's own acceleration table. See [Relative pointer](#relative-pointer-ios-15).
 
@@ -86,7 +86,7 @@ tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
 
 - **Measured on an iPhone 6s** (iOS 15.8.4): 15 report sizes, diagonals, and bursts vs 100 ms gaps all matched the table to 0.5 pt. 40 taps in a row landed 0.2 pt from the target on average, with no drift. Details: [docs/relative-pointer.md](docs/relative-pointer.md).
 - **The daemon remembers where the pointer is.** Only when it does not know (daemon start, Bluetooth reconnect, rotation, 60 s idle) does it push the pointer into the top-left corner first (+0.3 s).
-- **Tracking Speed:** matching measures a `gain` (1.000 at the default speed) and scales the table by it. Other speeds are not tested.
+- **Tracking Speed:** the pointer check measures a `gain` (1.000 at the default speed) and scales the table by it. Other speeds are not tested.
 - **Swipes follow `--duration`**: reports are spread over it and sized so the drag ends exactly at the target.
 
 ## Setup (once per iPhone)
@@ -132,7 +132,7 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 
 - The Mac is discoverable only while a command waits for pairing.
 - After Pair, the iPhone opens the connection itself. The command continues by itself.
-- Later runs reconnect the matched iPhone from the Mac in about 2 s.
+- Later runs reconnect the paired iPhone from the Mac in about 2 s.
 - **After a report map change**, forget the Mac on the iPhone and pair again: the iPhone keeps the map it read at pairing.
 
 ### 4. More iPhones
@@ -141,8 +141,8 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 
 ```bash
 iphonectl list
-# 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth C27E57E9, connected, absolute pointer)
-# 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth 1BAD6347, connected, relative pointer)
+# 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth connected, absolute pointer)
+# 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth connected, relative pointer)
 
 iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
 iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
@@ -150,13 +150,13 @@ iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
 
 The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goes to one iPhone only (its own L2CAP channel). Input to one phone never reaches another.
 
-**Give every iPhone a different name.** The daemon uses the name to match a USB phone to its lock state and to its Bluetooth device. Two phones called `Morse’s iPhone (2)` get no lock state in `list`, and the first match must move the pointer of both to tell them apart.
+**Give every iPhone a different name.** The daemon uses the name to find a USB phone's lockdown data (lock state, Bluetooth address). Two phones called `Morse’s iPhone (2)` get no lock state in `list`, and the first match must move the pointer of both to tell them apart.
 
 ```
 Settings > General > About > Name   →   "Morse XR", "Test 6s"
 ```
 
-Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-iphone-iphf256af64f/ios. The new name reaches USB and Bluetooth at once. If the Mac still shows the old name, unplug and plug in the cable again, then run `iphonectl forget -d <id>` so the phone is matched again.
+Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-iphone-iphf256af64f/ios. The new name reaches USB and Bluetooth at once. If the Mac still shows the old name, unplug and plug in the cable again, then run `iphonectl list` again.
 
 ### How many iPhones per Mac
 
@@ -191,7 +191,7 @@ Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts
 **Clicks in absolute mode go in both reports.** With two mouse collections in the map, iOS 18 ignored the button bits of report 1 over BLE. So a press and release are sent in report 1 and, with zero movement, in report 7.
 
 ```
-match:  corner ──▶ move (80,120) pt ──▶ screenshot P1 ──▶ corner ──▶ move (160,120) pt ──▶ P2
+check:  corner ──▶ move (80,120) pt ──▶ screenshot P1 ──▶ corner ──▶ move (160,120) pt ──▶ P2
         pointer found in P1 and P2 ──▶ gain = measured / computed (saved in state.json)
 tap:    computed reports from the last known spot ──▶ 100 ms pause ──▶ click
 ```
@@ -207,22 +207,21 @@ tap:    computed reports from the last known spot ──▶ 100 ms pause ──�
 
 </details>
 
-## How a phone is matched
+## How a phone is found
 
-USB ids and Bluetooth ids are unrelated. On the first input to a USB iPhone, the daemon **matches** it: it moves each connected pointer (no click) to two spots and looks for the change in that iPhone's screenshots.
+Each iPhone reports its **Bluetooth address** over USB lockdown. Its HID link to the Mac uses the same address, so the daemon joins the USB screen and the Bluetooth input by address. No pointer moves, and other connected devices (iPad, other phones) are never touched.
 
 ```
-pointer check: change at A 39%, at B 54%, whole screen 0.2%
-matched: Bluetooth device BA5C7328 is Morse's iPhone
+USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bluetooth HID link
 ```
 
-The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, because it looks for the pointer; the daemon turns it on first. `iphonectl forget -d <id>` removes a match.
+`~/.iphonectl/state.json` keeps only the pointer mode per address. `iphonectl forget -d <id>` clears it, so the next tap checks it again.
 
 ## CLI
 
 | Command | Does |
 |---|---|
-| `list` | iPhones on USB, `[locked]`, and their Bluetooth match |
+| `list` | iPhones on USB, `[locked]`, and their Bluetooth link state |
 | `screenshot [-o file.png\|.jpg] [--settle]` | save the screen; `--settle` waits until it stops changing |
 | `screentext [--language it-IT] [--json]` | OCR of the screen: `x,y wxh text` per line. English is always included |
 | `tap <x> <y>` | tap at screenshot coordinates |
@@ -233,7 +232,7 @@ The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, bec
 | `unlock [passcode]` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
 | `assistivetouch [on\|off]` | show or set AssistiveTouch over USB; pointer input turns it on by itself |
 | `lock` | lock over Bluetooth with Control-Command-Q |
-| `forget` | remove the Bluetooth match |
+| `forget` | check the pointer mode again on the next tap |
 | `daemon start\|stop\|restart\|status\|run` | manage the background daemon |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
@@ -269,11 +268,11 @@ IPHONECTL_SCALE=1 iphonectl tap 414 896       # native pixel coordinates
 
 ## Devices in `list`
 
-**Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone.
+**Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone. The first `list` asks for Bluetooth access, because it starts Bluetooth.
 
 ```text
-42B874EC-D690-4D1E-80E4-1A8434DACC3D  iPhone di Carla (2)  iPhone 6s (iPhone8,1) iOS 15.8.4  [locked]  (bluetooth 1BAD6347, connected, relative pointer)
-   USB capture ID                        name                 model and iOS (USB)   lock      saved Bluetooth match, live link, pointer mode
+7EF219AD-69B4-423E-B8C4-4F4A6140822F  Morse’s iPhone (2)  iPhone XR (iPhone11,8) iOS 18.7.10  (bluetooth connected, absolute pointer)
+   USB capture ID                        name                model and iOS (USB)                   Bluetooth link, pointer mode
 ```
 
 **No phone fails fast.** When screen capture lists nothing, the daemon asks USB lockdown why, in about 0.1 s, instead of waiting 25 s:
@@ -282,6 +281,14 @@ IPHONECTL_SCALE=1 iphonectl tap 414 896       # native pixel coordinates
 error: No iPhone in macOS screen capture. USB check:
 - iPhone di Carla (2): on USB but not trusted (AMDeviceStartSession 0xe8000025). Unlock it and tap Trust on the iPhone; ...
 ```
+
+**Bluetooth link state** comes from the iPhone's Bluetooth address (read over USB) and the Mac's open HID channels. `list` starts Bluetooth and reconnects paired phones:
+
+| State | Meaning |
+|---|---|
+| `connected` | input works |
+| `disconnected` | paired; the Mac reconnects in about 2 s. If it stays, Bluetooth is off on the iPhone or it is out of range. The Mac cannot tell these apart |
+| `not paired` | pair from iPhone Settings > Bluetooth; the next input command waits for it |
 
 It waits (up to 25 s) only for a trusted phone, which capture can list a few seconds after a daemon start.
 
@@ -404,7 +411,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 ## Limits
 
-- **AssistiveTouch must be on** for tap, swipe, and matching. iphonectl turns it on over USB; its floating button can be hidden (see setup step 2).
+- **AssistiveTouch must be on** for tap and swipe. iphonectl turns it on over USB; its floating button can be hidden (see setup step 2).
 - **Keyboard without AssistiveTouch** is not tested.
 - **`cmd+space` and `cmd+h`** did nothing in tests.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.

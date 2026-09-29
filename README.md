@@ -133,6 +133,7 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 - After Pair, the iPhone opens the connection itself. The command continues by itself.
 - Later runs reconnect the paired iPhone from the Mac in about 2 s.
 - **After a report map change**, forget the Mac on the iPhone and pair again: the iPhone keeps the map it read at pairing.
+- **Pairing fails, or the Mac is gone from the list:** forget on both sides, then pair again. See [Pairing no longer works](#pairing-no-longer-works-forget-on-both-sides).
 
 ### 4. More iPhones
 
@@ -443,6 +444,21 @@ The iPhone accepts input only from a Mac that has **all three**:
 - **About 7 iPhones per Mac**, set by Bluetooth, not by iphonectl. Only 2 tested. See [How many iPhones per Mac](#how-many-iphones-per-mac).
 - **The cable must stay in.** Screenshots only come over USB; a phone on Bluetooth or Wi-Fi alone is not listed.
 - **Typing is US-ASCII only**: no accents or emoji. There is no length limit.
+
+### Pairing no longer works: forget on both sides
+
+**Symptoms:** Pair on the iPhone ends with "Connection unsuccessful", the Mac is missing from the iPhone's Bluetooth list, or `list` stays at `bluetooth disconnected`.
+
+**Cause:** one side still has an old bond and the other side does not. This happens after a Forget on only one side, a phone reset, a phone paired with an older iphonectl (BLE), or a report map change. The side with the old key rejects the new pairing (tested on the iPhone 6s and XR).
+
+**Fix: remove the bond on both sides, then pair again.**
+
+1. iPhone: Settings > Bluetooth > the Mac > (i) > **Forget This Device**.
+2. Mac: System Settings > Bluetooth > the iPhone > (i) > **Forget This Device** (or `blueutil --unpair <address>`; the address is `bluetooth.address` in `curl --unix-socket ~/.iphonectl/daemon.sock http://localhost/v1/devices`).
+3. Run any input command, for example `iphonectl key home -d <id>`. It makes the Mac discoverable and waits.
+4. iPhone: Settings > Bluetooth, tap the Mac under Other Devices, then **Pair**.
+
+The Mac is listed on the iPhone **only while a command waits for pairing**. With no command waiting, it is not discoverable, and a new iPhone does not see it.
 
 ### USB screen capture stops (iOS bug): restart the iPhone
 

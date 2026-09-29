@@ -155,6 +155,15 @@ The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goe
 Settings > General > About > Name   →   "Morse XR", "Test 6s"
 ```
 
+`list` warns when two USB iPhones share a name. To fix it from the Mac, pass the flag; nothing is renamed without it:
+
+```bash
+iphonectl list --rename-duplicates
+# warning: renamed "Morse’s iPhone" (00008020-…002E) to "Morse’s iPhone · iPhone XR 002E". Unplug and plug in its cable: …
+```
+
+The new name reaches the phone at once, but macOS screen capture keeps the old name until the cable is plugged in again (tested on iOS 18.7).
+
 Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-iphone-iphf256af64f/ios. The new name reaches USB and Bluetooth at once. If the Mac still shows the old name, unplug and plug in the cable again, then run `iphonectl list` again.
 
 ### How many iPhones per Mac

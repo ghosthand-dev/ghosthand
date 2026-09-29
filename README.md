@@ -169,6 +169,21 @@ Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-ipho
 
 More than 7 iPhones needs a second Mac. Run a daemon on each one and reach it with `--url` (see [Remote daemon](#remote-daemon)).
 
+### Several Macs: give each a unique name
+
+**The iPhone lists the Mac by its computer name.** Two Macs called "MacBook Pro" look the same in Settings > Bluetooth, so an iPhone can pair with the wrong one. Rename each Mac before pairing:
+
+```bash
+# System Settings > General > About > Name, or:
+sudo scutil --set ComputerName "Lab Mac 1"
+sudo scutil --set LocalHostName "lab-mac-1"   # optional: network name, no spaces
+```
+
+- The Bluetooth radio uses the computer name. There is **one name per Mac**; iphonectl cannot show its own name next to it.
+- The pairing steps print the name to tap: `tap "Lab Mac 1", then Pair`.
+- An iPhone that paired before the rename can keep showing the old name. Forget the Mac on the iPhone (Settings > Bluetooth > (i) > Forget This Device) and pair again.
+- Apple guide: https://support.apple.com/guide/mac-help/change-computers-local-hostname-mac-mchlp2322/mac
+
 ## How the Mac becomes a mouse
 
 The daemon publishes a **Bluetooth Classic HID** service, the same profile a real Bluetooth keyboard uses. macOS has no public API to be a Classic HID device, so it uses CoreBluetooth's private `CBClassicManager` (`Sources/ClassicBluetooth`).

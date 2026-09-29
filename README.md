@@ -61,16 +61,15 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 
 ### Which iPhones get which pointer
 
-Absolute pointers work from **iOS 17**, and iOS 17 needs an A12 chip or newer. Older iPhones get the relative pointer, which is now almost as fast and exact.
+**Absolute first, on every iOS version.** iOS 17 and later use it with no check. Older iOS tries absolute on the first tap and falls back to relative only if the pointer does not move.
 
 | iPhone | Last iOS | Pointer | Tap |
 |---|---|---|---|
-| 6s, 6s Plus, 7, 7 Plus, SE (1st gen) | 15 | relative | ~0.45 s, < 0.5 pt off (6s tested) |
-| 8, 8 Plus, X | 16 | relative | not tested |
-| **XS, XS Max, XR, SE (2nd gen, 2020)** and newer | 17+ | **absolute** | ~0.3 s, exact |
+| 6s, 6s Plus, 7, 7 Plus, SE (1st gen) | 15 | relative over BLE (tested on 6s); **absolute over Classic not tested** | ~0.45 s relative, < 0.5 pt off |
+| 8, 8 Plus, X | 16 | absolute tried first, not tested | |
+| **XS, XS Max, XR, SE (2nd gen, 2020)** and newer | 17+ | **absolute** (XR tested) | ~0.3 s, exact |
 
-- iOS 15 (6s) and iOS 18 (XR) are tested. The iOS 17 cutoff comes from a vendor of ESP32 Bluetooth HID firmware, not from Apple: https://ieasyclick.net/blog/en/ios-ble-hid-no-signature/. iOS 16 and 17 are not tested here.
-- An iPhone that can run iOS 17 but still runs 16 uses the relative pointer. Update it.
+- The "absolute from iOS 17" claim comes from a vendor of ESP32 **BLE** HID firmware, not from Apple: https://ieasyclick.net/blog/en/ios-ble-hid-no-signature/. Bluetooth Classic HID may behave differently, so older iOS is checked, not assumed.
 
 ### Relative pointer (iOS 15)
 

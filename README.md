@@ -103,11 +103,18 @@ Connect the iPhone over USB, unlock it, and tap **Trust**. Then check:
 iphonectl list
 ```
 
-### 2. Turn on AssistiveTouch
+**Set Auto-Lock to Never** (recommended): **Settings > Display & Brightness > Auto-Lock > Never.** A locked iPhone gives no screenshots, and `unlock` needs the passcode. Keep Low Power Mode off: it forces Auto-Lock to 30 seconds.
 
-**Settings > Accessibility > Touch > AssistiveTouch: ON.**
+### 2. AssistiveTouch (automatic)
 
-iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). Keep it on: tap and swipe need it all the time, not only during setup.
+iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **iphonectl turns it on over USB** before every tap, swipe, wake, and unlock, and before pairing. No touch on the phone is needed, and it works while locked:
+
+```bash
+iphonectl assistivetouch        # on / off
+iphonectl assistivetouch off    # give the phone back to a person; the next tap turns it on
+```
+
+The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchEnabledByiTunes`, about 35 ms (a write is about 40 ms).
 
 **Hide the floating button (recommended).** On the same page, turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots. You do not need its Home action; the keyboard has one:
 
@@ -207,7 +214,7 @@ pointer check: change at A 39%, at B 54%, whole screen 0.2%
 matched: Bluetooth device BA5C7328 is Morse's iPhone
 ```
 
-The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, because it looks for the pointer. `iphonectl forget -d <id>` removes a match.
+The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, because it looks for the pointer; the daemon turns it on first. `iphonectl forget -d <id>` removes a match.
 
 ## CLI
 
@@ -222,6 +229,7 @@ The match is saved in `~/.iphonectl/state.json`. It needs AssistiveTouch on, bec
 | `key <combo>` | `home`, `enter`, `esc`, `backspace`, arrows, `volumeup`, `mute` |
 | `type <text> [--enter]` | US-ASCII text, then optionally Enter (sends in Messages) |
 | `unlock [passcode]` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
+| `assistivetouch [on\|off]` | show or set AssistiveTouch over USB; pointer input turns it on by itself |
 | `lock` | lock over Bluetooth with Control-Command-Q |
 | `forget` | remove the Bluetooth match |
 | `daemon start\|stop\|restart\|status\|run` | manage the background daemon |
@@ -342,6 +350,9 @@ curl --unix-socket $S http://localhost/v1/devices
 curl --unix-socket $S http://localhost/v1/devices/default/screenshot -o s.png
 curl --unix-socket $S -H 'content-type: application/json' \
   -d '{"x":207,"y":448}' http://localhost/v1/devices/default/tap   # screen points, like the screenshot
+curl --unix-socket $S http://localhost/v1/devices/default/assistive-touch   # {"enabled":true}
+curl --unix-socket $S -X PUT -H 'content-type: application/json' \
+  -d '{"enabled":false}' http://localhost/v1/devices/default/assistive-touch
 ```
 
 - `{device}` is the USB id, the name, or `default` when one iPhone is connected.

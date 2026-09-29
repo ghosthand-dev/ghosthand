@@ -343,14 +343,45 @@ iphonectl --url https://mac.local:7420 --token secret --ca cert.pem list
 
 A host other than localhost needs TLS, so the token never crosses the network in clear text.
 
+## Security
+
+**Whoever reaches the daemon can use the iPhone like a person holding it**: open apps, read messages, type. Everything runs on your Mac; no account, no cloud, nothing installed on the iPhone.
+
+```
+who can reach the phone                         how
+local user who owns ~/.iphonectl ──────────────▶ unix socket, file mode 0600
+remote client ─────────────────────────────────▶ TCP only with --port, Bearer token, TLS off localhost
+```
+
+The iPhone accepts input only from a Mac that has **all three**:
+
+1. **USB cable** plugged in, and the phone trusts this Mac (Trust prompt + passcode).
+2. **Bluetooth pairing** accepted on the phone in AssistiveTouch > Devices.
+3. The **daemon running**.
+
+**Cut access** by removing any one of them:
+
+| Action | Effect |
+|---|---|
+| `iphonectl daemon stop` | no screenshots, no input, until the next command starts it |
+| unplug the cable | no screenshots and no input: every command finds the phone over USB first |
+| iPhone: AssistiveTouch > Devices > the Mac > Forget | no input until you pair again |
+| iPhone: Settings > General > Transfer or Reset > Reset > Reset Location & Privacy | removes the USB trust of every computer |
+
+- **The passcode is never stored.** `unlock` gets it per call; pass it with `IPHONECTL_PASSCODE`, not as an argument.
+- **Apple Pay still needs you.** It asks for a double press of the side button, which the Mac cannot press.
+
 ## Limits
 
-- **AssistiveTouch must stay on** for tap, swipe, and matching. Its floating button can be hidden (see setup step 2).
+- **AssistiveTouch must be on** for tap, swipe, and matching. iphonectl turns it on over USB; its floating button can be hidden (see setup step 2).
 - **Keyboard without AssistiveTouch** is not tested.
 - **`cmd+space` and `cmd+h`** did nothing in tests.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
 - **Lock state** is matched by device name. Two iPhones with the same name show no lock state. Rename one (see [More iPhones](#4-more-iphones)).
 - **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
+- **About 7 iPhones per Mac**, set by Bluetooth, not by iphonectl. Only 2 tested. See [How many iPhones per Mac](#how-many-iphones-per-mac).
+- **The cable must stay in.** Screenshots only come over USB; a phone on Bluetooth or Wi-Fi alone is not listed.
+- **Typing is US-ASCII only**: no accents or emoji. There is no length limit.
 
 ### USB screen capture stops (iOS bug): restart the iPhone
 
@@ -380,6 +411,19 @@ error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames si
 - **Screen entry is black, missing, or QuickTime crashes:** iOS stopped serving the screen. Restart the iPhone.
 - Two iPhones with the same name both show up as `... Camera`. Only the one on USB has a screen entry.
 
+## Alternatives
+
+| | iphonectl | iPhone Mirroring | Appium (XCUITest) |
+|---|---|---|---|
+| App on the iPhone | none | none | WebDriverAgent (signed) |
+| Xcode, Developer Mode | no | no | yes |
+| Screen | USB capture | Wi-Fi mirror | XCTest |
+| Input | Bluetooth Classic HID | Mac input | XCTest |
+| iOS 15 | yes over BLE (relative pointer); not tested over Classic | no (iOS 18+) | yes |
+| Unlock with passcode | yes | no | no |
+| iPhones per Mac | ~7, 2 tested | 1 | many |
+| Account, cloud | none, local daemon | same Apple ID on Mac and iPhone | none |
+
 <details>
 <summary>Architecture</summary>
 
@@ -391,8 +435,7 @@ CLI / curl / any language
 Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──▶ Controller
                                                                   ├─ FrameStream per iPhone (AVFoundation), OCR (Vision)
                                                                   ├─ Lockdown lock state (MobileDevice.framework)
-                                                                  └─ HIDPeripheral (CoreBluetooth HID over GATT)
-                                                                       └─ LinkKeeper (Mac-initiated LE links)
+                                                                  └─ HIDDevice (Bluetooth Classic HID, private CBClassicManager)
 ```
 
 - `Sources/iphonectl/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.

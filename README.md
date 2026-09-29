@@ -48,12 +48,12 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 
 ## iOS versions
 
-**Tested on iOS 18.7 (iPhone XR) and iOS 15.8.4 (iPhone 6s).** The iPhone sees the Mac as a normal Bluetooth LE mouse and keyboard (HID over GATT). The only difference between versions is how the **pointer** moves.
+**Tested on iOS 18.7 (iPhone XR) and iOS 15.8.4 (iPhone 6s).** The iPhone sees the Mac as a normal Bluetooth Classic mouse and keyboard (HID profile over L2CAP). The only difference between versions is how the **pointer** moves.
 
 | iOS | Pointer | Tap | Accuracy |
 |---|---|---|---|
 | 18.7 | **absolute**: report 1 says "go to X, Y" | ~0.3 s | exact |
-| 15.8 | **relative**: iOS ignores absolute X/Y, so report 7 moves by computed steps | ~0.45 s | 0.2 pt mean, 0.4 pt max (40 targets) |
+| 15.8 | **relative** over BLE (iOS ignored absolute X/Y); **not tested yet over Classic** | ~0.45 s | 0.2 pt mean, 0.4 pt max (40 targets) |
 
 - The mode is **found by itself** when a phone is first matched: absolute first, then relative. `list` shows it: `(bluetooth 1BAD6347, connected, relative pointer)`.
 - Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing: the phone subscribes to report 1 but the pointer stays still.
@@ -122,63 +122,42 @@ The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchE
 iphonectl key home   # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 ```
 
-### 3. Pair the Mac as a pointer device
+### 3. Pair the Mac as a mouse and keyboard
 
-Run any input command. The daemon waits for pairing and prints the steps:
+Run any input command. The daemon makes the Mac discoverable and prints the steps:
 
 ```bash
 iphonectl tap 100 100
 ```
 
-On the iPhone, open **AssistiveTouch > Pointer Devices > Devices**, tap the Mac's name (for example "MacBook Pro") or `iphonectl`, then **Pair**.
+On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "MacBook Pro") under Other Devices, then **Pair**.
 
-- **Settings > Bluetooth does not list the Mac** when the iPhone uses the same Apple ID. Only the Pointer Devices page lists it.
-- The Mac appears in that list a few seconds after the command starts, because the daemon opens the Bluetooth link from the Mac (see [How the Mac becomes a mouse](#how-the-mac-becomes-a-mouse)).
-- **Pairing** means iOS accepts the Mac as its mouse and keyboard. Before pairing, the iPhone can connect and even subscribe, but iOS drops all input (tested).
+- The Mac is discoverable only while a command waits for pairing.
+- After Pair, the iPhone opens the connection itself. The command continues by itself.
+- Later runs reconnect the matched iPhone from the Mac in about 2 s.
+- **After a report map change**, forget the Mac on the iPhone and pair again: the iPhone keeps the map it read at pairing.
 
-After pairing, the command continues by itself. Later runs reconnect in about 2s.
-
-### 4. More iPhones
-
-**Multiple iPhones work after steps 1 to 3 on each one.** Pass the device with `-d`:
-
-```bash
-iphonectl list
-# 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth C27E57E9, connected, absolute pointer)
-# 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth 1BAD6347, connected, relative pointer)
-
-iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
-iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
-```
-
-The Mac is one Bluetooth mouse for all iPhones, but each report goes to one iPhone only. Input to one phone never reaches another.
-
-**Give every iPhone a different name.** The daemon uses the name to match a USB phone to its lock state and to its Bluetooth device. Two phones called `Morse’s iPhone (2)` get no lock state in `list`, and the first match must move the pointer of both to tell them apart.
-
-```
-Settings > General > About > Name   →   "Morse XR", "Test 6s"
-```
-
-Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-iphone-iphf256af64f/ios. The new name reaches USB and Bluetooth at once. If the Mac still shows the old name, unplug and plug in the cable again, then run `iphonectl forget -d <id>` so the phone is matched again.
+More than 7 iPhones needs a second Mac. Run a daemon on each one and reach it with `--url` (see [Remote daemon](#remote-daemon)).
 
 ## How the Mac becomes a mouse
 
-The daemon uses CoreBluetooth to publish a standard **HID over GATT** service, the same Bluetooth service a real mouse and keyboard use. The iPhone subscribes to it and treats the Mac as its mouse and keyboard.
+The daemon publishes a **Bluetooth Classic HID** service, the same profile a real Bluetooth keyboard uses. macOS has no public API to be a Classic HID device, so it uses CoreBluetooth's private `CBClassicManager` (`Sources/ClassicBluetooth`).
 
 ```
-Mac (daemon)                                   iPhone
-┌────────────────────────────┐                ┌─────────────────────────────┐
-│ HID over GATT service      │ ◀─subscribes── │ AssistiveTouch              │
-│  report 1: mouse (absolute)│ ──reports────▶ │  pointer + clicks = touches │
-│  report 7: mouse (relative)│                │                             │
-│  report 2: keyboard        │                │                             │
-│  report 6: media keys      │                │                             │
-└────────────────────────────┘                └─────────────────────────────┘
+Mac (daemon)                                          iPhone
+┌──────────────────────────────────┐                 ┌─────────────────────────────┐
+│ SDP record: HID, report map      │ ◀──SDP query─── │ Settings > Bluetooth > Pair │
+│ L2CAP 0x11 control  (handshakes) │ ◀──opens─────── │                             │
+│ L2CAP 0x13 interrupt             │ ──reports─────▶ │ AssistiveTouch              │
+│  report 1: mouse (absolute)      │                 │  pointer + clicks = touches │
+│  report 7: mouse (relative)      │                 │                             │
+│  report 2: keyboard, 6: media    │                 │                             │
+└──────────────────────────────────┘                 └─────────────────────────────┘
 ```
 
-The service has **two mice**. Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts directly to a pointer position (iOS 18). Report 7 is relative, for iOS versions that ignore absolute positions (iOS 15):
+Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts directly to a pointer position (tested on iOS 18.7 over Classic). Report 7 is relative, for iOS versions that ignore absolute positions (iOS 15 over BLE):
 
-**Clicks in absolute mode go in both reports.** With two mouse collections in the map, iOS 18 moves the pointer from report 1 but ignores the button bits of report 1 (tested on iOS 18.7). So a press and release are sent in report 1 and, with zero movement, in report 7.
+**Clicks in absolute mode go in both reports.** With two mouse collections in the map, iOS 18 ignored the button bits of report 1 over BLE. So a press and release are sent in report 1 and, with zero movement, in report 7.
 
 ```
 match:  corner ──▶ move (80,120) pt ──▶ screenshot P1 ──▶ corner ──▶ move (160,120) pt ──▶ P2
@@ -186,24 +165,16 @@ match:  corner ──▶ move (80,120) pt ──▶ screenshot P1 ──▶ corn
 tap:    computed reports from the last known spot ──▶ 100 ms pause ──▶ click
 ```
 
-### Why the Mac first connects to the iPhone
+<details>
+<summary>Private API details</summary>
 
-An iPhone on the same Apple ID **does not connect to the Mac by itself**. It connects only when Apple's own device-to-device features need a link. Without a link, it never reads the Mac's services, so the Mac is missing from Pointer Devices > Devices (tested).
+- `addServiceWithData:` takes the SDP record in bluetoothd's own element format, not the SDP wire format (reversed from bluetoothd).
+- `sendMsg:35` with `kCBMsgArgDiscoverableState` makes the Mac discoverable.
+- CoreBluetooth does not install L2CAP callbacks for other apps, so `CBClassicPeer.handleMsg:args:` is swizzled to install them.
+- Each `CBL2CAPChannel` must stay referenced: releasing it closes its socket, and the iPhone shows "Connection unsuccessful".
+- A macOS update can change any of these.
 
-The daemon fixes this by opening the link from the Mac:
-
-```
-1. Mac ──connect──▶ iPhone             the daemon opens the Bluetooth link
-2. iPhone reads the Mac's services     finds the mouse service
-3. Mac shows up in Pointer Devices > Devices
-4. you tap it → Pair                   iOS now accepts input from the Mac
-5. daemon matches the phone            USB id ↔ Bluetooth id (next section)
-```
-
-- **Discovery.** While a USB iPhone has no match, the daemon scans for Apple devices that send the "nearby device" signal (manufacturer data `4C 00 10`) and that the Mac knows by name. It connects to each one. Other people's phones had no name in tests, so they are skipped. Your iPad passes the filter and gets a short link too.
-- **Cleanup.** Discovery runs only while a request waits for pairing. When the last waiting request ends, scanning stops and the extra links close. Matched iPhones keep their link and reconnect when it drops.
-- **Pairing** (step 4) is the only step where iOS agrees to take input. Before it, the iPhone can connect and subscribe, but it ignores every click and key.
-- **Other Apple IDs:** the Mac has no name for these phones, so discovery skips them. This case is not tested.
+</details>
 
 ## How a phone is matched
 
@@ -271,7 +242,7 @@ IPHONECTL_SCALE=1 iphonectl tap 414 896       # native pixel coordinates
 
 ```text
 42B874EC-D690-4D1E-80E4-1A8434DACC3D  iPhone di Carla (2)  iPhone 6s (iPhone8,1) iOS 15.8.4  [locked]  (bluetooth 1BAD6347, connected, relative pointer)
-   USB capture ID                        name                 model and iOS (USB)   lock      saved BLE match, live link, pointer mode
+   USB capture ID                        name                 model and iOS (USB)   lock      saved Bluetooth match, live link, pointer mode
 ```
 
 **No phone fails fast.** When screen capture lists nothing, the daemon asks USB lockdown why, in about 0.1 s, instead of waiting 25 s:

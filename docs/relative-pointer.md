@@ -8,7 +8,7 @@ description: How iOS 15 moves the AssistiveTouch pointer for relative HID mouse 
 **One relative report moves the pointer a fixed distance.** The distance depends only on the size of that report. iphonectl computes the reports for any move and lands within 0.2 pt.
 
 ```
-BLE report (dx, dy) ──▶ IOHIDPointerScrollFilter ──▶ AssistiveTouch ──▶ pointer
+HID report (dx, dy) ──▶ IOHIDPointerScrollFilter ──▶ AssistiveTouch ──▶ pointer
                            v    = floor(sqrt(dx² + dy²))
                            move = (dx, dy) · table(v) / v        points, clamped at edges
 ```
@@ -84,11 +84,11 @@ Found in opencode session `ses_f183f876dffeunVOl7gtSaEhIW` (Discord thread 15540
 | Constant 10-unit steps every 16 ms (old code) | Correct but slow (1-3 s) and quantized: up to half a step (~3.4 pt) off per move |
 | One huge report to home | Capped at 214.9 pt per report; homing needs several |
 | Declare a higher resolution in the descriptor | Changes only the unit, not the curve (`IOHIDEventService.cpp` resolution math) |
-| Turn acceleration off | No setting on iPhone; a device cannot set `NoAcceleration` over BLE |
-| Absolute or digitizer reports | iOS 15 AssistiveTouch drops them; absolute works from iOS 17 |
+| Turn acceleration off | No setting on iPhone; a HID device cannot set `NoAcceleration` |
+| Absolute or digitizer reports | iOS 15 AssistiveTouch dropped them over BLE (not tested over Classic); absolute works from iOS 17 |
 | Closed loop: check each tap with a frame | Not needed: open loop lands within the measuring limit (0.25 pt) |
 
-**Bluetooth pairing trap (seen while testing):** after the phone was reset, the Mac still had a bond ("iPhone", `Peer removed pairing information` in the daemon log) and pairing failed. Removing the Mac's bond (`blueutil --unpair <address>`) fixed it. Do it only once: running it again after the phone re-paired deleted the new bond, and the phone showed "Connesso" but never subscribed.
+**Bluetooth pairing trap (seen while testing):** after the phone was reset, the Mac still had a bond ("iPhone", `Peer removed pairing information` in the daemon log) and pairing failed. Removing the Mac's bond (`blueutil --unpair <address>`) fixed it. Do it only once: running it again after the phone re-paired deleted the new bond, and the phone showed "Connesso" but never subscribed (BLE). Over Classic, a stale bond made the iPhone reject the Mac's channels; forget the Mac on both sides and pair again.
 
 **Open issue:** `iphonectl lock` (Control-Command-Q) did not lock the iPhone 6s on iOS 15.8.4 in this session. Not investigated.
 

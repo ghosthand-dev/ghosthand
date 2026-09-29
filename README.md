@@ -18,7 +18,7 @@ IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock
 ```
                 USB (QuickTime screen capture) ──▶ screenshots
 Mac ── iphonectl daemon ─┤
-                Bluetooth LE HID mouse + keyboard ──▶ AssistiveTouch pointer on the iPhone
+                Bluetooth Classic HID mouse + keyboard ──▶ AssistiveTouch pointer on the iPhone
 ```
 
 ## Features
@@ -35,7 +35,7 @@ Mac ── iphonectl daemon ─┤
 
 ## Install
 
-Needs macOS 14 or later and Swift 5.9 or later. Xcode is not needed: the Command Line Tools (`xcode-select --install`) build it too. Tested with Command Line Tools (Swift 6.1) and Xcode 26 (Swift 6.3).
+Needs macOS 14 or later (the Bluetooth Classic private API is tested on macOS 26.3 only) and Swift 5.9 or later. Xcode is not needed: the Command Line Tools (`xcode-select --install`) build it too. Tested with Command Line Tools (Swift 6.1) and Xcode 26 (Swift 6.3).
 
 ```bash
 git clone https://github.com/remorses/iphone-usb-control
@@ -48,7 +48,7 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 
 ## iOS versions
 
-**Tested on iOS 18.7 (iPhone XR) and iOS 15.8.4 (iPhone 6s).** The iPhone sees the Mac as a normal Bluetooth Classic mouse and keyboard (HID profile over L2CAP). The only difference between versions is how the **pointer** moves.
+**Tested on iOS 18.7 (iPhone XR) over Bluetooth Classic, and on iOS 15.8.4 (iPhone 6s) with the earlier BLE version.** The iPhone sees the Mac as a normal Bluetooth Classic mouse and keyboard (HID profile over L2CAP). The only difference between versions is how the **pointer** moves.
 
 | iOS | Pointer | Tap | Accuracy |
 |---|---|---|---|
@@ -56,10 +56,8 @@ The first run asks for **Camera** access (screen capture) and, on the first tap,
 | 15.8 | **relative** over BLE (iOS ignored absolute X/Y); **not tested yet over Classic** | ~0.45 s | 0.2 pt mean, 0.4 pt max (40 targets) |
 
 - The mode is **found by itself** when a phone is first matched: absolute first, then relative. `list` shows it: `(bluetooth 1BAD6347, connected, relative pointer)`.
-- Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing: the phone subscribes to report 1 but the pointer stays still.
+- Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing over BLE: the phone read report 1 but the pointer stayed still.
 - In relative mode the daemon knows **exactly** how far each report moves the pointer, from Apple's own acceleration table. See [Relative pointer](#relative-pointer-ios-15).
-- A phone paired with an older iphonectl may have the old report map cached (no report 7). The log then says to forget `iphonectl` on the iPhone and pair again.
-- The pairing page name can differ by iOS version. Apple's guide calls it **AssistiveTouch > Devices > Bluetooth Devices**: https://support.apple.com/en-us/111775
 
 ### Which iPhones get which pointer
 
@@ -137,6 +135,39 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 - Later runs reconnect the matched iPhone from the Mac in about 2 s.
 - **After a report map change**, forget the Mac on the iPhone and pair again: the iPhone keeps the map it read at pairing.
 
+### 4. More iPhones
+
+**Multiple iPhones work after steps 1 to 3 on each one.** Pass the device with `-d`:
+
+```bash
+iphonectl list
+# 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth C27E57E9, connected, absolute pointer)
+# 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth 1BAD6347, connected, relative pointer)
+
+iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
+iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
+```
+
+The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goes to one iPhone only (its own L2CAP channel). Input to one phone never reaches another.
+
+**Give every iPhone a different name.** The daemon uses the name to match a USB phone to its lock state and to its Bluetooth device. Two phones called `Morse’s iPhone (2)` get no lock state in `list`, and the first match must move the pointer of both to tell them apart.
+
+```
+Settings > General > About > Name   →   "Morse XR", "Test 6s"
+```
+
+Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-iphone-iphf256af64f/ios. The new name reaches USB and Bluetooth at once. If the Mac still shows the old name, unplug and plug in the cable again, then run `iphonectl forget -d <id>` so the phone is matched again.
+
+### How many iPhones per Mac
+
+**Plan for at most 7 per Mac; 2 are tested.**
+
+| Limit | Value | Why |
+|---|---|---|
+| Bluetooth Classic | 7 connected devices | Apple: "seven is the maximum number of Bluetooth devices that can be connected to your Mac at once; three to four is a practical limit" (https://support.apple.com/en-us/101205). Keyboard, trackpad and AirPods count too |
+| USB | 127 devices per bus | **Not the problem.** Power is: use a powered hub, each iPhone charges while it is controlled |
+| Screen capture CPU | not measured | one video stream per iPhone |
+
 More than 7 iPhones needs a second Mac. Run a daemon on each one and reach it with `--url` (see [Remote daemon](#remote-daemon)).
 
 ## How the Mac becomes a mouse
@@ -155,7 +186,7 @@ Mac (daemon)                                          iPhone
 └──────────────────────────────────┘                 └─────────────────────────────┘
 ```
 
-Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts directly to a pointer position (tested on iOS 18.7 over Classic). Report 7 is relative, for iOS versions that ignore absolute positions (iOS 15 over BLE):
+Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts directly to a pointer position (tested on iOS 18.7 over Classic). Report 7 is relative, for iOS versions that ignore absolute positions (iOS 15 over BLE).
 
 **Clicks in absolute mode go in both reports.** With two mouse collections in the map, iOS 18 ignored the button bits of report 1 over BLE. So a press and release are sent in report 1 and, with zero movement, in report 7.
 
@@ -356,7 +387,7 @@ remote client ──────────────────────
 The iPhone accepts input only from a Mac that has **all three**:
 
 1. **USB cable** plugged in, and the phone trusts this Mac (Trust prompt + passcode).
-2. **Bluetooth pairing** accepted on the phone in AssistiveTouch > Devices.
+2. **Bluetooth pairing** accepted on the phone in Settings > Bluetooth.
 3. The **daemon running**.
 
 **Cut access** by removing any one of them:
@@ -365,7 +396,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 |---|---|
 | `iphonectl daemon stop` | no screenshots, no input, until the next command starts it |
 | unplug the cable | no screenshots and no input: every command finds the phone over USB first |
-| iPhone: AssistiveTouch > Devices > the Mac > Forget | no input until you pair again |
+| iPhone: Settings > Bluetooth > the Mac > (i) > Forget This Device | no input until you pair again |
 | iPhone: Settings > General > Transfer or Reset > Reset > Reset Location & Privacy | removes the USB trust of every computer |
 
 - **The passcode is never stored.** `unlock` gets it per call; pass it with `IPHONECTL_PASSCODE`, not as an argument.

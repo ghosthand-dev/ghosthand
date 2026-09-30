@@ -270,6 +270,7 @@ sqlite3 -header -column ~/.iphonectl/state.db 'SELECT * FROM phone; SELECT * FRO
 
 - **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, AssistiveTouch.
 - **Bluetooth pairing is not here.** macOS keeps the bond. A phone paired while the daemon was stopped, or with no `state.db`, reconnects on the next command (tested).
+- **A saved match is never changed by itself**, even while its phone is missing from one list during a plug-in. If one is wrong, delete its `phone` row (below).
 - A `bluetooth_pointer` row from another HID report map is ignored; the next tap checks again. A new schema version recreates the tables.
 
 **Fix a bad state** with `sqlite3`, also while the daemon runs (it keeps no copy in memory). Turn on `foreign_keys`: the `sqlite3` shell has it off, and without it the pointer row is not deleted with its phone.

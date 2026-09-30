@@ -140,15 +140,17 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 
 ### 4. More iPhones
 
-**Multiple iPhones work after steps 1 to 3 on each one.** Pass the device with `-d`:
+**Multiple iPhones work after steps 1 to 3 on each one.** Pick one with `acquire -d`; each lease runs on its own iPhone:
 
 ```bash
 iphonectl list
 # 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth connected, absolute pointer)
 # 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth connected, relative pointer)
 
-iphonectl screenshot -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F -o a.png
-iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
+XR=$(iphonectl acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F)
+S6=$(iphonectl acquire -d "Test iPhone")
+iphonectl screenshot -l $XR -o a.png
+iphonectl tap 206 332 -l $S6
 ```
 
 The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goes to one iPhone only (its own L2CAP channel). Input to one phone never reaches another.
@@ -165,11 +167,11 @@ After that, a rename changes nothing. Only **several new iPhones with the same n
 **Rename from the Mac** over USB, no touch needed (works while locked):
 
 ```bash
-iphonectl rename "iPhone XR" -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F
+iphonectl rename "iPhone XR"      # on the lease's iPhone
 # renamed "iPhone" to "iPhone XR". The id stays 7EF219AD-69B4-423E-B8C4-4F4A6140822F
 ```
 
-- Input, `list` and `-d "iPhone XR"` use the new name at once. The Bluetooth link stays connected (tested on iOS 18.7).
+- `list` and `acquire -d "iPhone XR"` use the new name at once. The Bluetooth link stays connected (tested on iOS 18.7).
 - macOS screen capture (QuickTime, daemon logs) keeps the old name until you **unplug and plug in the cable**.
 
 ### How many iPhones per Mac
@@ -288,7 +290,7 @@ rm $DB*                                                                         
 ```
 
 - **Screen from one phone, input to another:** delete its `phone` row. Plug in same-named new phones one at a time.
-- **Pointer lands in the wrong spot:** delete its `bluetooth_pointer` row. `iphonectl forget -d <id>` also does it, but it removes the Bluetooth bond too, so you must pair again.
+- **Pointer lands in the wrong spot:** delete its `bluetooth_pointer` row. `iphonectl forget` also does it, but it removes the Bluetooth bond too, so you must pair again.
 
 ## CLI
 
@@ -328,7 +330,7 @@ The daemon starts by itself on the first command. After a rebuild, the CLI resta
 
 ```bash
 export IPHONECTL_LEASE=$(iphonectl acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --holder ses_123)
-iphonectl tap 207 448          # -d is optional: the lease's iPhone
+iphonectl tap 207 448          # runs on the lease's iPhone; no -d
 iphonectl release
 ```
 
@@ -339,7 +341,7 @@ agent B:       acquire --wait 600 ─────────── waits ──
 ```
 
 - **Idle timeout:** a lease ends 10 minutes after its last command (`--idle-timeout`), so a crashed agent never blocks the phone.
-- **`--wait <s>`** waits and retries (no queue order, max 3600 s). **`--force`** takes it from a lease whose holder is gone; that holder's next command fails with `lease-invalid`.
+- **`--wait <s>`** retries every second (no queue order). **`--force`** takes it from a lease whose holder is gone; that holder's next command fails with `lease-invalid`.
 - **After `--wait` or `--force`, take a screenshot first.** Someone else used the phone.
 - **The lease id is a secret**: it grants use of the phone. `list` shows only the holder and the time left.
 - Leases live in the `lease` table of `state.db`, so they survive a daemon restart (a rebuild restarts it).
@@ -467,17 +469,17 @@ The daemon serves HTTP on a unix socket. The spec is at `GET /v1/openapi.yaml`.
 ```bash
 S=~/.iphonectl/daemon.sock
 curl --unix-socket $S http://localhost/v1/devices
-curl --unix-socket $S -c jar -H 'content-type: application/json' \
-  -d '{"device":"default","holder":"curl"}' http://localhost/v1/leases   # {"id":…}, Set-Cookie iphonectl_lease
-curl --unix-socket $S -b jar http://localhost/v1/devices/default/screenshot -o s.png
-curl --unix-socket $S -b jar -H 'content-type: application/json' \
-  -d '{"x":207,"y":448}' http://localhost/v1/devices/default/tap   # screen points, like the screenshot
-curl --unix-socket $S -b jar http://localhost/v1/devices/default/assistive-touch   # {"enabled":true}
-curl --unix-socket $S -b jar -X DELETE http://localhost/v1/leases/<id>
+curl --unix-socket $S -H 'content-type: application/json' \
+  -d '{"device":"default","holder":"curl"}' http://localhost/v1/leases   # {"id":"3f9c…",…}
+L=http://localhost/v1/leases/3f9c…
+curl --unix-socket $S $L/screenshot -o s.png
+curl --unix-socket $S -H 'content-type: application/json' \
+  -d '{"x":207,"y":448}' $L/tap                    # screen points, like the screenshot
+curl --unix-socket $S $L/assistive-touch            # {"enabled":true}
+curl --unix-socket $S -X DELETE $L                  # release
 ```
 
-- **Every `/v1/devices/{device}/...` route needs the `iphonectl_lease` cookie** from `POST /v1/leases`. Without it: `lease-required` (428). Expired, released, taken with `force`, or for another iPhone: `lease-invalid` (403). Acquire while held: `device-leased` (409).
-- `{device}` is the USB id, the name, or `default`: with a lease, the lease's iPhone.
+- **Screenshots and input live under `/v1/leases/{lease}/`** and run on the lease's iPhone. Unknown, expired, released or taken with `force`: `lease-invalid` (403). Acquire while held: `device-leased` (409); retry to wait.
 - Input routes return JSON. Send `Accept: text/event-stream` to get progress as server-sent events.
 - Errors are `application/problem+json` with a stable `code`. In event-stream mode the status is 200 and the problem arrives as the final `error` event.
 
@@ -543,8 +545,8 @@ The iPhone accepts input only from a Mac that has **all three**:
 **Fix: remove the bond on both sides, then pair again.**
 
 1. iPhone: Settings > Bluetooth > the Mac > (i) > **Forget This Device**.
-2. Mac: `iphonectl forget -d <id>`. It removes the Mac's bond (same as System Settings > Bluetooth > the iPhone > (i) > **Forget This Device**).
-3. Run any input command, for example `iphonectl key home -d <id>`. It makes the Mac discoverable and waits.
+2. Mac: `iphonectl forget` (with a lease on that iPhone). It removes the Mac's bond (same as System Settings > Bluetooth > the iPhone > (i) > **Forget This Device**).
+3. Run any input command, for example `iphonectl key home`. It makes the Mac discoverable and waits.
 4. iPhone: Settings > Bluetooth, tap the Mac under Other Devices, then **Pair**.
 
 The Mac is listed on the iPhone **only while a command waits for pairing**. With no command waiting, it is not discoverable, and a new iPhone does not see it.

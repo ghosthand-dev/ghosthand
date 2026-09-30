@@ -4,6 +4,7 @@ Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** 
 
 ```bash
 iphonectl list
+export IPHONECTL_LEASE=$(iphonectl acquire)  # exclusive use of the iPhone
 iphonectl screenshot -o home.png          # 414x896 on an iPhone XR: screen points
 iphonectl tap 207 448                     # same coordinates as the screenshot
 iphonectl swipe 207 700 207 300
@@ -13,6 +14,7 @@ iphonectl key home                        # Home Screen, no AssistiveTouch menu
 iphonectl tap 207 448 --screenshot s.png --screentext  # act, then see the result
 iphonectl screentext --language it-IT     # OCR: x,y wxh text per line
 IPHONECTL_PASSCODE="$(< .passcode)" iphonectl unlock
+iphonectl release                         # the next agent can acquire it
 ```
 
 ```
@@ -30,6 +32,7 @@ Mac ── iphonectl daemon ─┤
 - **Unlock** a locked iPhone with its passcode, no touch; lock state in `list`
 - **Lock** over the Bluetooth keyboard, verified over USB
 - **Several iPhones at once**, each controlled on its own
+- **Leases**: one agent per iPhone at a time; others wait or get a clear "leased by" error
 - **HTTP API** described by OpenAPI, usable from any language
 - **Remote daemon** over TCP with a bearer token and HTTPS
 
@@ -245,6 +248,8 @@ USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bl
 
 **`~/.iphonectl/state.db` is a cache** (SQLite). Only the daemon writes it, and everything in it is found again by itself. One row per iPhone, keyed by Apple's UDID:
 
+The `lease` table is the exception: it holds leases (see [Leases](#leases-one-agent-per-iphone)), deleted after their idle timeout.
+
 ```
 phone (USB)                                  bluetooth_pointer (Bluetooth)
 ┌───────────────────────────────────┐        ┌──────────────────────────────────────┐
@@ -289,7 +294,9 @@ rm $DB*                                                                         
 
 | Command | Does |
 |---|---|
-| `list` | iPhones on USB, `[locked]`, and their Bluetooth link state |
+| `list` | iPhones on USB, `[locked]`, their Bluetooth link state, and who leases them |
+| `acquire [--wait s] [--force] [--idle-timeout s] [--holder name]` | take the iPhone; prints the lease id |
+| `release` | end the lease |
 | `screenshot [-o file.png\|.jpg] [--settle]` | save the screen; `--settle` waits until it stops changing |
 | `screentext [--language it-IT] [--json]` | OCR of the screen: `x,y wxh text` per line. English is always included |
 | `tap <x> <y>` | tap at screenshot coordinates |
@@ -313,6 +320,29 @@ The daemon starts by itself on the first command. After a rebuild, the CLI resta
 | `IPHONECTL_LANGUAGE` | `--language` (OCR in `screentext`, `--screentext`, `tap --text`) | `it-IT` |
 | `IPHONECTL_SCALE` | `--scale` (image and coordinate size) | `1` for native pixels |
 | `IPHONECTL_PASSCODE` | `unlock <passcode>` | read from `.passcode` |
+| `IPHONECTL_LEASE` | `-l, --lease` (every command that uses an iPhone) | `$(iphonectl acquire)` |
+
+## Leases: one agent per iPhone
+
+**Every command that uses an iPhone needs a lease.** Two agents on one Mac can no longer tap the same phone at the same time. `list` needs none.
+
+```bash
+export IPHONECTL_LEASE=$(iphonectl acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --holder ses_123)
+iphonectl tap 207 448          # -d is optional: the lease's iPhone
+iphonectl release
+```
+
+```
+agent A: acquire ──▶ lease a1b2… ──▶ tap, type, … ───────────────▶ release
+agent B:       acquire ──▶ error: leased by "ses_123" (ends after 9m58s idle)
+agent B:       acquire --wait 600 ─────────── waits ──────────────────────▶ lease c3d4…
+```
+
+- **Idle timeout:** a lease ends 10 minutes after its last command (`--idle-timeout`), so a crashed agent never blocks the phone.
+- **`--wait <s>`** waits and retries (no queue order, max 3600 s). **`--force`** takes it from a lease whose holder is gone; that holder's next command fails with `lease-invalid`.
+- **After `--wait` or `--force`, take a screenshot first.** Someone else used the phone.
+- **The lease id is a secret**: it grants use of the phone. `list` shows only the holder and the time left.
+- Leases live in the `lease` table of `state.db`, so they survive a daemon restart (a rebuild restarts it).
 
 ## Coordinates: screen points
 
@@ -385,6 +415,7 @@ It waits (up to 25 s) only for a trusted phone, which capture can list a few sec
 ```bash
 export IPHONECTL_LANGUAGE=it-IT     # phone language for OCR, same as --language
 iphonectl list
+export IPHONECTL_LEASE=$(iphonectl acquire --holder <session id>)
 iphonectl screentext
 iphonectl tap --text "Tommaso De Rossi" --screenshot s.png --screentext
 iphonectl tap 200 610 --screenshot s.png --screentext          # x,y read from s.png
@@ -436,15 +467,17 @@ The daemon serves HTTP on a unix socket. The spec is at `GET /v1/openapi.yaml`.
 ```bash
 S=~/.iphonectl/daemon.sock
 curl --unix-socket $S http://localhost/v1/devices
-curl --unix-socket $S http://localhost/v1/devices/default/screenshot -o s.png
-curl --unix-socket $S -H 'content-type: application/json' \
+curl --unix-socket $S -c jar -H 'content-type: application/json' \
+  -d '{"device":"default","holder":"curl"}' http://localhost/v1/leases   # {"id":…}, Set-Cookie iphonectl_lease
+curl --unix-socket $S -b jar http://localhost/v1/devices/default/screenshot -o s.png
+curl --unix-socket $S -b jar -H 'content-type: application/json' \
   -d '{"x":207,"y":448}' http://localhost/v1/devices/default/tap   # screen points, like the screenshot
-curl --unix-socket $S http://localhost/v1/devices/default/assistive-touch   # {"enabled":true}
-curl --unix-socket $S -X PUT -H 'content-type: application/json' \
-  -d '{"enabled":false}' http://localhost/v1/devices/default/assistive-touch
+curl --unix-socket $S -b jar http://localhost/v1/devices/default/assistive-touch   # {"enabled":true}
+curl --unix-socket $S -b jar -X DELETE http://localhost/v1/leases/<id>
 ```
 
-- `{device}` is the USB id, the name, or `default` when one iPhone is connected.
+- **Every `/v1/devices/{device}/...` route needs the `iphonectl_lease` cookie** from `POST /v1/leases`. Without it: `lease-required` (428). Expired, released, taken with `force`, or for another iPhone: `lease-invalid` (403). Acquire while held: `device-leased` (409).
+- `{device}` is the USB id, the name, or `default`: with a lease, the lease's iPhone.
 - Input routes return JSON. Send `Accept: text/event-stream` to get progress as server-sent events.
 - Errors are `application/problem+json` with a stable `code`. In event-stream mode the status is 200 and the problem arrives as the final `error` event.
 

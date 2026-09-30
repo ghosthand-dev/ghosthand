@@ -7,6 +7,7 @@
   IPHONECTL_PASSCODE="$(<.passcode)" .build/debug/iphonectl unlock
   ```
 
+- Take a lease first: `export IPHONECTL_LEASE=$(.build/debug/iphonectl acquire --holder <session id>)`. Every command that uses the iPhone needs it. If another session holds it, use `acquire --wait 600`, not `--force`. Run `iphonectl release` when done.
 - Check the iPhone with `iphonectl list` before input. A wrong passcode is not retried because failed attempts count toward lockout.
 
 # CLI help is the agent manual

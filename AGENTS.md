@@ -1,13 +1,10 @@
 # Device access
 
-- `.passcode` contains the local iPhone passcode. It is ignored by Git. Never print, upload, or commit its contents.
-- To try the Bluetooth unlock flow, pass it to `iphonectl` as `IPHONECTL_PASSCODE` from `.passcode`. Do not put the passcode in command arguments or logs:
-
-  ```sh
-  IPHONECTL_PASSCODE="$(<.passcode)" .build/debug/iphonectl unlock
-  ```
-
-- Take a lease first: `export IPHONECTL_LEASE=$(.build/debug/iphonectl acquire --holder <session id>)`. Every command that uses the iPhone needs it. If another session holds it, use `acquire --wait 600`, not `--force`. Run `iphonectl release` when done.
+- `.passcode` is stale. Never read, print, upload, or commit its contents. Use only a user-confirmed Sigillo `IPHONE_PASSCODE` if unlocking is needed; never print secrets or put them in command arguments.
+- Take a lease first: `.build/debug/iphonectl acquire --holder <session id>` prints a short ID, e.g. `42`. Pass `-l 42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `IPHONECTL_LEASE`.
+- If another session holds it, use `acquire --wait 600`, not `--force`. Holder is only a label; it does not resume a lease. Leave the phone unlocked and run `iphonectl release -l 42` when done.
+- Do not delete or restore `state.db`: its persistent counter prevents old lease IDs from controlling new leases. Lease numbers are coordination IDs, not remote authentication; TCP requires the daemon bearer token.
+- For secret text, pipe directly to `iphonectl type -l 42 --stdin`. One final LF or CRLF is removed; other whitespace is preserved. Validate focus first, and never repeat input automatically after a verification timeout.
 - Check the iPhone with `iphonectl list` before input. A wrong passcode is not retried because failed attempts count toward lockout.
 
 # CLI help is the agent manual

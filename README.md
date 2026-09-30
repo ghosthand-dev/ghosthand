@@ -299,6 +299,8 @@ IPHONECTL_SCALE=1 iphonectl tap 414 896       # native pixel coordinates
    USB capture ID                        name                model and iOS (USB)                   Bluetooth link, pointer mode
 ```
 
+**The ID is stable.** It is the USB screen-capture ID, not the Apple UDID. On the same Mac, the XR kept `7EF219AD-…` after a rename, an iOS update, and a cable replug (tested). Save it and pass it with `-d`. Not tested across different Macs.
+
 **No phone fails fast.** When screen capture lists nothing, the daemon asks USB lockdown why, in about 0.1 s, instead of waiting 25 s:
 
 ```text
@@ -348,6 +350,14 @@ iphonectl type "ciao" --enter --screentext
 
 - **Text first, image when needed.** `--screentext` output is cheap and often enough to decide (a new title, a sent message). Read `s.png` for icons, layout, or text OCR misses.
 - **Both flags wait for a still screen:** the CLI waits until two frames 150 ms apart match (up to 2 s, so slide animations are done). With both, the screenshot and the text come from the same still screen. A launching app can look still while blank; if the output is empty, take one more.
+- **Check focus before you type.** `type` sends keys to the field that has focus, and you cannot see which one from the command. Read a screenshot first: the cursor must be in the field you want. In Messages, Enter in the **To:** field adds the recipient but keeps focus there, so `type "ciao" --enter` put "ciao" into To: (tested on iOS 18.7). Tap the message field, check the screenshot, then type.
+
+  ```bash
+  iphonectl type "3336052139" --enter              # To: field, adds the recipient
+  iphonectl tap 200 562 --screenshot s.png         # tap the message field, read s.png: cursor there?
+  iphonectl type "ciao" --enter --screentext       # Enter sends
+  ```
+
 - **Tap text, not pixels:** `tap --text "..."` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
 - **No clever loops.** Do not script loops that wait for a text you guess ("Open", "Done"). The next screen is hard to predict: iOS shows sheets and alerts at any time (the App Store asks to confirm **Install**, then can say "requires iOS 16 or later"), and a loop that waits for one word waits forever (this happened while installing Reddit on the 6s). Use a loop only when a skill or document you follow asks for it explicitly. Otherwise use the plain feedback loop: one action, read the whole screen, decide the next action.
 - **Failed capture after an action:** the error says **action completed**. Do not repeat the action blindly; take a screenshot first.

@@ -150,22 +150,24 @@ iphonectl tap 206 332 -d E8AC634A-D99B-4F36-91B9-BA6E5D55A0FC
 
 The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goes to one iPhone only (its own L2CAP channel). Input to one phone never reaches another.
 
-**Give every iPhone a different name.** The daemon uses the name to find a USB phone's lockdown data (lock state, Bluetooth address). Two phones called `Morse’s iPhone (2)` get no lock state and no Bluetooth link in `list`.
+**Names do not matter; the id does.** Screen capture and USB lockdown give each iPhone unrelated IDs, and the name is the only field both show. So the daemon matches them once and saves the match in `~/.iphonectl/state.db` (see [State database](#state-database)):
 
 ```
-Settings > General > About > Name   →   "Morse XR", "Test 6s"
+capture id 7EF219AD-...  ──── saved once ────▶  UDID 00008020-...  ──▶  lock state, Bluetooth address
+   first match: the only new iPhone on USB, or else the only one with that name
 ```
 
-`list` warns when two USB iPhones share a name. To fix it from the Mac, pass the flag; nothing is renamed without it:
+After that, a rename changes nothing. Only **several new iPhones with the same name, plugged in together**, cannot be matched: `list` warns. Plug them in one at a time once.
+
+**Rename from the Mac** over USB, no touch needed (works while locked):
 
 ```bash
-iphonectl list --rename-duplicates
-# warning: renamed "Morse’s iPhone" (00008020-…002E) to "Morse’s iPhone · iPhone XR 002E". Unplug and plug in its cable: …
+iphonectl rename "iPhone XR" -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F
+# renamed "iPhone" to "iPhone XR". The id stays 7EF219AD-69B4-423E-B8C4-4F4A6140822F
 ```
 
-The new name reaches the phone at once, but macOS screen capture keeps the old name until the cable is plugged in again (tested on iOS 18.7).
-
-Apple guide: https://support.apple.com/guide/iphone/change-the-name-of-your-iphone-iphf256af64f/ios. The new name reaches USB and Bluetooth at once. If the Mac still shows the old name, unplug and plug in the cable again, then run `iphonectl list` again.
+- Input, `list` and `-d "iPhone XR"` use the new name at once. The Bluetooth link stays connected (tested on iOS 18.7).
+- macOS screen capture (QuickTime, daemon logs) keeps the old name until you **unplug and plug in the cable**.
 
 ### How many iPhones per Mac
 
@@ -216,7 +218,7 @@ Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts
 
 ```
 check:  corner ──▶ move (80,120) pt ──▶ screenshot P1 ──▶ corner ──▶ move (160,120) pt ──▶ P2
-        pointer found in P1 and P2 ──▶ gain = measured / computed (saved in state.json)
+        pointer found in P1 and P2 ──▶ gain = measured / computed (saved in state.db)
 tap:    computed reports from the last known spot ──▶ 100 ms pause ──▶ click
 ```
 
@@ -239,7 +241,48 @@ Each iPhone reports its **Bluetooth address** over USB lockdown. Its HID link to
 USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bluetooth HID link
 ```
 
-`~/.iphonectl/state.json` keeps only the pointer mode per address. `iphonectl forget -d <id>` clears it and removes the Mac's Bluetooth bond (see [Pairing no longer works](#pairing-no-longer-works-forget-on-both-sides)).
+### State database
+
+**`~/.iphonectl/state.db` is a cache** (SQLite). Only the daemon writes it, and everything in it is found again by itself. One row per iPhone, keyed by Apple's UDID:
+
+```
+phone (USB)                                  bluetooth_pointer (Bluetooth)
+┌───────────────────────────────────┐        ┌──────────────────────────────────────┐
+│ usb_udid           PK             │◀───────│ usb_udid   PK, FK, ON DELETE CASCADE │
+│ screen_capture_id  UNIQUE         │        │ mode       absolute | relative       │
+│ capture_matched_by / _at          │        │ gain, screen_width_pt, _height_pt    │
+└───────────────────────────────────┘        │ report_map, found_at                 │
+                                             └──────────────────────────────────────┘
+```
+
+```bash
+sqlite3 -header -column ~/.iphonectl/state.db 'SELECT * FROM phone; SELECT * FROM bluetooth_pointer'
+# usb_udid                   screen_capture_id                     capture_matched_by  capture_matched_at
+# 00008020-000405C214BB002E  7EF219AD-69B4-423E-B8C4-4F4A6140822F  only-new-phone      1790773434
+# usb_udid                   mode      gain  screen_width_pt  screen_height_pt  report_map                found_at
+# 00008020-000405C214BB002E  absolute                                           classic-a85efc997e025d8f  1790773436
+```
+
+| Table | Written when | If the row is missing |
+|---|---|---|
+| `phone` | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#4-more-iphones)) | matched again the same way |
+| `bluetooth_pointer` | the first tap or swipe | iOS 17+: absolute again, no check. Older iOS: the pointer check runs on the next tap |
+
+- **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, AssistiveTouch.
+- **Bluetooth pairing is not here.** macOS keeps the bond. A phone paired while the daemon was stopped, or with no `state.db`, reconnects on the next command (tested).
+- A `bluetooth_pointer` row from another HID report map is ignored; the next tap checks again. A new schema version recreates the tables.
+
+**Fix a bad state** with `sqlite3`, also while the daemon runs (it keeps no copy in memory). Turn on `foreign_keys`: the `sqlite3` shell has it off, and without it the pointer row is not deleted with its phone.
+
+```bash
+DB=~/.iphonectl/state.db
+sqlite3 $DB "PRAGMA foreign_keys = ON; DELETE FROM phone WHERE usb_udid = '00008020-000405C214BB002E'"   # one iPhone
+sqlite3 $DB 'DELETE FROM bluetooth_pointer'                                                             # all pointer modes
+rm $DB*                                                                                                  # everything; stop the daemon first
+```
+
+- **Screen from one phone, input to another:** delete its `phone` row. Plug in same-named new phones one at a time.
+- **Pointer lands in the wrong spot:** delete its `bluetooth_pointer` row. `iphonectl forget -d <id>` also does it, but it removes the Bluetooth bond too, so you must pair again.
 
 ## CLI
 
@@ -256,6 +299,7 @@ USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bl
 | `unlock [passcode]` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
 | `assistivetouch [on\|off]` | show or set AssistiveTouch over USB; pointer input turns it on by itself |
 | `lock` | lock over Bluetooth with Control-Command-Q |
+| `rename <name>` | set the iPhone's name over USB; the id does not change |
 | `forget` | remove the Mac's Bluetooth bond with the iPhone, to pair again |
 | `daemon start\|stop\|restart\|status\|run` | manage the background daemon |
 
@@ -318,7 +362,7 @@ error: No iPhone in macOS screen capture. USB check:
 
 It waits (up to 25 s) only for a trusted phone, which capture can list a few seconds after a daemon start.
 
-**Locked phones stay listed.** The daemon reads `PasswordProtected` from iOS lockdown over the trusted USB connection using macOS's private `MobileDevice.framework`. It does not need a screen frame. `[locked]` means the passcode is required; its absence means lockdown reports unlocked. If the lock state cannot be read, the field is absent. Capture and lockdown IDs differ, so the state is matched by device name; two phones with the same name have no reliable lock state.
+**Locked phones stay listed.** The daemon reads `PasswordProtected` from iOS lockdown over the trusted USB connection using macOS's private `MobileDevice.framework`. It does not need a screen frame. `[locked]` means the passcode is required; its absence means lockdown reports unlocked. If the lock state cannot be read, the field is absent. Capture and lockdown IDs differ; see [More iPhones](#4-more-iphones) for how they are matched.
 
 **One-phone example:** this Mac listed one iPhone with `[locked]` at the start of the test. After `unlock`, the same device remained listed without `[locked]`. The Bluetooth suffix means the previously paired mouse/keyboard is connected. It is not a second device.
 
@@ -450,7 +494,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 - **Keyboard without AssistiveTouch** is not tested.
 - **`cmd+space` and `cmd+h`** did nothing in tests.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
-- **Lock state** is matched by device name. Two iPhones with the same name show no lock state. Rename one (see [More iPhones](#4-more-iphones)).
+- **Several new iPhones with one name**, plugged in together, cannot be matched to their USB data. Plug them in one at a time once (see [More iPhones](#4-more-iphones)).
 - **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
 - **About 7 iPhones per Mac**, set by Bluetooth, not by iphonectl. Only 2 tested. See [How many iPhones per Mac](#how-many-iphones-per-mac).
 - **The cable must stay in.** Screenshots only come over USB; a phone on Bluetooth or Wi-Fi alone is not listed.
@@ -529,6 +573,6 @@ Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──�
 - `Sources/iphonectl/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.
 - AVFoundation and CoreBluetooth need the main run loop, so HTTP runs in a detached task.
 - Each request runs on its own thread. Capture, OCR, and lock state have per-iPhone locks; input sequences (`unlock`, taps) are serialized per iPhone. Different iPhones run in parallel.
-- Files: `~/.iphonectl/daemon.sock`, `daemon.log`, `daemon.lock`, `state.json`.
+- Files: `~/.iphonectl/daemon.sock`, `daemon.log`, `daemon.lock`, `state.db`.
 
 </details>

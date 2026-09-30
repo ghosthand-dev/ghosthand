@@ -65,7 +65,7 @@ Wait 3.5-4 s after each scroll, then compare `screentext` y positions of the sam
    eventCount > 2                   velocity *= sqrt(16 * count) / 4   (boost from report 3)
    ```
 
-   - Every `scroll` call starts after more than 500 ms idle, so each call starts from zero history. That is why the same command moves the same distance.
+   - A gap over 150 ms stops the averaging, and one over 500 ms clears the history. Between two `scroll` calls about 300 ms pass (200 ms end wait + 100 ms pointer settle), so back-to-back calls mostly start fresh; this is why the same command usually moves about the same distance (not guaranteed: one `scroll down 2` moved 99 pt instead of ~195).
    - The first report sees a 150 ms gap: minimum velocity, almost no movement. The boost starts at the third report. This matches the 2 reports iOS "drops", so `scroll` sends 2 lead-in reports.
    - Faster, evenly spaced reports give a higher velocity: 50 ms moved less than 16 ms.
    - iOS 18.2 ships the same code with the same constants (500, 150, 67): [decompiled IOHIDPointerScrollFilter from the iPhone restore image](https://github.com/EthanArbuckle/iPhone17-1_18.2_22C152_Restore/blob/main/System/Library/HIDPlugins/IOHIDPointerScrollFilter.plugin/IOHIDPointerScrollFilter.m).

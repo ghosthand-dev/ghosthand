@@ -7,7 +7,7 @@ iphonectl list
 export IPHONECTL_LEASE=$(iphonectl acquire)  # exclusive use of the iPhone
 iphonectl screenshot -o home.png          # 414x896 on an iPhone XR: screen points
 iphonectl tap 207 448                     # same coordinates as the screenshot
-iphonectl swipe 207 700 207 300
+iphonectl scroll down 5                    # mouse wheel, ~100 points per tick
 iphonectl tap --text "Settings"          # OCR finds the text, taps its center
 iphonectl type "hello" --enter
 iphonectl key home                        # Home Screen, no AssistiveTouch menu
@@ -303,8 +303,9 @@ rm $DB*                                                                         
 | `screentext [--language it-IT] [--json]` | OCR of the screen: `x,y wxh text` per line. English is always included |
 | `tap <x> <y>` | tap at screenshot coordinates |
 | `tap --text <text> [--index n]` | tap the center of an OCR text line (exact line wins, else contains) |
-| `swipe <x1> <y1> <x2> <y2> [--duration ms]` | drag with the button held |
-| `key <combo>` | `home`, `enter`, `esc`, `backspace`, arrows, `volumeup`, `mute` |
+| `swipe <x1> <y1> <x2> <y2> [--duration ms]` | drag with the button held (on a list row it taps the row) |
+| `scroll <up\|down> <ticks> [--at x,y]` | mouse wheel scroll, ~100 points per tick; scrolls lists that `swipe` cannot. See [docs/scroll.md](docs/scroll.md) |
+| `key <combo>` | `home`, `enter`, `esc`, `backspace`, arrows, `pageup`, `pagedown`, `end`, `volumeup`, `mute` |
 | `type <text> [--enter]` | US-ASCII text, then optionally Enter (sends in Messages) |
 | `unlock [passcode]` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
 | `assistivetouch [on\|off]` | show or set AssistiveTouch over USB; pointer input turns it on by itself |
@@ -439,7 +440,7 @@ iphonectl type "ciao" --enter --screentext
 - **Tap text, not pixels:** `tap --text "..."` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
 - **No clever loops.** Do not script loops that wait for a text you guess ("Open", "Done"). The next screen is hard to predict: iOS shows sheets and alerts at any time (the App Store asks to confirm **Install**, then can say "requires iOS 16 or later"), and a loop that waits for one word waits forever (this happened while installing Reddit on the 6s). Use a loop only when a skill or document you follow asks for it explicitly. Otherwise use the plain feedback loop: one action, read the whole screen, decide the next action.
 - **Failed capture after an action:** the error says **action completed**. Do not repeat the action blindly; take a screenshot first.
-- **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, see [USB screen capture stops](#usb-screen-capture-stops-ios-bug-restart-the-iphone).
+- **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, see [USB screen capture stops](#usb-screen-capture-stops-ios-bug-restart-the-daemon-then-the-iphone).
 
 **Leave the iPhone unlocked.** Do not run `iphonectl lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
 
@@ -551,7 +552,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 The Mac is listed on the iPhone **only while a command waits for pairing**. With no command waiting, it is not discoverable, and a new iPhone does not see it.
 
-### USB screen capture stops (iOS bug): restart the iPhone
+### USB screen capture stops (iOS bug): restart the daemon, then the iPhone
 
 **iOS can stop sending its screen over USB** while macOS still lists it. `list` works and the lock state is correct, but `screenshot` gets no frame and no error:
 
@@ -559,7 +560,8 @@ The Mac is listed on the iPhone **only while a command waits for pairing**. With
 error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames since open). ...
 ```
 
-- **Fix: restart the iPhone.** Replugging the cable or restarting the daemon does not help (tested on iOS 18.7).
+- **First try `iphonectl daemon restart`.** It fixed a stuck capture that failed with `Recording Stopped (AVFoundationErrorDomain -11808)` (iOS 18.7).
+- **If frames still do not arrive, restart the iPhone.** Replugging the cable does not help, and in some cases the daemon restart did not help either (tested on iOS 18.7).
 - This is an iOS bug, not iphonectl. A plain AVFoundation program gets no frames either, and QuickTime Player **crashed** when it opened the same iPhone screen.
 - Known Apple reports with the same symptom: [FB21608780](https://github.com/feedback-assistant/reports/issues/778) (after "Stop Mirroring" in Control Center, fixed only by a reboot) and [FB22281473](https://github.com/feedback-assistant/reports/issues/781) (screen capture trust revoked).
 - After the restart, **unlock the iPhone by hand once**. Before the first unlock, iOS ignores the Bluetooth keyboard, so `iphonectl unlock` fails.

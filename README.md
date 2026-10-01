@@ -11,18 +11,19 @@ Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** 
 
 ```bash
 npx ghosthand list
-npx ghosthand acquire --label ses_123 --reason "reply to Anna"  # prints e.g. 42
-npx ghosthand screenshot -l 42 -o home.png                      # 414x896 on an iPhone XR: screen points
-npx ghosthand tap -l 42 207 448                                 # same coordinates as the screenshot
-npx ghosthand scroll -l 42 down 5                               # mouse wheel, ~100 points per tick
-npx ghosthand tap -l 42 --text "Settings"                       # OCR finds the text, taps its center
-npx ghosthand type -l 42 "hello" --enter
-secret-provider | npx ghosthand type -l 42 --stdin              # secrets stay out of argv
-npx ghosthand key -l 42 home                                    # Home Screen, not Back
-npx ghosthand tap -l 42 207 448 --screenshot s.png --screentext
-npx ghosthand screentext -l 42 --language it-IT
-npx ghosthand release -l 42                                     # the next agent can acquire it
+npx ghosthand screenshot -o home.png          # 414x896 on an iPhone XR: screen points
+npx ghosthand tap 207 448                     # same coordinates as the screenshot
+npx ghosthand scroll down 5                   # mouse wheel, ~100 points per tick
+npx ghosthand tap --text "Settings"           # OCR finds the text, taps its center
+npx ghosthand type "hello" --enter
+secret-provider | npx ghosthand type --stdin  # secrets stay out of argv
+npx ghosthand key home                        # Home Screen, not Back
+npx ghosthand tap 207 448 --screenshot s.png --screentext
+npx ghosthand screentext --language it-IT
 ```
+
+> [!NOTE]
+> **Every command except `list` needs a lease**, so two agents never use the same iPhone at once. `ghosthand acquire --reason "<task>"` prints an id like `42`; pass `-l 42` to every command and run `ghosthand release -l 42` at the end. The examples in this README leave out `-l` to stay short. See [Leases](#leases-one-agent-per-iphone).
 
 ```diagram
 agent / CLI / curl                       Mac                                  iPhone
@@ -52,9 +53,9 @@ agent / CLI / curl                       Mac                                  iP
 Needs **macOS 14 or later** on Apple silicon or Intel. The npm package ships one universal binary; no Node code runs at runtime. The Bluetooth Classic private API is tested on macOS 26.3 only.
 
 ```bash
-npx ghosthand list          # run without installing
-bunx ghosthand list         # same, with Bun
-npm install -g ghosthand    # install the `ghosthand` command
+npx ghosthand list        # run without installing
+bunx ghosthand list       # same, with Bun
+npm install -g ghosthand  # install the `ghosthand` command
 ```
 
 The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
@@ -77,11 +78,10 @@ ghosthand list
 
 ### 2. Pair the Mac as a mouse and keyboard
 
-Take a lease, then run any input command. The daemon makes the Mac discoverable and prints the steps:
+Run any input command. The daemon makes the Mac discoverable and prints the steps:
 
 ```bash
-ghosthand acquire --reason "pair"   # prints e.g. 42
-ghosthand key -l 42 home
+ghosthand key home
 ```
 
 On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "MacBook Pro") under Other Devices, then **Pair**.
@@ -97,8 +97,8 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **ghosthand turns it on over USB** before every tap, swipe, wake, and unlock, and before pairing. No touch on the phone is needed, and it works while locked:
 
 ```bash
-ghosthand assistivetouch -l 42        # on / off
-ghosthand assistivetouch -l 42 off    # give the phone back to a person; next tap turns it on
+ghosthand assistivetouch      # on / off
+ghosthand assistivetouch off  # give the phone back to a person; next tap turns it on
 ```
 
 The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchEnabledByiTunes`, about 35 ms (a write is about 40 ms).
@@ -106,7 +106,7 @@ The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchE
 **Hide the floating button (recommended).** On the same page, turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots. You do not need its Home action; the keyboard has one:
 
 ```bash
-ghosthand key -l 42 home   # Home Screen (HID consumer Menu key; tested on iOS 15.8)
+ghosthand key home  # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 ```
 
 ## Use it with an agent
@@ -128,11 +128,9 @@ Use ghosthand to open Messages on my iPhone and reply "on my way" to Anna.
 The agent takes a lease, works in a loop (read the screen, act, read the result), and releases the phone when it is done:
 
 ```bash
-ghosthand acquire --label ses_123 --reason "reply to Anna"   # prints e.g. 42
-ghosthand screentext -l 42
-ghosthand tap -l 42 --text "Anna" --screenshot s.png --screentext
-ghosthand type -l 42 "on my way" --enter --screentext
-ghosthand release -l 42
+ghosthand screentext
+ghosthand tap --text "Anna" --screenshot s.png --screentext
+ghosthand type "on my way" --enter --screentext
 ```
 
 See [Agent feedback loop](#agent-feedback-loop) for the rules the agent follows.
@@ -153,14 +151,12 @@ See [Agent feedback loop](#agent-feedback-loop) for the rules the agent follows.
 ```
 
 ```bash
-export GHOSTHAND_LANGUAGE=it-IT     # phone language for OCR, same as --language
+export GHOSTHAND_LANGUAGE=it-IT                        # phone language for OCR, same as --language
 ghosthand list
-ghosthand acquire --label <session id> --reason "<task>"  # prints e.g. 42
-ghosthand screentext -l 42
-ghosthand tap -l 42 --text "Tommaso De Rossi" --screenshot s.png --screentext
-ghosthand tap -l 42 200 610 --screenshot s.png --screentext   # x,y read from s.png
-ghosthand type -l 42 "ciao" --enter --screentext
-ghosthand release -l 42
+ghosthand screentext
+ghosthand tap --text "Tommaso De Rossi" --screenshot s.png --screentext
+ghosthand tap 200 610 --screenshot s.png --screentext  # x,y read from s.png
+ghosthand type "ciao" --enter --screentext
 ```
 
 **Set the OCR language once** for a non-English phone: `GHOSTHAND_LANGUAGE=it-IT` (a BCP 47 tag) applies to `screentext`, `--screentext` and `tap --text`. `--language` overrides it. English is always included. Without it, accents and local words are misread.
@@ -170,9 +166,9 @@ ghosthand release -l 42
 - **Check focus before you type.** `type` sends keys to the field that has focus, and you cannot see which one from the command. Read a screenshot first: the cursor must be in the field you want. In Messages, Enter in the **To:** field adds the recipient but keeps focus there, so `type "ciao" --enter` put "ciao" into To: (tested on iOS 18.7). Tap the message field, check the screenshot, then type.
 
   ```bash
-  ghosthand type -l 42 "3336052139" --enter        # To: field, adds the recipient
-  ghosthand tap -l 42 200 562 --screenshot s.png   # check focus in the image
-  ghosthand type -l 42 "ciao" --enter --screentext # Enter sends
+  ghosthand type "3336052139" --enter         # To: field, adds the recipient
+  ghosthand tap 200 562 --screenshot s.png    # check focus in the image
+  ghosthand type "ciao" --enter --screentext  # Enter sends
   ```
 
 - **Tap text, not pixels:** `tap --text "..."` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
@@ -224,7 +220,7 @@ The daemon starts by itself on the first command. After a rebuild, the CLI resta
 **Pipe secrets directly** after checking focus. The CLI validates all input before any key is sent, and does not echo rejected characters.
 
 ```bash
-secret-provider | ghosthand type -l 42 --stdin
+secret-provider | ghosthand type --stdin
 ```
 
 One final **LF or CRLF** is removed. Other whitespace is preserved. LF sends Enter and tab moves focus. `--keep-final-newline` preserves LF; `--enter` adds one more Enter. Unsupported controls, invalid UTF-8 and non-ASCII fail before input.
@@ -234,8 +230,8 @@ One final **LF or CRLF** is removed. Other whitespace is preserved. LF sends Ent
 **`mute` sets a state; it does not toggle.** It is safe to run twice.
 
 ```bash
-ghosthand mute -l 42     # muted iPhone XR Tommy
-ghosthand unmute -l 42
+ghosthand mute  # muted iPhone XR Tommy
+ghosthand unmute
 ```
 
 The keyboard Mute key (consumer `0xE2`) toggles iOS **full mute**: all output, media in every app too. The ringer switch does not silence app media. iOS has no mute state readable over USB lockdown, so the daemon reads SpringBoard's log line after each press:
@@ -253,7 +249,7 @@ If the phone was already in the asked state, the first press toggles it away and
 **Send once, then check OCR.** `tap`, `swipe`, `scroll`, `key`, `type` and `wake` accept an expected case-insensitive text substring:
 
 ```bash
-ghosthand tap -l 42 --text "General" --wait-text "About" --timeout-ms 5000
+ghosthand tap --text "General" --wait-text "About" --timeout-ms 5000
 ```
 
 The deadline starts **after input completes**, not during Bluetooth pairing. Default: 5000 ms; range: 1...60000 ms. Capture/OCR reads are cancelled at the client deadline. A timeout says input was sent and reports completed OCR reads, including unchanged text. It never repeats input. OCR cannot prove that input caused a matching screen, especially if that text was already present.
@@ -314,8 +310,8 @@ agent B:       decides: give up / tell the user, or
 **Other sizes** with `--scale` (a fraction of native pixels) or `GHOSTHAND_SCALE`. Use the same value for every command, because it also changes how `tap` reads coordinates:
 
 ```bash
-ghosthand screenshot -l 42 -o full.png --scale 1    # native pixels, 828x1792
-ghosthand tap -l 42 414 896 --scale 1              # native pixel coordinates
+ghosthand screenshot -o full.png --scale 1  # native pixels, 828x1792
+ghosthand tap 414 896 --scale 1             # native pixel coordinates
 ```
 
 `screentext` always runs OCR on native pixels (small text reads better), then scales the boxes.
@@ -380,7 +376,7 @@ ghosthand list
 # 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth connected, relative pointer)
 
 ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F  # prints e.g. 42
-ghosthand acquire -d "Test iPhone"                       # prints e.g. 43
+ghosthand acquire -d "Test iPhone"                         # prints e.g. 43
 ghosthand screenshot -l 42 -o a.png
 ghosthand tap -l 43 206 332
 ghosthand release -l 42
@@ -401,7 +397,7 @@ After that, a rename changes nothing. Only **several new iPhones with the same n
 **Rename from the Mac** over USB, no touch needed (works while locked):
 
 ```bash
-ghosthand rename -l 42 "iPhone XR"      # on the lease's iPhone
+ghosthand rename "iPhone XR"  # on the lease's iPhone
 # renamed "iPhone" to "iPhone XR". The id stays 7EF219AD-69B4-423E-B8C4-4F4A6140822F
 ```
 
@@ -546,7 +542,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 | iPhone: Settings > Bluetooth > the Mac > (i) > Forget This Device                 | no input until you pair again                                             |
 | iPhone: Settings > General > Transfer or Reset > Reset > Reset Location & Privacy | removes the USB trust of every computer                                   |
 
-- **The passcode is never stored.** `unlock` gets it per call; prefer a direct pipe to `unlock -l 42 --stdin`, not an argument.
+- **The passcode is never stored.** `unlock` gets it per call; prefer a direct pipe to `unlock --stdin`, not an argument.
 - **Apple Pay still needs you.** It asks for a double press of the side button, which the Mac cannot press.
 
 ## Limits

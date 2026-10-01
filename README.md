@@ -36,6 +36,31 @@ Mac ── iphonectl daemon ─┤
 - **HTTP API** described by OpenAPI, usable from any language
 - **Remote daemon** over TCP with a bearer token and HTTPS
 
+## Why this instead of Appium?
+
+**Great for letting an agent control your own phone without a development setup.** After installing iphonectl on the Mac, there are just two manual connection steps:
+
+1. **USB:** connect the iPhone, unlock it, and accept **Trust This Computer**.
+2. **Bluetooth:** pair the Mac as a mouse and keyboard from the iPhone's Settings.
+
+Nothing to install on the iPhone. No Xcode, Developer Mode, signing certificates, or test runner. AssistiveTouch is enabled automatically; accept the Mac's Camera and Bluetooth permissions when prompted. Keep the phone unlocked and its screen awake. See [Setup](#setup-once-per-iphone).
+
+**Appium on iOS uses WebDriverAgent (WDA)**, a signed test runner that controls the UI through Apple's XCTest framework. It can control existing App Store apps too, not just apps you develop. Its [device setup](https://appium.github.io/appium-xcuitest-driver/latest/getting-started/device-setup/) requires trust, Developer Mode on modern iOS, and provisioning for WDA.
+
+| Tradeoff | iphonectl | Appium / WDA |
+|---|---|---|
+| Phone setup | USB trust + Bluetooth pairing | Development setup + signed runner |
+| Input | Mouse, keyboard, and wheel through AssistiveTouch | Native UI-testing gestures, including multi-touch |
+| Find controls | Screenshots, OCR, coordinates | UI elements and attributes, plus screenshots and coordinates |
+| Runtime dependencies | USB capture + Bluetooth link | Running WDA / XCTest session |
+| App lifecycle | Navigate through the visible UI | Direct launch, terminate, and state queries |
+| Text | US-ASCII only | Broader text support, depending on the field |
+| Fleet size | Bluetooth limit: about 7 per Mac, 2 tested | No Bluetooth limit; depends on host resources and USB |
+
+**My experience:** when I tried an Appium-like XCTest setup, the test runner frequently crashed. USB capture plus Bluetooth input has been more reliable for controlling my own phone. This is personal experience, not a controlled benchmark or a claim that everyone's Appium setup crashes. Removing WDA avoids runner crashes, signing failures, and XCTest idle waits, not every possible failure.
+
+**Known issues exist on both sides.** Appium's [troubleshooting guide](https://appium.github.io/appium-xcuitest-driver/latest/troubleshooting/) documents unresponsive real devices and `testmanagerd` crashes. Here, Bluetooth can disconnect, USB capture can freeze or miss system dialogs, and private macOS APIs can change. Mouse drags are not always finger swipes, and there is no UI element tree or multi-touch. See [Limits](#limits). Neither approach is proven to prevent bot detection or account restrictions.
+
 ## Install
 
 Needs macOS 14 or later (the Bluetooth Classic private API is tested on macOS 26.3 only) and Swift 5.9 or later. Xcode is not needed: the Command Line Tools (`xcode-select --install`) build it too. Tested with Command Line Tools (Swift 6.1) and Xcode 26 (Swift 6.3).
@@ -93,7 +118,7 @@ tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
 
 ## Setup (once per iPhone)
 
-Screenshots work after you plug in, trust, and unlock the iPhone, while its display is awake. **Taps and swipes need two steps on the iPhone first.**
+**Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch is automatic. Screenshots work after you plug in, trust, and unlock the iPhone, while its display is awake.
 
 ### 1. Plug in and trust
 
@@ -105,7 +130,7 @@ iphonectl list
 
 **Set Auto-Lock to Never** (recommended): **Settings > Display & Brightness > Auto-Lock > Never.** A locked iPhone gives no screenshots, and `unlock` needs the passcode. Keep Low Power Mode off: it forces Auto-Lock to 30 seconds.
 
-### 2. AssistiveTouch (automatic)
+### AssistiveTouch (automatic)
 
 iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **iphonectl turns it on over USB** before every tap, swipe, wake, and unlock, and before pairing. No touch on the phone is needed, and it works while locked:
 
@@ -122,7 +147,7 @@ The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchE
 iphonectl key -l 42 home   # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 ```
 
-### 3. Pair the Mac as a mouse and keyboard
+### 2. Pair the Mac as a mouse and keyboard
 
 Run any input command. The daemon makes the Mac discoverable and prints the steps:
 
@@ -138,9 +163,9 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 - **After a report map change**, forget the Mac on the iPhone and pair again: the iPhone keeps the map it read at pairing.
 - **Pairing fails, or the Mac is gone from the list:** forget on both sides, then pair again. See [Pairing no longer works](#pairing-no-longer-works-forget-on-both-sides).
 
-### 4. More iPhones
+### More iPhones
 
-**Multiple iPhones work after steps 1 to 3 on each one.** Pick one with `acquire -d`; each lease runs on its own iPhone:
+**Multiple iPhones work after both connection steps on each one.** Pick one with `acquire -d`; each lease runs on its own iPhone:
 
 ```bash
 iphonectl list
@@ -274,7 +299,7 @@ sqlite3 -header -column ~/.iphonectl/state.db 'SELECT * FROM phone; SELECT * FRO
 
 | Table | Written when | If the row is missing |
 |---|---|---|
-| `phone` | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#4-more-iphones)) | matched again the same way |
+| `phone` | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)) | matched again the same way |
 | `bluetooth_pointer` | the first tap or swipe | iOS 17+: absolute again, no check. Older iOS: the pointer check runs on the next tap |
 
 - **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, AssistiveTouch.
@@ -449,7 +474,7 @@ error: No iPhone in macOS screen capture. USB check:
 
 It waits (up to 25 s) only for a trusted phone, which capture can list a few seconds after a daemon start.
 
-**Locked phones stay listed.** The daemon reads `PasswordProtected` from iOS lockdown over the trusted USB connection using macOS's private `MobileDevice.framework`. It does not need a screen frame. `[locked]` means the passcode is required; its absence means lockdown reports unlocked. If the lock state cannot be read, the field is absent. Capture and lockdown IDs differ; see [More iPhones](#4-more-iphones) for how they are matched.
+**Locked phones stay listed.** The daemon reads `PasswordProtected` from iOS lockdown over the trusted USB connection using macOS's private `MobileDevice.framework`. It does not need a screen frame. `[locked]` means the passcode is required; its absence means lockdown reports unlocked. If the lock state cannot be read, the field is absent. Capture and lockdown IDs differ; see [More iPhones](#more-iphones) for how they are matched.
 
 **One-phone example:** this Mac listed one iPhone with `[locked]` at the start of the test. After `unlock`, the same device remained listed without `[locked]`. The Bluetooth suffix means the previously paired mouse/keyboard is connected. It is not a second device.
 
@@ -581,12 +606,12 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 ## Limits
 
-- **AssistiveTouch must be on** for tap and swipe. iphonectl turns it on over USB; its floating button can be hidden (see setup step 2).
+- **AssistiveTouch must be on** for tap and swipe. iphonectl turns it on over USB; its floating button can be hidden (see [AssistiveTouch](#assistivetouch-automatic)).
 - **Keyboard without AssistiveTouch** is not tested.
 - **`cmd+space` and `cmd+h`** did nothing in tests.
 - **No verified global Back command.** `key home` goes Home; `key esc` sends Escape. Neither is a promise of Back in Settings or Safari. AC Back (Consumer usage `0x0224`) is not exposed because reliable iOS behavior has not been verified. Descriptors are unchanged.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
-- **Several new iPhones with one name**, plugged in together, cannot be matched to their USB data. Plug them in one at a time once (see [More iPhones](#4-more-iphones)).
+- **Several new iPhones with one name**, plugged in together, cannot be matched to their USB data. Plug them in one at a time once (see [More iPhones](#more-iphones)).
 - **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
 - **About 7 iPhones per Mac**, set by Bluetooth, not by iphonectl. Only 2 tested. See [How many iPhones per Mac](#how-many-iphones-per-mac).
 - **The cable must stay in.** Screenshots only come over USB; a phone on Bluetooth or Wi-Fi alone is not listed.

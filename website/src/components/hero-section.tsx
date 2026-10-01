@@ -1,4 +1,4 @@
-// Page-width hero with an ASCII VideoBackgroundShader, serif title, and two CTAs.
+// Page-width hero with an ASCII VideoBackgroundShader, serif title, and a GitHub CTA.
 'use client'
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
@@ -82,14 +82,11 @@ export function HeroSection() {
         </p>
 
         <div className='flex gap-3 flex-wrap justify-center'>
-          <a href='#install' className={`${BUTTON} border-primary bg-primary text-primary-foreground hover:bg-primary/90`}>
-            Install
-          </a>
           <a
             href={GITHUB_URL}
             target='_blank'
             rel='noopener noreferrer'
-            className={`${BUTTON} border-transparent text-foreground hover:bg-accent`}
+            className={`${BUTTON} border-primary bg-primary text-primary-foreground hover:bg-primary/90`}
           >
             GitHub Repo ↗
           </a>

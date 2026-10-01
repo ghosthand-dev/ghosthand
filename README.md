@@ -9,6 +9,9 @@
 
 Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** No jailbreak, no Xcode, no app on the phone.
 
+> [!IMPORTANT]
+> **Requires a Mac and a real iPhone.** The CLI runs only on macOS, and the iPhone must be connected over USB and paired over Bluetooth. Linux, Windows and the iOS Simulator are not supported.
+
 ```bash
 npx ghosthand list
 npx ghosthand screenshot -o home.png          # 414x896 on an iPhone XR: screen points
@@ -21,9 +24,6 @@ npx ghosthand key home                        # Home Screen, not Back
 npx ghosthand tap 207 448 --screenshot s.png --screentext
 npx ghosthand screentext --language it-IT
 ```
-
-> [!NOTE]
-> **Every command except `list` needs a lease**, so two agents never use the same iPhone at once. `ghosthand acquire --reason "<task>"` prints an id like `42`; pass `-l 42` to every command and run `ghosthand release -l 42` at the end. The examples in this README leave out `-l` to stay short. See [Leases](#leases-one-agent-per-iphone).
 
 ```diagram
 agent / CLI / curl                       Mac                                  iPhone
@@ -213,6 +213,9 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 > **Leave the iPhone unlocked.** Do not run `ghosthand lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`.
 
 ## CLI
+
+> [!NOTE]
+> **Every command except `list` needs a lease**, so two agents never use the same iPhone at once. `ghosthand acquire --reason "<task>"` prints an id like `42`; pass `-l 42` to every command and run `ghosthand release -l 42` at the end. The examples in this README leave out `-l` to stay short. See [Leases](#leases-one-agent-per-iphone).
 
 | Command                                                             | Does                                                                                                               |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |

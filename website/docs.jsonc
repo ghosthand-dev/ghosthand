@@ -1,0 +1,48 @@
+{
+  "$schema": "https://holocron.so/docs.json",
+  "name": "ghosthand",
+  "description": "Control real iPhones from a Mac with AI agents. Screenshots over USB, taps over Bluetooth.",
+  "colors": {
+    "primary": "#4f46e5"
+  },
+  "appearance": {
+    "default": "system"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "layout": {
+    "mode": "compact"
+  },
+  "navbar": {
+    "links": [
+      { "type": "github", "href": "https://github.com/remorses/iphone-usb-control" }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/remorses/iphone-usb-control",
+      "x": "https://x.com/__morse"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "icon": "lucide:rocket",
+        "pages": ["index"]
+      },
+      {
+        "group": "Internals",
+        "icon": "lucide:cpu",
+        "pages": ["docs/scroll", "docs/relative-pointer"]
+      }
+    ],
+    "global": {
+      "anchors": [
+        { "anchor": "GitHub", "href": "https://github.com/remorses/iphone-usb-control", "icon": "lucide:github" }
+      ]
+    }
+  },
+  "decorativeLines": "none"
+}

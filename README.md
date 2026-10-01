@@ -1,4 +1,11 @@
-# ghosthand
+<div align='center' class='hidden'>
+    <br/>
+    <br/>
+    <h3>ghosthand</h3>
+    <p>Control real iPhones from a Mac with AI agents</p>
+    <br/>
+    <br/>
+</div>
 
 Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** No jailbreak, no Xcode, no app on the phone.
 

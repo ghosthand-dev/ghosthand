@@ -1,8 +1,8 @@
 # Device access
 
 - `.passcode` is stale. Never read, print, upload, or commit its contents. Use only a user-confirmed Sigillo `IPHONE_PASSCODE` if unlocking is needed; never print secrets or put them in command arguments.
-- Take a lease first: `.build/debug/iphonectl acquire --holder <session id> --reason "<task>"` prints a short ID, e.g. `42`. Pass `-l 42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `IPHONECTL_LEASE`.
-- Always pass `--reason` with your task. If another session holds it, acquire fails and shows its reason and last command: give up or tell the user, or run `iphonectl wait --reason "<task>" --timeout 600`. Never `--force`. Holder is only a label; it does not resume a lease. Leave the phone unlocked and run `iphonectl release -l 42` when done.
+- Take a lease first: `.build/debug/iphonectl acquire --label <session id> --reason "<task>"` prints a short ID, e.g. `42`. Pass `-l 42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `IPHONECTL_LEASE`.
+- Always pass `--reason` with your task. If another session holds it, acquire fails and shows its reason and last command: give up or tell the user, or run `iphonectl wait --reason "<task>" --timeout 600`. Never `--force`. The label is only display text; it does not resume a lease. Leave the phone unlocked and run `iphonectl release -l 42` when done.
 - Do not delete or restore `state.db`: its persistent counter prevents old lease IDs from controlling new leases. Lease numbers are coordination IDs, not remote authentication; TCP requires the daemon bearer token.
 - For secret text, pipe directly to `iphonectl type -l 42 --stdin`. One final LF or CRLF is removed; other whitespace is preserved. Validate focus first, and never repeat input automatically after a verification timeout.
 - Check the iPhone with `iphonectl list` before input. A wrong passcode is not retried because failed attempts count toward lockout.

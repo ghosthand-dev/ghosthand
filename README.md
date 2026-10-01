@@ -10,18 +10,18 @@
 Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** No jailbreak, no Xcode, no app on the phone.
 
 ```bash
-ghosthand list
-ghosthand acquire --label ses_123 --reason "reply to Anna"  # prints e.g. 42
-ghosthand screenshot -l 42 -o home.png     # 414x896 on an iPhone XR: screen points
-ghosthand tap -l 42 207 448                # same coordinates as the screenshot
-ghosthand scroll -l 42 down 5              # mouse wheel, ~100 points per tick
-ghosthand tap -l 42 --text "Settings"      # OCR finds the text, taps its center
-ghosthand type -l 42 "hello" --enter
-secret-provider | ghosthand type -l 42 --stdin  # secrets stay out of argv
-ghosthand key -l 42 home                   # Home Screen, not Back
-ghosthand tap -l 42 207 448 --screenshot s.png --screentext
-ghosthand screentext -l 42 --language it-IT
-ghosthand release -l 42                    # the next agent can acquire it
+npx ghosthand list
+npx ghosthand acquire --label ses_123 --reason "reply to Anna"  # prints e.g. 42
+npx ghosthand screenshot -l 42 -o home.png                      # 414x896 on an iPhone XR: screen points
+npx ghosthand tap -l 42 207 448                                 # same coordinates as the screenshot
+npx ghosthand scroll -l 42 down 5                               # mouse wheel, ~100 points per tick
+npx ghosthand tap -l 42 --text "Settings"                       # OCR finds the text, taps its center
+npx ghosthand type -l 42 "hello" --enter
+secret-provider | npx ghosthand type -l 42 --stdin              # secrets stay out of argv
+npx ghosthand key -l 42 home                                    # Home Screen, not Back
+npx ghosthand tap -l 42 207 448 --screenshot s.png --screentext
+npx ghosthand screentext -l 42 --language it-IT
+npx ghosthand release -l 42                                     # the next agent can acquire it
 ```
 
 ```diagram

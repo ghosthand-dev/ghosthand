@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "ghosthand-website",
-  "main": "spiceflow/cloudflare-entrypoint",
+  "main": "./src/server.tsx",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
   "routes": [

@@ -35,3 +35,12 @@ Read these before guessing how iOS handles HID input:
 - [yoyicue/glassbox wheel notes](https://github.com/yoyicue/glassbox/blob/main/docs/reference/picokvm_ipad_wheel.md): HID wheel on iPad/iPhone over a USB gadget (PicoKVM).
 
 To find code, search one unique function name or constant (`gh search code 'IOHIDScrollAccelerator'`), not sentences.
+
+# Publishing to npm
+
+`npm/` is the `ghosthand` npm package: one universal binary (arm64 + x86_64) as the bin.
+
+- Bump `version` in `npm/package.json` and `ghosthandVersion` in `Sources/ghosthand/daemon.swift` together. The build fails if they differ.
+- Publish with `cd npm && pnpm publish --no-git-checks`. Do not run `pnpm build` first: `prepublishOnly` cleans `dist` and runs the full build (about 3 min).
+- The registry can take ~5 min before `npx ghosthand@<version>` resolves. Poll `curl -s https://registry.npmjs.org/ghosthand | jq '."dist-tags"'`; do not publish again.
+- Build from the committed tree: `prepublishOnly` compiles whatever Swift code is in the working tree, including uncommitted changes from other sessions.

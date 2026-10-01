@@ -16,12 +16,12 @@
   },
   "navbar": {
     "links": [
-      { "type": "github", "href": "https://github.com/remorses/iphone-usb-control" }
+      { "type": "github", "href": "https://github.com/remorses/ghosthand" }
     ]
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/remorses/iphone-usb-control",
+      "github": "https://github.com/remorses/ghosthand",
       "x": "https://x.com/__morse"
     }
   },
@@ -40,7 +40,7 @@
     ],
     "global": {
       "anchors": [
-        { "anchor": "GitHub", "href": "https://github.com/remorses/iphone-usb-control", "icon": "lucide:github" }
+        { "anchor": "GitHub", "href": "https://github.com/remorses/ghosthand", "icon": "lucide:github" }
       ]
     }
   },

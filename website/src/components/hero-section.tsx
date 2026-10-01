@@ -5,7 +5,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { VideoBackgroundShader } from '@holocron.so/vite/mdx'
 
 const HERO_FONT = "'IvarText', serif"
-const GITHUB_URL = 'https://github.com/remorses/iphone-usb-control'
+const GITHUB_URL = 'https://github.com/remorses/ghosthand'
 
 // Shader color is a WebGL uniform, so CSS dark: variants cannot reach it.
 // Colors sit close to the page background so the title keeps contrast.

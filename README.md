@@ -50,13 +50,14 @@ Mac ── ghosthand daemon ─┤
 1. **USB:** connect the iPhone, unlock it, and accept **Trust This Computer**.
 2. **Bluetooth:** pair the Mac as a mouse and keyboard from the iPhone's Settings.
 
-Nothing to install on the iPhone. No Xcode, Developer Mode, signing certificates, or test runner. AssistiveTouch is enabled automatically; accept the Mac's Camera and Bluetooth permissions when prompted. Keep the phone unlocked and its screen awake. See [Setup](#setup-once-per-iphone).
+Nothing to install on the iPhone. No Xcode, Developer Mode, developer account, signing certificates, or test runner. AssistiveTouch is enabled automatically; accept the Mac's Camera and Bluetooth permissions when prompted. Keep the phone unlocked and its screen awake. See [Setup](#setup-once-per-iphone).
 
 **Appium on iOS uses WebDriverAgent (WDA)**, a signed test runner that controls the UI through Apple's XCTest framework. It can control existing App Store apps too, not just apps you develop. Its [device setup](https://appium.github.io/appium-xcuitest-driver/latest/getting-started/device-setup/) requires trust, Developer Mode on modern iOS, and provisioning for WDA.
 
 | Tradeoff | ghosthand | Appium / WDA |
 |---|---|---|
 | Phone setup | USB trust + Bluetooth pairing | Development setup + signed runner |
+| Signing renewal | None; no runner installed | Free Personal Team: renew WDA provisioning every 7 days; paid membership avoids the weekly limit |
 | Input | Mouse, keyboard, and wheel through AssistiveTouch | Native UI-testing gestures, including multi-touch |
 | Find controls | Screenshots, OCR, coordinates | UI elements and attributes, plus screenshots and coordinates |
 | Runtime dependencies | USB capture + Bluetooth link | Running WDA / XCTest session |
@@ -64,22 +65,51 @@ Nothing to install on the iPhone. No Xcode, Developer Mode, signing certificates
 | Text | US-ASCII only | Broader text support, depending on the field |
 | Fleet size | Bluetooth limit: about 7 per Mac, 2 tested | No Bluetooth limit; depends on host resources and USB |
 
+### No developer account or weekly signing renewal
+
+**A paid account is not mandatory for Appium.** A free Xcode Personal Team can sign WDA, but Apple limits it to 3 registered devices and provisioning profiles that expire after 7 days. After expiry, the runner cannot be launched with that profile; rebuild/re-sign and reinstall it with renewed provisioning. Your other apps and their accounts are not affected. See [Apple's Personal Team limits](https://developer.apple.com/help/account/basics/about-your-developer-account).
+
+**Ghosthand avoids this maintenance entirely.** There is no iPhone app to sign or renew. A paid [Apple Developer Program membership](https://developer.apple.com/programs/enroll/) costs US$99 per year (regional pricing varies) and avoids the free team's weekly limit, but WDA certificates and profiles still need renewal when they expire.
+
+### Reliability
+
 **My experience:** when I tried an Appium-like XCTest setup, the test runner frequently crashed. USB capture plus Bluetooth input has been more reliable for controlling my own phone. This is personal experience, not a controlled benchmark or a claim that everyone's Appium setup crashes. Removing WDA avoids runner crashes, signing failures, and XCTest idle waits, not every possible failure.
 
-**Known issues exist on both sides.** Appium's [troubleshooting guide](https://appium.github.io/appium-xcuitest-driver/latest/troubleshooting/) documents unresponsive real devices and `testmanagerd` crashes. Here, Bluetooth can disconnect, USB capture can freeze or miss system dialogs, and private macOS APIs can change. Mouse drags are not always finger swipes, and there is no UI element tree or multi-touch. See [Limits](#limits). Neither approach is proven to prevent bot detection or account restrictions.
+**Known issues exist on both sides.** Appium's [troubleshooting guide](https://appium.github.io/appium-xcuitest-driver/latest/troubleshooting/) documents unresponsive real devices and `testmanagerd` crashes. Here, Bluetooth can disconnect, USB capture can freeze or miss system dialogs, and private macOS APIs can change. Mouse drags are not always finger swipes, and there is no UI element tree or multi-touch. See [Limits](#limits).
+
+**Closer to a real mouse-and-keyboard user.** The iPhone receives Bluetooth HID input through AssistiveTouch, the same input path a person can use with physical peripherals, rather than an XCTest runner. This avoids runner-specific signals and may make automation harder to distinguish from that legitimate use, but we have not measured detection rates. Pointer input, screen capture, and automated behavior can still provide signals. Neither approach is proven to prevent bot detection or account restrictions.
 
 ## Install
 
-Needs macOS 14 or later (the Bluetooth Classic private API is tested on macOS 26.3 only) and Swift 5.9 or later. Xcode is not needed: the Command Line Tools (`xcode-select --install`) build it too. Tested with Command Line Tools (Swift 6.1) and Xcode 26 (Swift 6.3).
+Needs **macOS 14 or later** on Apple silicon or Intel. The npm package ships one universal binary; no Node code runs at runtime. The Bluetooth Classic private API is tested on macOS 26.3 only.
 
 ```bash
-git clone https://github.com/remorses/iphone-usb-control
-cd iphone-usb-control
+npx ghosthand list          # run without installing
+bunx ghosthand list         # same, with Bun
+npm install -g ghosthand    # install the `ghosthand` command
+```
+
+The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
+
+### Build from source
+
+Needs Swift 5.9 or later. Xcode is not needed: the Command Line Tools (`xcode-select --install`) build it too. Tested with Command Line Tools (Swift 6.1) and Xcode 26 (Swift 6.3).
+
+```bash
+git clone https://github.com/remorses/ghosthand
+cd ghosthand
 swift build -c release
 cp .build/release/ghosthand /usr/local/bin/
 ```
 
-The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
+### Publish to npm
+
+`npm/` is the npm package. `pnpm build` there compiles arm64 and x86_64 release builds, merges them with `lipo` into `npm/dist/ghosthand`, and checks that `ghosthand --version` matches `package.json`. Bump `ghosthandVersion` in `Sources/ghosthand/daemon.swift` and the package version together.
+
+```bash
+cd npm
+pnpm publish   # prepublishOnly cleans dist and runs the build
+```
 
 ## iOS versions
 

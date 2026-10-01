@@ -3,3 +3,4 @@ tmp/
 .passcode
 node_modules/
 dist/
+.wrangler/

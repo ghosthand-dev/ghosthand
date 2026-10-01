@@ -103,7 +103,7 @@ ghosthand release -l 42                     # lease released; AssistiveTouch tur
 
 - **Your own setting stays.** If AssistiveTouch was already on before `acquire`, `release` leaves it on.
 - **Expired leases too.** A lease that ends by its idle timeout gets AssistiveTouch turned off a few seconds later.
-- **Tap, swipe, wake and unlock check again** (in case a person turned it off mid-task).
+- **Tap, swipe and wake check again** (in case a person turned it off mid-task).
 
 The state is kept in `state.db` (`phone.assistive_touch_by_ghosthand`).
 
@@ -511,18 +511,14 @@ It waits (up to 25 s) only for a trusted phone, which capture can list a few sec
 
 ## Unlock
 
-**`unlock` does not use OCR.** USB screen capture does not yield frames while this iPhone is locked, so it cannot inspect the passcode screen. The Bluetooth mouse and keyboard run a timed sequence:
+**`unlock` uses only the Bluetooth keyboard.** USB screen capture does not yield frames while the iPhone is locked, so it runs a timed sequence (about 3 s):
 
 ```diagram
-click ──> screen on ──> two fast swipes up ──> check USB lock state for 4 s
-                                                 ├─ unlocked by Face ID ──> done
-                                                 └─ still locked
-                                                      └──> type passcode once
-                                                             └──> check lock state
+enter ──> screen on ──1 s──> enter ──> passcode screen ──1 s──> type passcode once
+                                                                  └──> check USB lock state
 ```
 
-- **Keys cannot wake the screen.** iOS treats our keys as coming from a mouse and drops them on the lock screen. A click usually wakes it.
-- **Face ID runs first.** The first swipe can show notifications; the second opens the passcode flow. `unlock` polls the USB lock state for up to 4 s, returns if Face ID already unlocked the phone, then types the passcode once if it is still locked. It cannot confirm which screen is shown before typing.
+- **The keyboard must be the first HID collection.** iOS takes the device type from it. With the mouse first, SpringBoard tagged keys `source:mouse` and the lock screen dropped them. After a report map change, forget and pair the iPhone again: iOS keeps the old map from pairing.
 - **Lock state** comes over USB from lockdown (`PasswordProtected`) through the private `MobileDevice.framework`. `list` shows `[locked]`; `unlock` checks it before and after.
 - **A wrong passcode is never retried.** Failed tries count toward the iPhone lockout. The passcode is not stored.
 - **Locked screenshots fail immediately.** USB capture does not return frames from this phone while locked; `screenshot` and `screentext` check the lock state first.

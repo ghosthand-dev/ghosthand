@@ -1,11 +1,11 @@
 ---
 title: Relative pointer on iOS 15
-description: How iOS 15 moves the AssistiveTouch pointer for relative HID mouse reports, the measurements that prove it, and the timing rules iphonectl follows.
+description: How iOS 15 moves the AssistiveTouch pointer for relative HID mouse reports, the measurements that prove it, and the timing rules ghosthand follows.
 ---
 
 # Relative pointer on iOS 15
 
-**One relative report moves the pointer a fixed distance.** The distance depends only on the size of that report. iphonectl computes the reports for any move and lands within 0.2 pt.
+**One relative report moves the pointer a fixed distance.** The distance depends only on the size of that report. ghosthand computes the reports for any move and lands within 0.2 pt.
 
 ```
 HID report (dx, dy) ──▶ IOHIDPointerScrollFilter ──▶ AssistiveTouch ──▶ pointer
@@ -13,7 +13,7 @@ HID report (dx, dy) ──▶ IOHIDPointerScrollFilter ──▶ AssistiveTouch 
                            move = (dx, dy) · table(v) / v        points, clamped at edges
 ```
 
-Code: `Sources/iphonectl/relative-pointer.swift`. Tests: `Tests/iphonectlTests/relative-pointer-tests.swift`.
+Code: `Sources/ghosthand/relative-pointer.swift`. Tests: `Tests/ghosthandTests/relative-pointer-tests.swift`.
 
 ## The table
 
@@ -90,6 +90,6 @@ Found in opencode session `ses_f183f876dffeunVOl7gtSaEhIW` (Discord thread 15540
 
 **Bluetooth pairing trap (seen while testing):** after the phone was reset, the Mac still had a bond ("iPhone", `Peer removed pairing information` in the daemon log) and pairing failed. Removing the Mac's bond (`blueutil --unpair <address>`) fixed it. Do it only once: running it again after the phone re-paired deleted the new bond, and the phone showed "Connesso" but never subscribed (BLE). Over Classic, a stale bond made the iPhone reject the Mac's channels; forget the Mac on both sides and pair again.
 
-**Open issue:** `iphonectl lock` (Control-Command-Q) did not lock the iPhone 6s on iOS 15.8.4 in this session. Not investigated.
+**Open issue:** `ghosthand lock` (Control-Command-Q) did not lock the iPhone 6s on iOS 15.8.4 in this session. Not investigated.
 
 Experiment script: `tmp/phase0.py` (git-ignored). It used a temporary `/debug/pointer` daemon route that sent raw reports and saved frames; the route was removed after the measurements.

@@ -1,25 +1,25 @@
-# iphonectl
+# ghosthand
 
 Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** No jailbreak, no Xcode, no app on the phone.
 
 ```bash
-iphonectl list
-iphonectl acquire --label ses_123 --reason "reply to Anna"  # prints e.g. 42
-iphonectl screenshot -l 42 -o home.png     # 414x896 on an iPhone XR: screen points
-iphonectl tap -l 42 207 448                # same coordinates as the screenshot
-iphonectl scroll -l 42 down 5              # mouse wheel, ~100 points per tick
-iphonectl tap -l 42 --text "Settings"      # OCR finds the text, taps its center
-iphonectl type -l 42 "hello" --enter
-secret-provider | iphonectl type -l 42 --stdin  # secrets stay out of argv
-iphonectl key -l 42 home                   # Home Screen, not Back
-iphonectl tap -l 42 207 448 --screenshot s.png --screentext
-iphonectl screentext -l 42 --language it-IT
-iphonectl release -l 42                    # the next agent can acquire it
+ghosthand list
+ghosthand acquire --label ses_123 --reason "reply to Anna"  # prints e.g. 42
+ghosthand screenshot -l 42 -o home.png     # 414x896 on an iPhone XR: screen points
+ghosthand tap -l 42 207 448                # same coordinates as the screenshot
+ghosthand scroll -l 42 down 5              # mouse wheel, ~100 points per tick
+ghosthand tap -l 42 --text "Settings"      # OCR finds the text, taps its center
+ghosthand type -l 42 "hello" --enter
+secret-provider | ghosthand type -l 42 --stdin  # secrets stay out of argv
+ghosthand key -l 42 home                   # Home Screen, not Back
+ghosthand tap -l 42 207 448 --screenshot s.png --screentext
+ghosthand screentext -l 42 --language it-IT
+ghosthand release -l 42                    # the next agent can acquire it
 ```
 
 ```
                 USB (QuickTime screen capture) ──▶ screenshots
-Mac ── iphonectl daemon ─┤
+Mac ── ghosthand daemon ─┤
                 Bluetooth Classic HID mouse + keyboard ──▶ AssistiveTouch pointer on the iPhone
 ```
 
@@ -38,7 +38,7 @@ Mac ── iphonectl daemon ─┤
 
 ## Why this instead of Appium?
 
-**Great for letting an agent control your own phone without a development setup.** After installing iphonectl on the Mac, there are just two manual connection steps:
+**Great for letting an agent control your own phone without a development setup.** After installing ghosthand on the Mac, there are just two manual connection steps:
 
 1. **USB:** connect the iPhone, unlock it, and accept **Trust This Computer**.
 2. **Bluetooth:** pair the Mac as a mouse and keyboard from the iPhone's Settings.
@@ -47,7 +47,7 @@ Nothing to install on the iPhone. No Xcode, Developer Mode, signing certificates
 
 **Appium on iOS uses WebDriverAgent (WDA)**, a signed test runner that controls the UI through Apple's XCTest framework. It can control existing App Store apps too, not just apps you develop. Its [device setup](https://appium.github.io/appium-xcuitest-driver/latest/getting-started/device-setup/) requires trust, Developer Mode on modern iOS, and provisioning for WDA.
 
-| Tradeoff | iphonectl | Appium / WDA |
+| Tradeoff | ghosthand | Appium / WDA |
 |---|---|---|
 | Phone setup | USB trust + Bluetooth pairing | Development setup + signed runner |
 | Input | Mouse, keyboard, and wheel through AssistiveTouch | Native UI-testing gestures, including multi-touch |
@@ -69,7 +69,7 @@ Needs macOS 14 or later (the Bluetooth Classic private API is tested on macOS 26
 git clone https://github.com/remorses/iphone-usb-control
 cd iphone-usb-control
 swift build -c release
-cp .build/release/iphonectl /usr/local/bin/
+cp .build/release/ghosthand /usr/local/bin/
 ```
 
 The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
@@ -125,18 +125,18 @@ tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
 Connect the iPhone over USB, unlock it, and tap **Trust**. Then check:
 
 ```bash
-iphonectl list
+ghosthand list
 ```
 
 **Set Auto-Lock to Never** (recommended): **Settings > Display & Brightness > Auto-Lock > Never.** A locked iPhone gives no screenshots, and `unlock` needs the passcode. Keep Low Power Mode off: it forces Auto-Lock to 30 seconds.
 
 ### AssistiveTouch (automatic)
 
-iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **iphonectl turns it on over USB** before every tap, swipe, wake, and unlock, and before pairing. No touch on the phone is needed, and it works while locked:
+iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **ghosthand turns it on over USB** before every tap, swipe, wake, and unlock, and before pairing. No touch on the phone is needed, and it works while locked:
 
 ```bash
-iphonectl assistivetouch -l 42        # on / off
-iphonectl assistivetouch -l 42 off    # give the phone back to a person; next tap turns it on
+ghosthand assistivetouch -l 42        # on / off
+ghosthand assistivetouch -l 42 off    # give the phone back to a person; next tap turns it on
 ```
 
 The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchEnabledByiTunes`, about 35 ms (a write is about 40 ms).
@@ -144,7 +144,7 @@ The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchE
 **Hide the floating button (recommended).** On the same page, turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots. You do not need its Home action; the keyboard has one:
 
 ```bash
-iphonectl key -l 42 home   # Home Screen (HID consumer Menu key; tested on iOS 15.8)
+ghosthand key -l 42 home   # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 ```
 
 ### 2. Pair the Mac as a mouse and keyboard
@@ -152,7 +152,7 @@ iphonectl key -l 42 home   # Home Screen (HID consumer Menu key; tested on iOS 1
 Run any input command. The daemon makes the Mac discoverable and prints the steps:
 
 ```bash
-iphonectl tap -l 42 100 100
+ghosthand tap -l 42 100 100
 ```
 
 On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "MacBook Pro") under Other Devices, then **Pair**.
@@ -168,21 +168,21 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 **Multiple iPhones work after both connection steps on each one.** Pick one with `acquire -d`; each lease runs on its own iPhone:
 
 ```bash
-iphonectl list
+ghosthand list
 # 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth connected, absolute pointer)
 # 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth connected, relative pointer)
 
-iphonectl acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F  # prints e.g. 42
-iphonectl acquire -d "Test iPhone"                       # prints e.g. 43
-iphonectl screenshot -l 42 -o a.png
-iphonectl tap -l 43 206 332
-iphonectl release -l 42
-iphonectl release -l 43
+ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F  # prints e.g. 42
+ghosthand acquire -d "Test iPhone"                       # prints e.g. 43
+ghosthand screenshot -l 42 -o a.png
+ghosthand tap -l 43 206 332
+ghosthand release -l 42
+ghosthand release -l 43
 ```
 
 The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goes to one iPhone only (its own L2CAP channel). Input to one phone never reaches another.
 
-**Names do not matter; the id does.** Screen capture and USB lockdown give each iPhone unrelated IDs, and the name is the only field both show. So the daemon matches them once and saves the match in `~/.iphonectl/state.db` (see [State database](#state-database)):
+**Names do not matter; the id does.** Screen capture and USB lockdown give each iPhone unrelated IDs, and the name is the only field both show. So the daemon matches them once and saves the match in `~/.ghosthand/state.db` (see [State database](#state-database)):
 
 ```
 capture id 7EF219AD-...  ──── saved once ────▶  UDID 00008020-...  ──▶  lock state, Bluetooth address
@@ -194,7 +194,7 @@ After that, a rename changes nothing. Only **several new iPhones with the same n
 **Rename from the Mac** over USB, no touch needed (works while locked):
 
 ```bash
-iphonectl rename -l 42 "iPhone XR"      # on the lease's iPhone
+ghosthand rename -l 42 "iPhone XR"      # on the lease's iPhone
 # renamed "iPhone" to "iPhone XR". The id stays 7EF219AD-69B4-423E-B8C4-4F4A6140822F
 ```
 
@@ -223,7 +223,7 @@ sudo scutil --set ComputerName "Lab Mac 1"
 sudo scutil --set LocalHostName "lab-mac-1"   # optional: network name, no spaces
 ```
 
-- The Bluetooth radio uses the computer name. There is **one name per Mac**; iphonectl cannot show its own name next to it.
+- The Bluetooth radio uses the computer name. There is **one name per Mac**; ghosthand cannot show its own name next to it.
 - The pairing steps print the name to tap: `tap "Lab Mac 1", then Pair`.
 - An iPhone that paired before the rename can keep showing the old name. Forget the Mac on the iPhone (Settings > Bluetooth > (i) > Forget This Device) and pair again.
 - Apple guide: https://support.apple.com/guide/mac-help/change-computers-local-hostname-mac-mchlp2322/mac
@@ -275,7 +275,7 @@ USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bl
 
 ### State database
 
-**`~/.iphonectl/state.db` holds SQLite state.** Device matches and pointer modes are caches. The lease counter is durable and must not be reset. One row per iPhone, keyed by Apple's UDID:
+**`~/.ghosthand/state.db` holds SQLite state.** Device matches and pointer modes are caches. The lease counter is durable and must not be reset. One row per iPhone, keyed by Apple's UDID:
 
 The `lease` table holds active leases. `lease_counter` retains the highest issued ID after expiry, release and schema changes (see [Leases](#leases-one-agent-per-iphone)).
 
@@ -290,7 +290,7 @@ phone (USB)                                  bluetooth_pointer (Bluetooth)
 ```
 
 ```bash
-sqlite3 -header -column ~/.iphonectl/state.db 'SELECT * FROM phone; SELECT * FROM bluetooth_pointer'
+sqlite3 -header -column ~/.ghosthand/state.db 'SELECT * FROM phone; SELECT * FROM bluetooth_pointer'
 # usb_udid                   screen_capture_id                     capture_matched_by  capture_matched_at
 # 00008020-000405C214BB002E  7EF219AD-69B4-423E-B8C4-4F4A6140822F  only-new-phone      1790773434
 # usb_udid                   mode      gain  screen_width_pt  screen_height_pt  report_map                found_at
@@ -310,13 +310,13 @@ sqlite3 -header -column ~/.iphonectl/state.db 'SELECT * FROM phone; SELECT * FRO
 **Fix a bad state** with `sqlite3`, also while the daemon runs (it keeps no copy in memory). Turn on `foreign_keys`: the `sqlite3` shell has it off, and without it the pointer row is not deleted with its phone.
 
 ```bash
-DB=~/.iphonectl/state.db
+DB=~/.ghosthand/state.db
 sqlite3 $DB "PRAGMA foreign_keys = ON; DELETE FROM phone WHERE usb_udid = '00008020-000405C214BB002E'"   # one iPhone
 sqlite3 $DB 'DELETE FROM bluetooth_pointer'                                                             # all pointer modes
 ```
 
 - **Screen from one phone, input to another:** delete its `phone` row. Plug in same-named new phones one at a time.
-- **Pointer lands in the wrong spot:** delete its `bluetooth_pointer` row. `iphonectl forget` also does it, but it removes the Bluetooth bond too, so you must pair again.
+- **Pointer lands in the wrong spot:** delete its `bluetooth_pointer` row. `ghosthand forget` also does it, but it removes the Bluetooth bond too, so you must pair again.
 - **Never delete or restore `state.db`.** Resetting its counter can give a new lease an old ID.
 
 ## CLI
@@ -336,7 +336,7 @@ sqlite3 $DB 'DELETE FROM bluetooth_pointer'                                     
 | `key <combo>` | `home`, `enter`, `esc`, `backspace`, arrows, `pageup`, `pagedown`, `end`, `volumeup` |
 | `mute` / `unmute` | silence all iPhone sound, or turn it back on; confirmed from the iPhone log |
 | `type <text> \| type --stdin [--enter]` | validated US-ASCII text; stdin keeps secrets out of arguments |
-| `unlock --stdin` | wake and unlock (or `IPHONECTL_PASSCODE`); no screenshot while locked |
+| `unlock --stdin` | wake and unlock (or `GHOSTHAND_PASSCODE`); no screenshot while locked |
 | `assistivetouch [on\|off]` | show or set AssistiveTouch over USB; pointer input turns it on by itself |
 | `lock` | lock over Bluetooth with Control-Command-Q |
 | `rename <name>` | set the iPhone's name over USB; the id does not change |
@@ -350,7 +350,7 @@ The daemon starts by itself on the first command. After a rebuild, the CLI resta
 **Pipe secrets directly** after checking focus. The CLI validates all input before any key is sent, and does not echo rejected characters.
 
 ```bash
-secret-provider | iphonectl type -l 42 --stdin
+secret-provider | ghosthand type -l 42 --stdin
 ```
 
 One final **LF or CRLF** is removed. Other whitespace is preserved. LF sends Enter and tab moves focus. `--keep-final-newline` preserves LF; `--enter` adds one more Enter. Unsupported controls, invalid UTF-8 and non-ASCII fail before input.
@@ -360,8 +360,8 @@ One final **LF or CRLF** is removed. Other whitespace is preserved. LF sends Ent
 **`mute` sets a state; it does not toggle.** It is safe to run twice.
 
 ```bash
-iphonectl mute -l 42     # muted iPhone XR Tommy
-iphonectl unmute -l 42
+ghosthand mute -l 42     # muted iPhone XR Tommy
+ghosthand unmute -l 42
 ```
 
 The keyboard Mute key (consumer `0xE2`) toggles iOS **full mute**: all output, media in every app too. The ringer switch does not silence app media. iOS has no mute state readable over USB lockdown, so the daemon reads SpringBoard's log line after each press:
@@ -379,7 +379,7 @@ If the phone was already in the asked state, the first press toggles it away and
 **Send once, then check OCR.** `tap`, `swipe`, `scroll`, `key`, `type` and `wake` accept an expected case-insensitive text substring:
 
 ```bash
-iphonectl tap -l 42 --text "General" --wait-text "About" --timeout-ms 5000
+ghosthand tap -l 42 --text "General" --wait-text "About" --timeout-ms 5000
 ```
 
 The deadline starts **after input completes**, not during Bluetooth pairing. Default: 5000 ms; range: 1...60000 ms. Capture/OCR reads are cancelled at the client deadline. A timeout says input was sent and reports completed OCR reads, including unchanged text. It never repeats input. OCR cannot prove that input caused a matching screen, especially if that text was already present.
@@ -390,19 +390,19 @@ Verification failure stops the command before optional screenshot/OCR output. Re
 
 | Variable | Same as | Example |
 |---|---|---|
-| `IPHONECTL_LANGUAGE` | `--language` (OCR in `screentext`, `--screentext`, `tap --text`) | `it-IT` |
-| `IPHONECTL_SCALE` | `--scale` (image and coordinate size) | `1` for native pixels |
-| `IPHONECTL_PASSCODE` | passcode for `unlock` | user-confirmed secret; prefer `unlock --stdin` |
-| `IPHONECTL_LEASE` | `-l, --lease` (every device command) | supported, but agents must pass `-l 42` explicitly |
+| `GHOSTHAND_LANGUAGE` | `--language` (OCR in `screentext`, `--screentext`, `tap --text`) | `it-IT` |
+| `GHOSTHAND_SCALE` | `--scale` (image and coordinate size) | `1` for native pixels |
+| `GHOSTHAND_PASSCODE` | passcode for `unlock` | user-confirmed secret; prefer `unlock --stdin` |
+| `GHOSTHAND_LEASE` | `-l, --lease` (every device command) | supported, but agents must pass `-l 42` explicitly |
 
 ## Leases: one agent per iPhone
 
 **Every command that uses an iPhone needs a lease.** Two agents on one Mac can no longer tap the same phone at the same time. `list` needs none.
 
 ```bash
-iphonectl acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --label ses_123 --reason "reply to Anna"  # prints 42
-iphonectl tap -l 42 207 448    # runs on the lease's iPhone; no -d
-iphonectl release -l 42
+ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --label ses_123 --reason "reply to Anna"  # prints 42
+ghosthand tap -l 42 207 448    # runs on the lease's iPhone; no -d
+ghosthand release -l 42
 ```
 
 ```
@@ -419,7 +419,7 @@ agent B:       decides: give up / tell the user, or
 - **Idle timeout:** a lease ends 10 minutes after its last command (`--idle-timeout`), so a crashed agent never blocks the phone.
 - **`--force`** takes it from a lease whose holder is gone; that holder's next command fails with `lease-invalid`.
 - **After `wait` or `--force`, take a screenshot first.** Someone else used the phone.
-- **Pass the ID explicitly with `-l`.** Tool-call environments may not persist; do not rely on exporting `IPHONECTL_LEASE`.
+- **Pass the ID explicitly with `-l`.** Tool-call environments may not persist; do not rely on exporting `GHOSTHAND_LEASE`.
 - **IDs increase in SQLite** and are not reused after expiry, force, release or a daemon restart. Do not delete or restore `state.db`.
 - **`--label` is only display text**, e.g. your agent session id, so others can find who holds the phone. It is not checked, not unique, and an acquire with the same label does not resume an active lease.
 - **Lease numbers are coordination IDs, not authentication.** TCP access still requires the daemon bearer token. Anyone with daemon access can acquire or force leases.
@@ -427,7 +427,7 @@ agent B:       decides: give up / tell the user, or
 
 ## Coordinates: screen points
 
-**Screenshots, `screentext` boxes, `tap` and `swipe` use one space: iOS screen points.** A point is 2 native pixels on @2x iPhones and 3 on @3x ones, so an iPhone XR (828x1792) gives a 414x896 image. Plus models are the exception: they render at 1080 px for 414 points, and iphonectl knows the native size of each iPhone screen. Read a spot in the image, send the same numbers.
+**Screenshots, `screentext` boxes, `tap` and `swipe` use one space: iOS screen points.** A point is 2 native pixels on @2x iPhones and 3 on @3x ones, so an iPhone XR (828x1792) gives a 414x896 image. Plus models are the exception: they render at 1080 px for 414 points, and ghosthand knows the native size of each iPhone screen. Read a spot in the image, send the same numbers.
 
 | iPhone | Native pixels | Default (points) | Claude tokens | GPT tokens (32 px patches x1.2) |
 |---|---|---|---|---|
@@ -437,11 +437,11 @@ agent B:       decides: give up / tell the user, or
 
 **Why points:** UI text stays readable (17 pt body text is 17 px). A screenshot costs about a quarter of the native tokens on @2x iPhones and an eighth on @3x. It also stays under every model's resize limit, so the model sees exactly the pixels the CLI maps back. Claude models before 4.7 shrink anything over 1568 px or 1568 tokens (28 px patches), and an XR screen at native size would be shrunk to an unknown scale ([Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision#resolution-and-token-cost), [OpenAI vision](https://platform.openai.com/docs/guides/images-vision#calculating-costs)).
 
-**Other sizes** with `--scale` (a fraction of native pixels) or `IPHONECTL_SCALE`. Use the same value for every command, because it also changes how `tap` reads coordinates:
+**Other sizes** with `--scale` (a fraction of native pixels) or `GHOSTHAND_SCALE`. Use the same value for every command, because it also changes how `tap` reads coordinates:
 
 ```bash
-iphonectl screenshot -l 42 -o full.png --scale 1    # native pixels, 828x1792
-iphonectl tap -l 42 414 896 --scale 1              # native pixel coordinates
+ghosthand screenshot -l 42 -o full.png --scale 1    # native pixels, 828x1792
+ghosthand tap -l 42 414 896 --scale 1              # native pixel coordinates
 ```
 
 `screentext` always runs OCR on native pixels (small text reads better), then scales the boxes.
@@ -494,26 +494,26 @@ It waits (up to 25 s) only for a trusted phone, which capture can list a few sec
 ```
 
 ```bash
-export IPHONECTL_LANGUAGE=it-IT     # phone language for OCR, same as --language
-iphonectl list
-iphonectl acquire --label <session id> --reason "<task>"  # prints e.g. 42
-iphonectl screentext -l 42
-iphonectl tap -l 42 --text "Tommaso De Rossi" --screenshot s.png --screentext
-iphonectl tap -l 42 200 610 --screenshot s.png --screentext   # x,y read from s.png
-iphonectl type -l 42 "ciao" --enter --screentext
-iphonectl release -l 42
+export GHOSTHAND_LANGUAGE=it-IT     # phone language for OCR, same as --language
+ghosthand list
+ghosthand acquire --label <session id> --reason "<task>"  # prints e.g. 42
+ghosthand screentext -l 42
+ghosthand tap -l 42 --text "Tommaso De Rossi" --screenshot s.png --screentext
+ghosthand tap -l 42 200 610 --screenshot s.png --screentext   # x,y read from s.png
+ghosthand type -l 42 "ciao" --enter --screentext
+ghosthand release -l 42
 ```
 
-**Set the OCR language once** for a non-English phone: `IPHONECTL_LANGUAGE=it-IT` (a BCP 47 tag) applies to `screentext`, `--screentext` and `tap --text`. `--language` overrides it. English is always included. Without it, accents and local words are misread.
+**Set the OCR language once** for a non-English phone: `GHOSTHAND_LANGUAGE=it-IT` (a BCP 47 tag) applies to `screentext`, `--screentext` and `tap --text`. `--language` overrides it. English is always included. Without it, accents and local words are misread.
 
 - **Text first, image when needed.** `--screentext` output is cheap and often enough to decide (a new title, a sent message). Read `s.png` for icons, layout, or text OCR misses.
 - **Both flags use one frame:** the daemon waits for a still screen (up to 2 s after frames start). When both flags are set, the CLI gets a native PNG, runs OCR on it, and resizes that same image for saving. No second capture or public frame ID. A blank or unchanged image is not proof that input failed.
 - **Check focus before you type.** `type` sends keys to the field that has focus, and you cannot see which one from the command. Read a screenshot first: the cursor must be in the field you want. In Messages, Enter in the **To:** field adds the recipient but keeps focus there, so `type "ciao" --enter` put "ciao" into To: (tested on iOS 18.7). Tap the message field, check the screenshot, then type.
 
   ```bash
-  iphonectl type -l 42 "3336052139" --enter        # To: field, adds the recipient
-  iphonectl tap -l 42 200 562 --screenshot s.png   # check focus in the image
-  iphonectl type -l 42 "ciao" --enter --screentext # Enter sends
+  ghosthand type -l 42 "3336052139" --enter        # To: field, adds the recipient
+  ghosthand tap -l 42 200 562 --screenshot s.png   # check focus in the image
+  ghosthand type -l 42 "ciao" --enter --screentext # Enter sends
   ```
 
 - **Tap text, not pixels:** `tap --text "..."` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
@@ -524,16 +524,16 @@ iphonectl release -l 42
 **Screen shrunk to the bottom half? That is iOS Reachability, not a hidden dialog.** The app and its sheets slide down, the top half is empty, and a sheet can look stale or dimmed. A tap in the empty top area restores it (tested on an XR, iOS 18.7: `tap 207 100`). Check for it first when a screen looks wrong. A stale screen can also come from a secure field: tap outside it and read again.
 
 ```bash
-iphonectl tap 207 100 --screenshot s.png --screentext   # empty top area: full screen returns
+ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full screen returns
 ```
 
 **A dialog that USB capture does not show** (seen once: the App Store location prompt, with the page dimmed) cannot be dismissed with Enter, Esc, Space, Tab or a center tap in our tests. It needs a person on the phone. Ask the user to press **Don't Allow**. Apple documents Tab, Shift+Tab and Space for Full Keyboard Access ([guide](https://support.apple.com/en-euro/guide/iphone/ipha4375873f/ios)), but that setting is off by default.
 
 **Some iOS dialogs are invisible to USB capture and OCR** (tested on an XR, iOS 18.7: the App Store location prompt, the Install sheet, the cellular-data prompt). The page behind looks dimmed or unchanged, and `screentext` shows no dialog. Take `screenshot` and read the image, then tap by position. Esc, Enter, Space, Tab and a center tap did not dismiss the location prompt; a person had to tap **Don't Allow**. Secure password fields also freeze frames for 10 to 30 seconds: wait, do not type again.
 
-**Leave the iPhone unlocked.** Do not run `iphonectl lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
+**Leave the iPhone unlocked.** Do not run `ghosthand lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
 
-**Agents:** `.passcode` is stale. Never read it. Use only the user-confirmed Sigillo `IPHONE_PASSCODE`, piped directly to `iphonectl unlock -l 42 --stdin`, without printing it or putting it in arguments. Do not retry a failed unlock.
+**Agents:** `.passcode` is stale. Never read it. Use only the user-confirmed Sigillo `IPHONE_PASSCODE`, piped directly to `ghosthand unlock -l 42 --stdin`, without printing it or putting it in arguments. Do not retry a failed unlock.
 
 ## Unlock
 
@@ -557,7 +557,7 @@ click ──▶ screen on ──▶ two fast swipes up ──▶ check USB lock 
 The daemon serves HTTP on a unix socket. The spec is at `GET /v1/openapi.yaml`.
 
 ```bash
-S=~/.iphonectl/daemon.sock
+S=~/.ghosthand/daemon.sock
 curl --unix-socket $S http://localhost/v1/devices
 curl --unix-socket $S -H 'content-type: application/json' \
   -d '{"device":"default","label":"curl","reason":"reply to Anna"}' http://localhost/v1/leases   # {"id":"42",…}
@@ -577,11 +577,11 @@ curl --unix-socket $S -X DELETE $L                  # release
 
 ```bash
 # on the Mac with the iPhones
-IPHONECTL_TOKEN=secret iphonectl daemon start --port 7420 --host 0.0.0.0 \
+GHOSTHAND_TOKEN=secret ghosthand daemon start --port 7420 --host 0.0.0.0 \
   --tls-cert cert.pem --tls-key key.pem
 
 # anywhere else
-iphonectl --url https://mac.local:7420 --token secret --ca cert.pem list
+ghosthand --url https://mac.local:7420 --token secret --ca cert.pem list
 ```
 
 A host other than localhost needs TLS, so the token never crosses the network in clear text.
@@ -592,7 +592,7 @@ A host other than localhost needs TLS, so the token never crosses the network in
 
 ```
 who can reach the phone                         how
-local user who owns ~/.iphonectl ──────────────▶ unix socket, file mode 0600
+local user who owns ~/.ghosthand ──────────────▶ unix socket, file mode 0600
 remote client ─────────────────────────────────▶ TCP only with --port, Bearer token, TLS off localhost
 ```
 
@@ -606,7 +606,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 | Action | Effect |
 |---|---|
-| `iphonectl daemon stop` | no screenshots, no input, until the next command starts it |
+| `ghosthand daemon stop` | no screenshots, no input, until the next command starts it |
 | unplug the cable | no screenshots and no input: every command finds the phone over USB first |
 | iPhone: Settings > Bluetooth > the Mac > (i) > Forget This Device | no input until you pair again |
 | iPhone: Settings > General > Transfer or Reset > Reset > Reset Location & Privacy | removes the USB trust of every computer |
@@ -616,14 +616,14 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 ## Limits
 
-- **AssistiveTouch must be on** for tap and swipe. iphonectl turns it on over USB; its floating button can be hidden (see [AssistiveTouch](#assistivetouch-automatic)).
+- **AssistiveTouch must be on** for tap and swipe. ghosthand turns it on over USB; its floating button can be hidden (see [AssistiveTouch](#assistivetouch-automatic)).
 - **Keyboard without AssistiveTouch** is not tested.
 - **`cmd+space` and `cmd+h`** did nothing in tests.
 - **No verified global Back command.** `key home` goes Home; `key esc` sends Escape. Neither is a promise of Back in Settings or Safari. AC Back (Consumer usage `0x0224`) is not exposed because reliable iOS behavior has not been verified. Descriptors are unchanged.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
 - **Several new iPhones with one name**, plugged in together, cannot be matched to their USB data. Plug them in one at a time once (see [More iPhones](#more-iphones)).
 - **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
-- **About 7 iPhones per Mac**, set by Bluetooth, not by iphonectl. Only 2 tested. See [How many iPhones per Mac](#how-many-iphones-per-mac).
+- **About 7 iPhones per Mac**, set by Bluetooth, not by ghosthand. Only 2 tested. See [How many iPhones per Mac](#how-many-iphones-per-mac).
 - **The cable must stay in.** Screenshots only come over USB; a phone on Bluetooth or Wi-Fi alone is not listed.
 - **Typing is US-ASCII only**: no accents or emoji. There is no length limit.
 
@@ -631,13 +631,13 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 **Symptoms:** Pair on the iPhone ends with "Connection unsuccessful", the Mac is missing from the iPhone's Bluetooth list, or `list` stays at `bluetooth disconnected`.
 
-**Cause:** one side still has an old bond and the other side does not. This happens after a Forget on only one side, a phone reset, a phone paired with an older iphonectl (BLE), or a report map change. The side with the old key rejects the new pairing (tested on the iPhone 6s and XR).
+**Cause:** one side still has an old bond and the other side does not. This happens after a Forget on only one side, a phone reset, a phone paired with an older ghosthand (BLE), or a report map change. The side with the old key rejects the new pairing (tested on the iPhone 6s and XR).
 
 **Fix: remove the bond on both sides, then pair again.**
 
 1. iPhone: Settings > Bluetooth > the Mac > (i) > **Forget This Device**.
-2. Mac: `iphonectl forget` (with a lease on that iPhone). It removes the Mac's bond (same as System Settings > Bluetooth > the iPhone > (i) > **Forget This Device**).
-3. Run any input command, for example `iphonectl key home`. It makes the Mac discoverable and waits.
+2. Mac: `ghosthand forget` (with a lease on that iPhone). It removes the Mac's bond (same as System Settings > Bluetooth > the iPhone > (i) > **Forget This Device**).
+3. Run any input command, for example `ghosthand key home`. It makes the Mac discoverable and waits.
 4. iPhone: Settings > Bluetooth, tap the Mac under Other Devices, then **Pair**.
 
 The Mac is listed on the iPhone **only while a command waits for pairing**. With no command waiting, it is not discoverable, and a new iPhone does not see it.
@@ -650,21 +650,21 @@ The Mac is listed on the iPhone **only while a command waits for pairing**. With
 error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames since open). ...
 ```
 
-- **First try `iphonectl daemon restart`.** It fixed a stuck capture that failed with `Recording Stopped (AVFoundationErrorDomain -11808)` (iOS 18.7).
+- **First try `ghosthand daemon restart`.** It fixed a stuck capture that failed with `Recording Stopped (AVFoundationErrorDomain -11808)` (iOS 18.7).
 - **If frames still do not arrive, restart the iPhone.** Replugging the cable does not help, and in some cases the daemon restart did not help either (tested on iOS 18.7).
-- This is an iOS bug, not iphonectl. A plain AVFoundation program gets no frames either, and QuickTime Player **crashed** when it opened the same iPhone screen.
+- This is an iOS bug, not ghosthand. A plain AVFoundation program gets no frames either, and QuickTime Player **crashed** when it opened the same iPhone screen.
 - Known Apple reports with the same symptom: [FB21608780](https://github.com/feedback-assistant/reports/issues/778) (after "Stop Mirroring" in Control Center, fixed only by a reboot) and [FB22281473](https://github.com/feedback-assistant/reports/issues/781) (screen capture trust revoked).
-- After the restart, **unlock the iPhone by hand once**. Before the first unlock, iOS ignores the Bluetooth keyboard, so `iphonectl unlock` fails.
+- After the restart, **unlock the iPhone by hand once**. Before the first unlock, iOS ignores the Bluetooth keyboard, so `ghosthand unlock` fails.
 
 **Check with QuickTime Player** which sources the Mac sees. Stop the daemon first (the iPhone serves its screen to one app at a time):
 
-1. `iphonectl daemon stop`
+1. `ghosthand daemon stop`
 2. QuickTime Player > **File > New Movie Recording**
 3. Click the **⌄** arrow next to the record button. Under **Camera**:
 
 | Entry | What it is |
 |---|---|
-| `Morse’s iPhone (2)` | the iPhone **screen** over USB (what iphonectl uses) |
+| `Morse’s iPhone (2)` | the iPhone **screen** over USB (what ghosthand uses) |
 | `Morse’s iPhone (2) Camera` | the iPhone camera (Continuity Camera), not the screen |
 
 - **Screen entry shows the live screen:** capture works; the problem is on the Mac side.
@@ -673,7 +673,7 @@ error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames si
 
 ## Alternatives
 
-| | iphonectl | iPhone Mirroring | Appium (XCUITest) |
+| | ghosthand | iPhone Mirroring | Appium (XCUITest) |
 |---|---|---|---|
 | App on the iPhone | none | none | WebDriverAgent (signed) |
 | Xcode, Developer Mode | no | no | yes |
@@ -689,7 +689,7 @@ error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames si
 
 ```
 CLI / curl / any language
-   │ HTTP over ~/.iphonectl/daemon.sock (mode 0600, no token)
+   │ HTTP over ~/.ghosthand/daemon.sock (mode 0600, no token)
    │ HTTP or HTTPS over TCP with --port (Bearer token)
    ▼
 Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──▶ Controller
@@ -698,9 +698,9 @@ Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──�
                                                                   └─ HIDDevice (Bluetooth Classic HID, private CBClassicManager)
 ```
 
-- `Sources/iphonectl/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.
+- `Sources/ghosthand/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.
 - AVFoundation and CoreBluetooth need the main run loop, so HTTP runs in a detached task.
 - Each request runs on its own thread. Capture, OCR, and lock state have per-iPhone locks; input sequences (`unlock`, taps) are serialized per iPhone. Different iPhones run in parallel.
-- Files: `~/.iphonectl/daemon.sock`, `daemon.log`, `daemon.lock`, `state.db`.
+- Files: `~/.ghosthand/daemon.sock`, `daemon.log`, `daemon.lock`, `state.db`.
 
 </details>

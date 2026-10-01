@@ -64,7 +64,7 @@ To compile it yourself, see [Build from source](#build-from-source).
 
 ## Setup (once per iPhone)
 
-**Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch is automatic. Screenshots work after you plug in, trust, and unlock the iPhone, while its display is awake.
+**Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch and keep-awake are automatic. Screenshots work after you plug in, trust, and unlock the iPhone.
 
 ### 1. Plug in and trust
 
@@ -73,8 +73,6 @@ Connect the iPhone over USB, unlock it, and tap **Trust**. Then check:
 ```bash
 ghosthand list
 ```
-
-**Set Auto-Lock to Never** (recommended): **Settings > Display & Brightness > Auto-Lock > Never.** A locked iPhone gives no screenshots, and `unlock` needs the passcode. Keep Low Power Mode off: it forces Auto-Lock to 30 seconds.
 
 ### 2. Pair the Mac as a mouse and keyboard
 
@@ -94,12 +92,18 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 
 ### 3. AssistiveTouch (automatic)
 
-iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **ghosthand turns it on over USB** before every tap, swipe, wake, and unlock, and before pairing. No touch on the phone is needed, and it works while locked:
+iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **`acquire` turns it on over USB and `release` turns it off again**, so a personal iPhone goes back to normal when the agent is done. No touch on the phone is needed, and it works while locked:
 
 ```bash
-ghosthand assistivetouch      # on / off
-ghosthand assistivetouch off  # give the phone back to a person; next tap turns it on
+ghosthand acquire --reason "reply to Anna"  # AssistiveTouch on
+ghosthand release -l 42                     # lease released; AssistiveTouch turned off
 ```
+
+- **Your own setting stays.** If AssistiveTouch was already on before `acquire`, `release` leaves it on.
+- **Expired leases too.** A lease that ends by its idle timeout gets AssistiveTouch turned off a few seconds later.
+- **Tap, swipe, wake and unlock check again** (in case a person turned it off mid-task).
+
+The state is kept in `state.db` (`phone.assistive_touch_by_ghosthand`).
 
 The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchEnabledByiTunes`, about 35 ms (a write is about 40 ms).
 
@@ -108,6 +112,23 @@ The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchE
 ```bash
 ghosthand key home  # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 ```
+
+### 4. Keep awake (automatic)
+
+**No need to change Auto-Lock.** The daemon keeps every iPhone connected over Bluetooth awake, leased or not, so it is always ready for the next command:
+
+```diagram
+daemon, every 2 s ──> iPhone idle for 10 s? ──yes──> Left Control press (Bluetooth)
+                            │                              │
+                            └─ command running: skip       └─> iOS resets the Auto-Lock timer
+```
+
+- **No visible effect.** A lone Control key types nothing and shows no pointer, so screenshots stay clean. It works with AssistiveTouch off.
+- **Never between input.** A tap or typed text holds the Bluetooth link; the key waits for it.
+- **It does not wake the phone.** iOS drops keys while the display is off or locked. Lock it with the side button and it stays locked.
+- **To let the iPhone lock by itself**, unplug it or stop the daemon (`ghosthand daemon stop`).
+
+Tested on an iPhone XR, iOS 18.7, Auto-Lock 30 seconds: without the key SpringBoard dims at 20 s; with it, no dim for 75 s, with and without AssistiveTouch.
 
 ## Use it with an agent
 
@@ -196,7 +217,7 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 | `list`                                                              | iPhones on USB, `[locked]`, their Bluetooth link state, and who leases them                                        |
 | `acquire --reason task [--force] [--idle-timeout s] [--label text]` | take the iPhone for a task; prints the lease id                                                                    |
 | `wait --reason task [--timeout s]`                                  | wait until another lease ends, then acquire; prints the lease id                                                   |
-| `release`                                                           | end the lease                                                                                                      |
+| `release`                                                           | end the lease; turns AssistiveTouch off if `acquire` turned it on                                                  |
 | `screenshot [-o file.png\|.jpg] [--settle]`                         | save the screen; `--settle` waits until it stops changing                                                          |
 | `screentext [--language it-IT] [--json]`                            | OCR of the screen: `x,y wxh text` per line. English is always included                                             |
 | `tap <x> <y>`                                                       | tap at screenshot coordinates                                                                                      |
@@ -207,7 +228,7 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 | `mute` / `unmute`                                                   | silence all iPhone sound, or turn it back on; confirmed from the iPhone log                                        |
 | `type <text> \| type --stdin [--enter]`                             | validated US-ASCII text; stdin keeps secrets out of arguments                                                      |
 | `unlock --stdin`                                                    | wake and unlock (or `GHOSTHAND_PASSCODE`); no screenshot while locked                                              |
-| `assistivetouch [on\|off]`                                          | show or set AssistiveTouch over USB; pointer input turns it on by itself                                           |
+| `assistivetouch [on\|off]`                                          | show or set AssistiveTouch over USB; `acquire` turns it on by itself                                               |
 | `lock`                                                              | lock over Bluetooth with Control-Command-Q                                                                         |
 | `rename <name>`                                                     | set the iPhone's name over USB; the id does not change                                                             |
 | `forget`                                                            | remove the Mac's Bluetooth bond with the iPhone, to pair again                                                     |
@@ -671,10 +692,10 @@ sqlite3 -header -column ~/.ghosthand/state.db 'SELECT * FROM phone; SELECT * FRO
 
 | Table               | Written when                                                                                                           | If the row is missing                                                                |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `phone`             | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)) | matched again the same way                                                           |
+| `phone`             | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)). `assistive_touch_by_ghosthand`: 1 while AssistiveTouch is on because ghosthand turned it on | matched again the same way                                                           |
 | `bluetooth_pointer` | the first tap or swipe                                                                                                 | iOS 17+: absolute again, no check. Older iOS: the pointer check runs on the next tap |
 
-- **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, AssistiveTouch.
+- **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, the AssistiveTouch setting.
 - **Bluetooth pairing is not here.** macOS keeps the bond. A phone paired while the daemon was stopped, or with no `state.db`, reconnects on the next command (tested).
 - **A saved match is never changed by itself**, even while its phone is missing from one list during a plug-in. If one is wrong, delete its `phone` row (below).
 - **Schema changes preserve the lease counter.** Cache tables can be recreated, but IDs must keep increasing.

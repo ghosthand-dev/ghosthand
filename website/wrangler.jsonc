@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ghosthand-website",
+  "main": "spiceflow/cloudflare-entrypoint",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "routes": [
+    { "pattern": "ghosthand.dev", "custom_domain": true }
+  ],
+  "env": {
+    "preview": {
+      "name": "ghosthand-website-preview",
+      "routes": [
+        { "pattern": "preview.ghosthand.dev", "custom_domain": true }
+      ]
+    }
+  }
+}

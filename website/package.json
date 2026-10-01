@@ -4,8 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
-    "typecheck": "tsc"
+    "build": "tsc && vite build",
+    "typecheck": "tsc",
+    "deploy": "tsc && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
+    "deploy:prod": "tsc && vite build && wrangler deploy"
   },
   "dependencies": {
     "@holocron.so/vite": "^0.36.0",
@@ -14,8 +16,10 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.62.2",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "wrangler": "^4.144.0"
   }
 }

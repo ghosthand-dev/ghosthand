@@ -4,7 +4,7 @@ Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** 
 
 ```bash
 iphonectl list
-iphonectl acquire --holder ses_123         # prints e.g. 42; exclusive use of the iPhone
+iphonectl acquire --holder ses_123 --reason "reply to Anna"  # prints e.g. 42
 iphonectl screenshot -l 42 -o home.png     # 414x896 on an iPhone XR: screen points
 iphonectl tap -l 42 207 448                # same coordinates as the screenshot
 iphonectl scroll -l 42 down 5              # mouse wheel, ~100 points per tick
@@ -299,7 +299,8 @@ sqlite3 $DB 'DELETE FROM bluetooth_pointer'                                     
 | Command | Does |
 |---|---|
 | `list` | iPhones on USB, `[locked]`, their Bluetooth link state, and who leases them |
-| `acquire [--wait s] [--force] [--idle-timeout s] [--holder name]` | take the iPhone; prints the lease id |
+| `acquire --reason task [--force] [--idle-timeout s] [--holder name]` | take the iPhone for a task; prints the lease id |
+| `wait --reason task [--timeout s]` | wait until another lease ends, then acquire; prints the lease id |
 | `release` | end the lease |
 | `screenshot [-o file.png\|.jpg] [--settle]` | save the screen; `--settle` waits until it stops changing |
 | `screentext [--language it-IT] [--json]` | OCR of the screen: `x,y wxh text` per line. English is always included |
@@ -354,20 +355,25 @@ Verification failure stops the command before optional screenshot/OCR output. Re
 **Every command that uses an iPhone needs a lease.** Two agents on one Mac can no longer tap the same phone at the same time. `list` needs none.
 
 ```bash
-iphonectl acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --holder ses_123  # prints 42
+iphonectl acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --holder ses_123 --reason "reply to Anna"  # prints 42
 iphonectl tap -l 42 207 448    # runs on the lease's iPhone; no -d
 iphonectl release -l 42
 ```
 
 ```
 agent A: acquire ──▶ lease 42 ──▶ tap -l 42, type -l 42 ────────▶ release -l 42
-agent B:       acquire ──▶ error: leased by "ses_123" (ends after 9m58s idle)
-agent B:       acquire --wait 600 ─────────── waits ──────────────────────▶ lease 43
+agent B:       acquire ──▶ error: in use by "ses_123" for "reply to Anna":
+                           acquired 2m3s ago, last command 4s ago, ends after 9m56s idle
+agent B:       decides: give up / tell the user, or
+               wait --reason "..." --timeout 600 ─────── waits ──────▶ lease 43
 ```
 
+- **Always pass `--reason`** with the task. A busy `acquire` fails at once and shows the holder, its reason, when it was acquired and its last command, so the next agent can decide to give up instead of waiting.
+- **`wait`** is a separate command on purpose: an agent must read who holds the phone before it waits. It retries every second (no queue order). On timeout it shows the current holder.
+
 - **Idle timeout:** a lease ends 10 minutes after its last command (`--idle-timeout`), so a crashed agent never blocks the phone.
-- **`--wait <s>`** retries every second (no queue order). **`--force`** takes it from a lease whose holder is gone; that holder's next command fails with `lease-invalid`.
-- **After `--wait` or `--force`, take a screenshot first.** Someone else used the phone.
+- **`--force`** takes it from a lease whose holder is gone; that holder's next command fails with `lease-invalid`.
+- **After `wait` or `--force`, take a screenshot first.** Someone else used the phone.
 - **Pass the ID explicitly with `-l`.** Tool-call environments may not persist; do not rely on exporting `IPHONECTL_LEASE`.
 - **IDs increase in SQLite** and are not reused after expiry, force, release or a daemon restart. Do not delete or restore `state.db`.
 - **Holder is only a label.** An acquire with the same holder does not resume an active lease.
@@ -445,7 +451,7 @@ It waits (up to 25 s) only for a trusted phone, which capture can list a few sec
 ```bash
 export IPHONECTL_LANGUAGE=it-IT     # phone language for OCR, same as --language
 iphonectl list
-iphonectl acquire --holder <session id>                    # prints e.g. 42
+iphonectl acquire --holder <session id> --reason "<task>"  # prints e.g. 42
 iphonectl screentext -l 42
 iphonectl tap -l 42 --text "Tommaso De Rossi" --screenshot s.png --screentext
 iphonectl tap -l 42 200 610 --screenshot s.png --screentext   # x,y read from s.png
@@ -499,7 +505,7 @@ The daemon serves HTTP on a unix socket. The spec is at `GET /v1/openapi.yaml`.
 S=~/.iphonectl/daemon.sock
 curl --unix-socket $S http://localhost/v1/devices
 curl --unix-socket $S -H 'content-type: application/json' \
-  -d '{"device":"default","holder":"curl"}' http://localhost/v1/leases   # {"id":"42",…}
+  -d '{"device":"default","holder":"curl","reason":"reply to Anna"}' http://localhost/v1/leases   # {"id":"42",…}
 L=http://localhost/v1/leases/42
 curl --unix-socket $S $L/screenshot -o s.png
 curl --unix-socket $S -H 'content-type: application/json' \
@@ -508,7 +514,7 @@ curl --unix-socket $S $L/assistive-touch            # {"enabled":true}
 curl --unix-socket $S -X DELETE $L                  # release
 ```
 
-- **Screenshots and input live under `/v1/leases/{lease}/`** and run on the lease's iPhone. Unknown, expired, released or taken with `force`: `lease-invalid` (403). Acquire while held: `device-leased` (409); retry to wait.
+- **Screenshots and input live under `/v1/leases/{lease}/`** and run on the lease's iPhone. Unknown, expired, released or taken with `force`: `lease-invalid` (403). Acquire while held: `device-leased` (409); the detail shows the holder, reason, acquire time and last call. Retry to wait.
 - Input routes return JSON. Send `Accept: text/event-stream` to get progress as server-sent events.
 - Errors are `application/problem+json` with a stable `code`. In event-stream mode the status is 200 and the problem arrives as the final `error` event.
 

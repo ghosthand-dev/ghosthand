@@ -354,16 +354,15 @@ Nothing to install on the iPhone. No Xcode, Developer Mode, developer account, s
 
 ## Alternatives
 
-|                       | ghosthand                                                | iPhone Mirroring                | Appium (XCUITest)       |
-| --------------------- | -------------------------------------------------------- | ------------------------------- | ----------------------- |
-| App on the iPhone     | none                                                     | none                            | WebDriverAgent (signed) |
-| Xcode, Developer Mode | no                                                       | no                              | yes                     |
-| Screen                | USB capture                                              | Wi-Fi mirror                    | XCTest                  |
-| Input                 | Bluetooth Classic HID                                    | Mac input                       | XCTest                  |
-| iOS 15                | yes over BLE (relative pointer); not tested over Classic | no (iOS 18+)                    | yes                     |
-| Unlock with passcode  | yes                                                      | no                              | no                      |
-| iPhones per Mac       | \~7, 2 tested                                            | 1                               | many                    |
-| Account, cloud        | none, local daemon                                       | same Apple ID on Mac and iPhone | none                    |
+|                       | ghosthand                                                | Appium (XCUITest)       |
+| --------------------- | -------------------------------------------------------- | ----------------------- |
+| App on the iPhone     | none                                                     | WebDriverAgent (signed) |
+| Xcode, Developer Mode | no                                                       | yes                     |
+| Screen                | USB capture                                              | XCTest                  |
+| Input                 | Bluetooth Classic HID                                    | XCTest                  |
+| iOS 15                | yes over BLE (relative pointer); not tested over Classic | yes                     |
+| Unlock with passcode  | yes                                                      | no                      |
+| iPhones per Mac       | \~7, 2 tested                                            | many                    |
 
 ## More iPhones
 

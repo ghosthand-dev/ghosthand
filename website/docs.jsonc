@@ -2,6 +2,11 @@
   "$schema": "https://holocron.so/docs.json",
   "name": "ghosthand",
   "description": "Control real iPhones from a Mac with AI agents. Screenshots over USB, taps over Bluetooth.",
+  "logo": {
+    "light": "/logo-ink.svg",
+    "dark": "/logo-white.svg"
+  },
+  "favicon": "/favicon.svg",
   "colors": {
     "primary": "#4f46e5"
   },

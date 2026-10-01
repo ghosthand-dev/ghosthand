@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   clearScreen: false,
   plugins: [
-    holocron({ pagesDir: './src' }),
+    holocron({ entry: './src/server.tsx', pagesDir: './src' }),
     // Must come after holocron: it reads the rsc/ssr environments holocron creates.
     cloudflare({
       viteEnvironment: {

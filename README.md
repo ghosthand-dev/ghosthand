@@ -142,6 +142,8 @@ npx -y skills add https://ghosthand.dev
 
 This works with Claude Code, Cursor, OpenCode, Codex and other agents that read [skills](https://skills.sh). The skill tells the agent to read `ghosthand --help` first; the help text is the full agent manual.
 
+**Agent without a shell?** Connect it to the daemon's [MCP server](#mcp-server) instead: the same commands as tools.
+
 **Then ask in plain words**, with the iPhone plugged in and unlocked:
 
 ```text
@@ -206,7 +208,7 @@ ghosthand type "ciao" --enter --screentext
 **Set the OCR language once** for a non-English phone: `GHOSTHAND_LANGUAGE=it-IT` (a BCP 47 tag) applies to `screentext`, `--screentext` and `tap --text`. `--language` overrides it. English is always included. Without it, accents and local words are misread.
 
 - **Text first, image when needed.** `--screentext` output is cheap and often enough to decide (a new title, a sent message). Read `s.png` for icons, layout, or text OCR misses.
-- **Both flags use one frame:** the daemon waits for a still screen (up to 2 s after frames start). When both flags are set, the CLI gets a native PNG, runs OCR on it, and resizes that same image for saving. No second capture or public frame ID. A blank or unchanged image is not proof that input failed.
+- **Both flags use one frame:** the daemon runs them after the input, under the same lease, and waits for a still screen (up to 2 s after frames start). OCR reads the native frame (small text reads better); the image is resized from that same frame. A blank or unchanged image is not proof that input failed.
 - **Check focus before you type.** `type` sends keys to the field that has focus, and you cannot see which one from the command. Read a screenshot first: the cursor must be in the field you want. In Messages, Enter in the **To:** field adds the recipient but keeps focus there, so `type "ciao" --enter` put "ciao" into To: (tested on iOS 18.7). Tap the message field, check the screenshot, then type.
 
   ```bash
@@ -217,7 +219,7 @@ ghosthand type "ciao" --enter --screentext
 
 - **Tap text, not pixels:** `tap --text "..."` saves a screenshot read and coordinate guessing. On the Home Screen, app **labels do not open apps** (tested on iOS 15): tap the icon, about 40 points above the label.
 - **No clever loops.** Do not script loops that wait for a text you guess ("Open", "Done"). The next screen is hard to predict: iOS shows sheets and alerts at any time (the App Store asks to confirm **Install**, then can say "requires iOS 16 or later"), and a loop that waits for one word waits forever (this happened while installing Reddit on the 6s). Use a loop only when a skill or document you follow asks for it explicitly. Otherwise use the plain feedback loop: one action, read the whole screen, decide the next action.
-- **Failed capture after an action:** the error says **action completed**. Do not repeat the action blindly; take a screenshot first.
+- **Failed capture after an action:** the error says **Input sent**. Do not repeat the action blindly; take a screenshot first.
 - **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, see [USB screen capture stops](#usb-screen-capture-stops-ios-bug-restart-the-daemon-then-the-iphone).
 
 **Screen shrunk to the bottom half? That is iOS Reachability, not a hidden dialog.** The app and its sheets slide down, the top half is empty, and a sheet can look stale or dimmed. A tap in the empty top area restores it (tested on an XR, iOS 18.7: `tap 207 100`). Check for it first when a screen looks wrong. A stale screen can also come from a secure field: tap outside it and read again.
@@ -261,6 +263,7 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 | `setup`                                                             | window for people: connect a new iPhone step by step                                                               |
 | `app`                                                               | window for people: every iPhone, its agent, task, last command and live screen                                     |
 | `daemon start\|stop\|restart\|status\|run`                          | manage the background daemon                                                                                       |
+| `mcp`                                                               | print the MCP endpoint and client configs; see [MCP server](#mcp-server)                                           |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
 
@@ -301,7 +304,7 @@ If the phone was already in the asked state, the first press toggles it away and
 ghosthand tap --text "General" --wait-text "About" --timeout-ms 5000
 ```
 
-The deadline starts **after input completes**, not during Bluetooth pairing. Default: 5000 ms; range: 1...60000 ms. Capture/OCR reads are cancelled at the client deadline. A timeout says input was sent and reports completed OCR reads, including unchanged text. It never repeats input. OCR cannot prove that input caused a matching screen, especially if that text was already present.
+The deadline starts **after input completes**, not during Bluetooth pairing. Default: 5000 ms; range: 1...60000 ms. The daemon runs the check on the native frame, and a frame read never waits past the deadline. A timeout says input was sent and reports completed OCR reads, including unchanged text. It never repeats input. OCR cannot prove that input caused a matching screen, especially if that text was already present.
 
 Verification failure stops the command before optional screenshot/OCR output. Read the screen separately before deciding whether another action is safe. Locked-phone, Bluetooth and USB errors retain their own evidence; missing frames alone cannot identify their cause. Never lock a phone to repair capture.
 
@@ -544,6 +547,12 @@ curl --unix-socket $S -X DELETE $L                  # release
 
 - **Screenshots and input live under `/v1/leases/{lease}/`** and run on the lease's iPhone. Unknown, expired, released or taken with `force`: `lease-invalid` (403). Acquire while held: `device-leased` (409); the detail shows the label, reason, acquire time and last call. Retry to wait.
 - Input routes return JSON. Send `Accept: text/event-stream` to get progress as server-sent events.
+- **One call per step:** input routes take `waitText`, `screenshot=png|jpeg` and `screentext=true`. The daemon runs them after the input on the same lease; the result has `screenshot` (base64) and `screen` (OCR lines). `tap` also takes `{"text":"General","index":1}` instead of `x` and `y`.
+
+  ```bash
+  curl --unix-socket $S -H 'content-type: application/json' \
+    -d '{"text":"General"}' "$L/tap?waitText=About&screentext=true"
+  ```
 - Errors are `application/problem+json` with a stable `code`. In event-stream mode the status is 200 and the problem arrives as the final `error` event.
 
 ### Remote daemon
@@ -558,6 +567,27 @@ ghosthand --url https://mac.local:7420 --token secret --ca cert.pem list
 ```
 
 **A host other than localhost needs TLS**, so the token never crosses the network in clear text.
+
+## MCP server
+
+**The daemon is also an MCP server** at `POST /mcp`. Every CLI command is a tool with the same name and the same help text, so MCP clients (Claude Code, Cursor, opencode) can drive the iPhone without a shell.
+
+```bash
+GHOSTHAND_TOKEN=secret ghosthand daemon restart --port 7420   # MCP clients cannot use the unix socket
+ghosthand mcp                                                 # prints the endpoint and client configs
+claude mcp add --transport http ghosthand http://127.0.0.1:7420/mcp \
+  --header "Authorization: Bearer $GHOSTHAND_TOKEN"
+```
+
+```diagram
+MCP client ──POST /mcp (JSON-RPC)──> daemon ──> same Controller calls as the HTTP API
+           <──JSON, or SSE for tools/call (pings; closing the stream cancels the input)
+```
+
+- **Flags are arguments:** `lease`, `text` and `index` on `tap`, `waitText`, `timeoutMs`, `screenshot: true`, `screentext: true`. Screenshots come back as image content, not files.
+- **Stateless, both protocol eras:** legacy clients (`initialize`, MCP 2025-03-26 to 2025-11-25) and modern ones (2026-07-28, `_meta` and `Mcp-Method` headers on every request). No session id, no GET stream.
+- **Same auth as the TCP API:** `Authorization: Bearer <token>`. Requests from browsers (`Origin` or `Sec-Fetch-Site`) are rejected.
+- **No MCP library:** five JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift). The CLI and the MCP tools are both thin: tap by text, text verification and the screenshot after an action run in the daemon.
 
 ## Security
 

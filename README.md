@@ -24,10 +24,14 @@ ghosthand screentext -l 42 --language it-IT
 ghosthand release -l 42                    # the next agent can acquire it
 ```
 
-```
-                USB (QuickTime screen capture) ──▶ screenshots
-Mac ── ghosthand daemon ─┤
-                Bluetooth Classic HID mouse + keyboard ──▶ AssistiveTouch pointer on the iPhone
+```diagram
+agent / CLI / curl                       Mac                                  iPhone
+      │                     ┌───────────────────────┐   USB screen capture
+      │  HTTP (unix socket) │                       │<─────────────────── screen frames
+      └────────────────────>│   ghosthand daemon    │
+                            │  OCR · leases · state │   Bluetooth Classic HID
+                            │                       │──────────────────> AssistiveTouch
+                            └───────────────────────┘   mouse + keyboard   pointer, keys
 ```
 
 ## Features
@@ -54,16 +58,16 @@ Nothing to install on the iPhone. No Xcode, Developer Mode, developer account, s
 
 **Appium on iOS uses WebDriverAgent (WDA)**, a signed test runner that controls the UI through Apple's XCTest framework. It can control existing App Store apps too, not just apps you develop. Its [device setup](https://appium.github.io/appium-xcuitest-driver/latest/getting-started/device-setup/) requires trust, Developer Mode on modern iOS, and provisioning for WDA.
 
-| Tradeoff | ghosthand | Appium / WDA |
-|---|---|---|
-| Phone setup | USB trust + Bluetooth pairing | Development setup + signed runner |
-| Signing renewal | None; no runner installed | Free Personal Team: renew WDA provisioning every 7 days; paid membership avoids the weekly limit |
-| Input | Mouse, keyboard, and wheel through AssistiveTouch | Native UI-testing gestures, including multi-touch |
-| Find controls | Screenshots, OCR, coordinates | UI elements and attributes, plus screenshots and coordinates |
-| Runtime dependencies | USB capture + Bluetooth link | Running WDA / XCTest session |
-| App lifecycle | Navigate through the visible UI | Direct launch, terminate, and state queries |
-| Text | US-ASCII only | Broader text support, depending on the field |
-| Fleet size | Bluetooth limit: about 7 per Mac, 2 tested | No Bluetooth limit; depends on host resources and USB |
+| Tradeoff             | ghosthand                                         | Appium / WDA                                                                                     |
+| -------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Phone setup          | USB trust + Bluetooth pairing                     | Development setup + signed runner                                                                |
+| Signing renewal      | None; no runner installed                         | Free Personal Team: renew WDA provisioning every 7 days; paid membership avoids the weekly limit |
+| Input                | Mouse, keyboard, and wheel through AssistiveTouch | Native UI-testing gestures, including multi-touch                                                |
+| Find controls        | Screenshots, OCR, coordinates                     | UI elements and attributes, plus screenshots and coordinates                                     |
+| Runtime dependencies | USB capture + Bluetooth link                      | Running WDA / XCTest session                                                                     |
+| App lifecycle        | Navigate through the visible UI                   | Direct launch, terminate, and state queries                                                      |
+| Text                 | US-ASCII only                                     | Broader text support, depending on the field                                                     |
+| Fleet size           | Bluetooth limit: about 7 per Mac, 2 tested        | No Bluetooth limit; depends on host resources and USB                                            |
 
 ### No developer account or weekly signing renewal
 
@@ -102,23 +106,14 @@ swift build -c release
 cp .build/release/ghosthand /usr/local/bin/
 ```
 
-### Publish to npm
-
-`npm/` is the npm package. `pnpm build` there compiles arm64 and x86_64 release builds, merges them with `lipo` into `npm/dist/ghosthand`, and checks that `ghosthand --version` matches `package.json`. Bump `ghosthandVersion` in `Sources/ghosthand/daemon.swift` and the package version together.
-
-```bash
-cd npm
-pnpm publish   # prepublishOnly cleans dist and runs the build
-```
-
 ## iOS versions
 
 **Tested on iOS 18.7 (iPhone XR) over Bluetooth Classic, and on iOS 15.8.4 (iPhone 6s) with the earlier BLE version.** The iPhone sees the Mac as a normal Bluetooth Classic mouse and keyboard (HID profile over L2CAP). The only difference between versions is how the **pointer** moves.
 
-| iOS | Pointer | Tap | Accuracy |
-|---|---|---|---|
-| 18.7 | **absolute**: report 1 says "go to X, Y" | ~0.3 s | exact |
-| 15.8 | **relative** over BLE (iOS ignored absolute X/Y); **not tested yet over Classic** | ~0.45 s | 0.2 pt mean, 0.4 pt max (40 targets) |
+| iOS  | Pointer                                                                           | Tap      | Accuracy                             |
+| ---- | --------------------------------------------------------------------------------- | -------- | ------------------------------------ |
+| 18.7 | **absolute**: report 1 says "go to X, Y"                                          | \~0.3 s  | exact                                |
+| 15.8 | **relative** over BLE (iOS ignored absolute X/Y); **not tested yet over Classic** | \~0.45 s | 0.2 pt mean, 0.4 pt max (40 targets) |
 
 - The mode is **found by itself** on the first tap: iOS 17 and later use absolute; older versions are checked by moving the pointer. `list` shows it: `(bluetooth connected, relative pointer)`.
 - Apple does not document absolute pointers for AssistiveTouch, and no changelog mentions them. The iOS 15 behavior was found by testing over BLE: the phone read report 1 but the pointer stayed still.
@@ -128,22 +123,22 @@ pnpm publish   # prepublishOnly cleans dist and runs the build
 
 **Absolute first, on every iOS version.** iOS 17 and later use it with no check. Older iOS tries absolute on the first tap and falls back to relative only if the pointer does not move.
 
-| iPhone | Last iOS | Pointer | Tap |
-|---|---|---|---|
-| 6s, 6s Plus, 7, 7 Plus, SE (1st gen) | 15 | relative over BLE (tested on 6s); **absolute over Classic not tested** | ~0.45 s relative, < 0.5 pt off |
-| 8, 8 Plus, X | 16 | absolute tried first, not tested | |
-| **XS, XS Max, XR, SE (2nd gen, 2020)** and newer | 17+ | **absolute** (XR tested) | ~0.3 s, exact |
+| iPhone                                           | Last iOS | Pointer                                                                | Tap                              |
+| ------------------------------------------------ | -------- | ---------------------------------------------------------------------- | -------------------------------- |
+| 6s, 6s Plus, 7, 7 Plus, SE (1st gen)             | 15       | relative over BLE (tested on 6s); **absolute over Classic not tested** | \~0.45 s relative, \< 0.5 pt off |
+| 8, 8 Plus, X                                     | 16       | absolute tried first, not tested                                       |                                  |
+| **XS, XS Max, XR, SE (2nd gen, 2020)** and newer | 17+      | **absolute** (XR tested)                                               | \~0.3 s, exact                   |
 
-- The "absolute from iOS 17" claim comes from a vendor of ESP32 **BLE** HID firmware, not from Apple: https://ieasyclick.net/blog/en/ios-ble-hid-no-signature/. Bluetooth Classic HID may behave differently, so older iOS is checked, not assumed.
+- The "absolute from iOS 17" claim comes from a [vendor of ESP32 **BLE** HID firmware](https://ieasyclick.net/blog/en/ios-ble-hid-no-signature/), not from Apple. Bluetooth Classic HID may behave differently, so older iOS is checked, not assumed.
 
 ### Relative pointer (iOS 15)
 
 **iOS turns each relative report into a fixed distance.** It looks up the report's size in IOHIDFamily's built-in acceleration table. Time does not count, and fractions of a point add up. So the daemon computes the reports for any move:
 
-```
+```diagram
 tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
-  (+169,+248) (+170,+247) ── speed 300, past the flat end of the table ──▶ 214.9 pt each
-  (+16,+24)               ── speed 28 ─────────────────────────────────▶ 30.0 pt
+  (+169,+248) (+170,+247) ── speed 300, past the flat end of the table ──> 214.9 pt each
+  (+16,+24)               ── speed 28 ─────────────────────────────────> 30.0 pt
   (0,-1)                  ── speed 1: 0.2 pt, lands within 0.2 pt
   100 ms pause, then click                                   ~0.45 s in total
 ```
@@ -221,8 +216,8 @@ The Mac is one Bluetooth mouse and keyboard for all iPhones, but each report goe
 
 **Names do not matter; the id does.** Screen capture and USB lockdown give each iPhone unrelated IDs, and the name is the only field both show. So the daemon matches them once and saves the match in `~/.ghosthand/state.db` (see [State database](#state-database)):
 
-```
-capture id 7EF219AD-...  ──── saved once ────▶  UDID 00008020-...  ──▶  lock state, Bluetooth address
+```diagram
+capture id 7EF219AD-... ── saved once ──> UDID 00008020-... ──> lock state, BT address
    first match: the only new iPhone on USB, or else the only one with that name
 ```
 
@@ -242,11 +237,11 @@ ghosthand rename -l 42 "iPhone XR"      # on the lease's iPhone
 
 **Plan for at most 7 per Mac; 2 are tested.**
 
-| Limit | Value | Why |
-|---|---|---|
-| Bluetooth Classic | 7 connected devices | Apple: "seven is the maximum number of Bluetooth devices that can be connected to your Mac at once; three to four is a practical limit" (https://support.apple.com/en-us/101205). Keyboard, trackpad and AirPods count too |
-| USB | 127 devices per bus | **Not the problem.** Power is: use a powered hub, each iPhone charges while it is controlled |
-| Screen capture CPU | not measured | one video stream per iPhone |
+| Limit              | Value               | Why                                                                                                                                                                                                                         |
+| ------------------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bluetooth Classic  | 7 connected devices | [Apple](https://support.apple.com/en-us/101205): "seven is the maximum number of Bluetooth devices that can be connected to your Mac at once; three to four is a practical limit". Keyboard, trackpad and AirPods count too |
+| USB                | 127 devices per bus | **Not the problem.** Power is: use a powered hub, each iPhone charges while it is controlled                                                                                                                                |
+| Screen capture CPU | not measured        | one video stream per iPhone                                                                                                                                                                                                 |
 
 More than 7 iPhones needs a second Mac. Run a daemon on each one and reach it with `--url` (see [Remote daemon](#remote-daemon)).
 
@@ -263,18 +258,18 @@ sudo scutil --set LocalHostName "lab-mac-1"   # optional: network name, no space
 - The Bluetooth radio uses the computer name. There is **one name per Mac**; ghosthand cannot show its own name next to it.
 - The pairing steps print the name to tap: `tap "Lab Mac 1", then Pair`.
 - An iPhone that paired before the rename can keep showing the old name. Forget the Mac on the iPhone (Settings > Bluetooth > (i) > Forget This Device) and pair again.
-- Apple guide: https://support.apple.com/guide/mac-help/change-computers-local-hostname-mac-mchlp2322/mac
+- Apple guide: [change your Mac's name](https://support.apple.com/guide/mac-help/change-computers-local-hostname-mac-mchlp2322/mac).
 
 ## How the Mac becomes a mouse
 
 The daemon publishes a **Bluetooth Classic HID** service, the same profile a real Bluetooth keyboard uses. macOS has no public API to be a Classic HID device, so it uses CoreBluetooth's private `CBClassicManager` (`Sources/ClassicBluetooth`).
 
-```
+```diagram
 Mac (daemon)                                          iPhone
 ┌──────────────────────────────────┐                 ┌─────────────────────────────┐
-│ SDP record: HID, report map      │ ◀──SDP query─── │ Settings > Bluetooth > Pair │
-│ L2CAP 0x11 control  (handshakes) │ ◀──opens─────── │                             │
-│ L2CAP 0x13 interrupt             │ ──reports─────▶ │ AssistiveTouch              │
+│ SDP record: HID, report map      │ <──SDP query─── │ Settings > Bluetooth > Pair │
+│ L2CAP 0x11 control  (handshakes) │ <──opens─────── │                             │
+│ L2CAP 0x13 interrupt             │ ──reports─────> │ AssistiveTouch              │
 │  report 1: mouse (absolute)      │                 │  pointer + clicks = touches │
 │  report 7: mouse (relative)      │                 │                             │
 │  report 2: keyboard, 6: media    │                 │                             │
@@ -285,10 +280,11 @@ Report 1 is absolute: X and Y go from 0 to 32767, so a screenshot pixel converts
 
 **Clicks in absolute mode go in both reports.** With two mouse collections in the map, iOS 18 ignored the button bits of report 1 over BLE. So a press and release are sent in report 1 and, with zero movement, in report 7.
 
-```
-check:  corner ──▶ move (80,120) pt ──▶ screenshot P1 ──▶ corner ──▶ move (160,120) pt ──▶ P2
-        pointer found in P1 and P2 ──▶ gain = measured / computed (saved in state.db)
-tap:    computed reports from the last known spot ──▶ 100 ms pause ──▶ click
+```diagram
+check:  corner ──> move (80,120) pt ──> screenshot P1
+        corner ──> move (160,120) pt ──> screenshot P2
+        pointer found in P1 and P2 ──> gain = measured / computed (saved in state.db)
+tap:    computed reports from the last known spot ──> 100 ms pause ──> click
 ```
 
 <details>
@@ -306,20 +302,18 @@ tap:    computed reports from the last known spot ──▶ 100 ms pause ──�
 
 Each iPhone reports its **Bluetooth address** over USB lockdown. Its HID link to the Mac uses the same address, so the daemon joins the USB screen and the Bluetooth input by address. No pointer moves, and other connected devices (iPad, other phones) are never touched.
 
-```
-USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────▶ Bluetooth HID link
+```diagram
+USB lockdown  BluetoothAddress ──── EC:CE:D7:A4:9B:C1 ────> Bluetooth HID link
 ```
 
 ### State database
 
-**`~/.ghosthand/state.db` holds SQLite state.** Device matches and pointer modes are caches. The lease counter is durable and must not be reset. One row per iPhone, keyed by Apple's UDID:
+**`~/.ghosthand/state.db` holds SQLite state.** Device matches and pointer modes are caches, one row per iPhone keyed by Apple's UDID. The `lease` table holds active leases, and `lease_counter` keeps the highest issued ID so IDs are never reused (see [Leases](#leases-one-agent-per-iphone)).
 
-The `lease` table holds active leases. `lease_counter` retains the highest issued ID after expiry, release and schema changes (see [Leases](#leases-one-agent-per-iphone)).
-
-```
+```diagram
 phone (USB)                                  bluetooth_pointer (Bluetooth)
 ┌───────────────────────────────────┐        ┌──────────────────────────────────────┐
-│ usb_udid           PK             │◀───────│ usb_udid   PK, FK, ON DELETE CASCADE │
+│ usb_udid           PK             │<───────│ usb_udid   PK, FK, ON DELETE CASCADE │
 │ screen_capture_id  UNIQUE         │        │ mode       absolute | relative       │
 │ capture_matched_by / _at          │        │ gain, screen_width_pt, _height_pt    │
 └───────────────────────────────────┘        │ report_map, found_at                 │
@@ -334,10 +328,10 @@ sqlite3 -header -column ~/.ghosthand/state.db 'SELECT * FROM phone; SELECT * FRO
 # 00008020-000405C214BB002E  absolute                                           classic-a85efc997e025d8f  1790773436
 ```
 
-| Table | Written when | If the row is missing |
-|---|---|---|
-| `phone` | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)) | matched again the same way |
-| `bluetooth_pointer` | the first tap or swipe | iOS 17+: absolute again, no check. Older iOS: the pointer check runs on the next tap |
+| Table               | Written when                                                                                                           | If the row is missing                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `phone`             | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)) | matched again the same way                                                           |
+| `bluetooth_pointer` | the first tap or swipe                                                                                                 | iOS 17+: absolute again, no check. Older iOS: the pointer check runs on the next tap |
 
 - **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, AssistiveTouch.
 - **Bluetooth pairing is not here.** macOS keeps the bond. A phone paired while the daemon was stopped, or with no `state.db`, reconnects on the next command (tested).
@@ -358,27 +352,27 @@ sqlite3 $DB 'DELETE FROM bluetooth_pointer'                                     
 
 ## CLI
 
-| Command | Does |
-|---|---|
-| `list` | iPhones on USB, `[locked]`, their Bluetooth link state, and who leases them |
-| `acquire --reason task [--force] [--idle-timeout s] [--label text]` | take the iPhone for a task; prints the lease id |
-| `wait --reason task [--timeout s]` | wait until another lease ends, then acquire; prints the lease id |
-| `release` | end the lease |
-| `screenshot [-o file.png\|.jpg] [--settle]` | save the screen; `--settle` waits until it stops changing |
-| `screentext [--language it-IT] [--json]` | OCR of the screen: `x,y wxh text` per line. English is always included |
-| `tap <x> <y>` | tap at screenshot coordinates |
-| `tap --text <text> [--index n]` | tap the center of an OCR text line (exact line wins, else contains) |
-| `swipe <x1> <y1> <x2> <y2> [--duration ms]` | drag with the button held (on a list row it taps the row) |
-| `scroll <up\|down> <ticks> [--at x,y]` | mouse wheel scroll, ~100 points per tick; scrolls lists that `swipe` cannot. See [docs/scroll.md](docs/scroll.md) |
-| `key <combo>` | `home`, `enter`, `esc`, `backspace`, arrows, `pageup`, `pagedown`, `end`, `volumeup` |
-| `mute` / `unmute` | silence all iPhone sound, or turn it back on; confirmed from the iPhone log |
-| `type <text> \| type --stdin [--enter]` | validated US-ASCII text; stdin keeps secrets out of arguments |
-| `unlock --stdin` | wake and unlock (or `GHOSTHAND_PASSCODE`); no screenshot while locked |
-| `assistivetouch [on\|off]` | show or set AssistiveTouch over USB; pointer input turns it on by itself |
-| `lock` | lock over Bluetooth with Control-Command-Q |
-| `rename <name>` | set the iPhone's name over USB; the id does not change |
-| `forget` | remove the Mac's Bluetooth bond with the iPhone, to pair again |
-| `daemon start\|stop\|restart\|status\|run` | manage the background daemon |
+| Command                                                             | Does                                                                                                               |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `list`                                                              | iPhones on USB, `[locked]`, their Bluetooth link state, and who leases them                                        |
+| `acquire --reason task [--force] [--idle-timeout s] [--label text]` | take the iPhone for a task; prints the lease id                                                                    |
+| `wait --reason task [--timeout s]`                                  | wait until another lease ends, then acquire; prints the lease id                                                   |
+| `release`                                                           | end the lease                                                                                                      |
+| `screenshot [-o file.png\|.jpg] [--settle]`                         | save the screen; `--settle` waits until it stops changing                                                          |
+| `screentext [--language it-IT] [--json]`                            | OCR of the screen: `x,y wxh text` per line. English is always included                                             |
+| `tap <x> <y>`                                                       | tap at screenshot coordinates                                                                                      |
+| `tap --text <text> [--index n]`                                     | tap the center of an OCR text line (exact line wins, else contains)                                                |
+| `swipe <x1> <y1> <x2> <y2> [--duration ms]`                         | drag with the button held (on a list row it taps the row)                                                          |
+| `scroll <up\|down> <ticks> [--at x,y]`                              | mouse wheel scroll, \~100 points per tick; scrolls lists that `swipe` cannot. See [docs/scroll.md](docs/scroll.md) |
+| `key <combo>`                                                       | `home`, `enter`, `esc`, `backspace`, arrows, `pageup`, `pagedown`, `end`, `volumeup`                               |
+| `mute` / `unmute`                                                   | silence all iPhone sound, or turn it back on; confirmed from the iPhone log                                        |
+| `type <text> \| type --stdin [--enter]`                             | validated US-ASCII text; stdin keeps secrets out of arguments                                                      |
+| `unlock --stdin`                                                    | wake and unlock (or `GHOSTHAND_PASSCODE`); no screenshot while locked                                              |
+| `assistivetouch [on\|off]`                                          | show or set AssistiveTouch over USB; pointer input turns it on by itself                                           |
+| `lock`                                                              | lock over Bluetooth with Control-Command-Q                                                                         |
+| `rename <name>`                                                     | set the iPhone's name over USB; the id does not change                                                             |
+| `forget`                                                            | remove the Mac's Bluetooth bond with the iPhone, to pair again                                                     |
+| `daemon start\|stop\|restart\|status\|run`                          | manage the background daemon                                                                                       |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
 
@@ -403,9 +397,9 @@ ghosthand unmute -l 42
 
 The keyboard Mute key (consumer `0xE2`) toggles iOS **full mute**: all output, media in every app too. The ringer switch does not silence app media. iOS has no mute state readable over USB lockdown, so the daemon reads SpringBoard's log line after each press:
 
-```
-Mac ──BT Mute key──▶ SpringBoard ──FullMute──▶ audiomxd
- ▲                       │
+```diagram
+Mac ──BT Mute key──> SpringBoard ──FullMute──> audiomxd
+ ^                       │
  └──USB syslog_relay─────┘  "Updated fullyMuted to true"
 ```
 
@@ -425,12 +419,12 @@ Verification failure stops the command before optional screenshot/OCR output. Re
 
 **Environment variables** set a default for every command; a flag overrides them:
 
-| Variable | Same as | Example |
-|---|---|---|
-| `GHOSTHAND_LANGUAGE` | `--language` (OCR in `screentext`, `--screentext`, `tap --text`) | `it-IT` |
-| `GHOSTHAND_SCALE` | `--scale` (image and coordinate size) | `1` for native pixels |
-| `GHOSTHAND_PASSCODE` | passcode for `unlock` | user-confirmed secret; prefer `unlock --stdin` |
-| `GHOSTHAND_LEASE` | `-l, --lease` (every device command) | supported, but agents must pass `-l 42` explicitly |
+| Variable             | Same as                                                          | Example                                            |
+| -------------------- | ---------------------------------------------------------------- | -------------------------------------------------- |
+| `GHOSTHAND_LANGUAGE` | `--language` (OCR in `screentext`, `--screentext`, `tap --text`) | `it-IT`                                            |
+| `GHOSTHAND_SCALE`    | `--scale` (image and coordinate size)                            | `1` for native pixels                              |
+| `GHOSTHAND_PASSCODE` | passcode for `unlock`                                            | user-confirmed secret; prefer `unlock --stdin`     |
+| `GHOSTHAND_LEASE`    | `-l, --lease` (every device command)                             | supported, but agents must pass `-l 42` explicitly |
 
 ## Leases: one agent per iPhone
 
@@ -442,12 +436,12 @@ ghosthand tap -l 42 207 448    # runs on the lease's iPhone; no -d
 ghosthand release -l 42
 ```
 
-```
-agent A: acquire ──▶ lease 42 ──▶ tap -l 42, type -l 42 ────────▶ release -l 42
-agent B:       acquire ──▶ error: in use by "ses_123" for "reply to Anna":
+```diagram
+agent A: acquire ──> lease 42 ──> tap -l 42, type -l 42 ────────> release -l 42
+agent B:       acquire ──> error: in use by "ses_123" for "reply to Anna":
                            acquired 2m3s ago, last command 4s ago, ends after 9m56s idle
 agent B:       decides: give up / tell the user, or
-               wait --reason "..." --timeout 600 ─────── waits ──────▶ lease 43
+               wait --reason "..." --timeout 600 ─────── waits ──────> lease 43
 ```
 
 - **Always pass `--reason`** with the task. A busy `acquire` fails at once and shows the label, its reason, when it was acquired and its last command, so the next agent can decide to give up instead of waiting.
@@ -466,11 +460,11 @@ agent B:       decides: give up / tell the user, or
 
 **Screenshots, `screentext` boxes, `tap` and `swipe` use one space: iOS screen points.** A point is 2 native pixels on @2x iPhones and 3 on @3x ones, so an iPhone XR (828x1792) gives a 414x896 image. Plus models are the exception: they render at 1080 px for 414 points, and ghosthand knows the native size of each iPhone screen. Read a spot in the image, send the same numbers.
 
-| iPhone | Native pixels | Default (points) | Claude tokens | GPT tokens (32 px patches x1.2) |
-|---|---|---|---|---|
-| 6s (@2x) | 750x1334 | 375x667 | 336 | 303 |
-| XR (@2x) | 828x1792 | 414x896 | 480 | 437 |
-| 14 Pro (@3x) | 1179x2556 | 393x852 | 465 | 422 |
+| iPhone       | Native pixels | Default (points) | Claude tokens | GPT tokens (32 px patches x1.2) |
+| ------------ | ------------- | ---------------- | ------------- | ------------------------------- |
+| 6s (@2x)     | 750x1334      | 375x667          | 336           | 303                             |
+| XR (@2x)     | 828x1792      | 414x896          | 480           | 437                             |
+| 14 Pro (@3x) | 1179x2556     | 393x852          | 465           | 422                             |
 
 **Why points:** UI text stays readable (17 pt body text is 17 px). A screenshot costs about a quarter of the native tokens on @2x iPhones and an eighth on @3x. It also stays under every model's resize limit, so the model sees exactly the pixels the CLI maps back. Claude models before 4.7 shrink anything over 1568 px or 1568 tokens (28 px patches), and an XR screen at native size would be shrunk to an unknown scale ([Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision#resolution-and-token-cost), [OpenAI vision](https://platform.openai.com/docs/guides/images-vision#calculating-costs)).
 
@@ -503,31 +497,29 @@ error: No iPhone in macOS screen capture. USB check:
 
 **Bluetooth link state** comes from the iPhone's Bluetooth address (read over USB) and the Mac's open HID channels. `list` starts Bluetooth and reconnects paired phones:
 
-| State | Meaning |
-|---|---|
-| `connected` | input works |
+| State          | Meaning                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connected`    | input works                                                                                                                                 |
 | `disconnected` | paired; the Mac reconnects in about 2 s. If it stays, Bluetooth is off on the iPhone or it is out of range. The Mac cannot tell these apart |
-| `not paired` | pair from iPhone Settings > Bluetooth; the next input command waits for it |
+| `not paired`   | pair from iPhone Settings > Bluetooth; the next input command waits for it                                                                  |
 
 It waits (up to 25 s) only for a trusted phone, which capture can list a few seconds after a daemon start.
 
 **Locked phones stay listed.** The daemon reads `PasswordProtected` from iOS lockdown over the trusted USB connection using macOS's private `MobileDevice.framework`. It does not need a screen frame. `[locked]` means the passcode is required; its absence means lockdown reports unlocked. If the lock state cannot be read, the field is absent. Capture and lockdown IDs differ; see [More iPhones](#more-iphones) for how they are matched.
 
-**One-phone example:** this Mac listed one iPhone with `[locked]` at the start of the test. After `unlock`, the same device remained listed without `[locked]`. The Bluetooth suffix means the previously paired mouse/keyboard is connected. It is not a second device.
-
 ## Agent feedback loop
 
 **Each tool call is the slow part**, not the phone. So an action returns the new screen in the same call: `--screenshot` saves it, `--screentext` prints its text. One call per step instead of three.
 
-```
-      ┌──────────────────────────────────────────────────────────────┐
-      ▼                                                              │
- 1. see the screen          screentext (text + boxes, no image)       │
-                            or screenshot -o s.png (~500 tokens)      │
- 2. act, and see the result tap / swipe / key / type                  │
-                            + --screenshot s.png --screentext         │
- 3. read the printed text, and s.png if the text is not enough        │
- 4. decide the next action toward the user's task  ───────────────────┘
+```diagram
+      ┌─────────────────────────────────────────────────────────────────┐
+      v                                                                 │
+ 1. see the screen           screentext (text + boxes, no image)        │
+                             or screenshot -o s.png (~500 tokens)       │
+ 2. act, and see the result  tap / swipe / key / type                   │
+                             + --screenshot s.png --screentext          │
+ 3. read the printed text, and s.png if the text is not enough          │
+ 4. decide the next action toward the user's task  ─────────────────────┘
 ```
 
 ```bash
@@ -564,22 +556,23 @@ ghosthand release -l 42
 ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full screen returns
 ```
 
-**A dialog that USB capture does not show** (seen once: the App Store location prompt, with the page dimmed) cannot be dismissed with Enter, Esc, Space, Tab or a center tap in our tests. It needs a person on the phone. Ask the user to press **Don't Allow**. Apple documents Tab, Shift+Tab and Space for Full Keyboard Access ([guide](https://support.apple.com/en-euro/guide/iphone/ipha4375873f/ios)), but that setting is off by default.
+**Some iOS dialogs are invisible to USB capture and OCR** (tested on an XR, iOS 18.7: the App Store location prompt, the Install sheet, the cellular-data prompt). The page behind looks dimmed or unchanged, and `screentext` shows no dialog. Take a `screenshot`, read the image, and tap by position. Enter, Esc, Space, Tab and a center tap did not dismiss the location prompt: a person had to tap **Don't Allow**. Apple documents Tab and Space for [Full Keyboard Access](https://support.apple.com/en-euro/guide/iphone/ipha4375873f/ios), but that setting is off by default.
 
-**Some iOS dialogs are invisible to USB capture and OCR** (tested on an XR, iOS 18.7: the App Store location prompt, the Install sheet, the cellular-data prompt). The page behind looks dimmed or unchanged, and `screentext` shows no dialog. Take `screenshot` and read the image, then tap by position. Esc, Enter, Space, Tab and a center tap did not dismiss the location prompt; a person had to tap **Don't Allow**. Secure password fields also freeze frames for 10 to 30 seconds: wait, do not type again.
+**Secure password fields freeze frames** for 10 to 30 seconds. Wait; do not type again.
 
-**Leave the iPhone unlocked.** Do not run `ghosthand lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
-
-**Agents:** `.passcode` is stale. Never read it. Use only the user-confirmed Sigillo `IPHONE_PASSCODE`, piped directly to `ghosthand unlock -l 42 --stdin`, without printing it or putting it in arguments. Do not retry a failed unlock.
+> [!IMPORTANT]
+> **Leave the iPhone unlocked.** Do not run `ghosthand lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`.
 
 ## Unlock
 
 **`unlock` does not use OCR.** USB screen capture does not yield frames while this iPhone is locked, so it cannot inspect the passcode screen. The Bluetooth mouse and keyboard run a timed sequence:
 
-```
-click ──▶ screen on ──▶ two fast swipes up ──▶ check USB lock state for 4 s
-                                              ├─ unlocked by Face ID ──▶ done
-                                              └─ still locked ──▶ type passcode once ──▶ check lock state
+```diagram
+click ──> screen on ──> two fast swipes up ──> check USB lock state for 4 s
+                                                 ├─ unlocked by Face ID ──> done
+                                                 └─ still locked
+                                                      └──> type passcode once
+                                                             └──> check lock state
 ```
 
 - **Keys cannot wake the screen.** iOS treats our keys as coming from a mouse and drops them on the lock screen. A click usually wakes it.
@@ -591,7 +584,7 @@ click ──▶ screen on ──▶ two fast swipes up ──▶ check USB lock 
 
 ## HTTP API
 
-The daemon serves HTTP on a unix socket. The spec is at `GET /v1/openapi.yaml`.
+**The daemon serves HTTP on a unix socket**, described by OpenAPI at `GET /v1/openapi.yaml`. Any language with an HTTP client can drive it.
 
 ```bash
 S=~/.ghosthand/daemon.sock
@@ -621,16 +614,19 @@ GHOSTHAND_TOKEN=secret ghosthand daemon start --port 7420 --host 0.0.0.0 \
 ghosthand --url https://mac.local:7420 --token secret --ca cert.pem list
 ```
 
-A host other than localhost needs TLS, so the token never crosses the network in clear text.
+**A host other than localhost needs TLS**, so the token never crosses the network in clear text.
 
 ## Security
 
-**Whoever reaches the daemon can use the iPhone like a person holding it**: open apps, read messages, type. Everything runs on your Mac; no account, no cloud, nothing installed on the iPhone.
+> [!WARNING]
+> **Whoever reaches the daemon can use the iPhone like a person holding it**: open apps, read messages, type.
 
-```
-who can reach the phone                         how
-local user who owns ~/.ghosthand ──────────────▶ unix socket, file mode 0600
-remote client ─────────────────────────────────▶ TCP only with --port, Bearer token, TLS off localhost
+Everything runs on your Mac. No account, no cloud, nothing installed on the iPhone.
+
+```diagram
+who can reach the phone              how
+local user who owns ~/.ghosthand ──> unix socket, file mode 0600
+remote client ─────────────────────> TCP with --port: Bearer token, TLS off localhost
 ```
 
 The iPhone accepts input only from a Mac that has **all three**:
@@ -641,12 +637,12 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 **Cut access** by removing any one of them:
 
-| Action | Effect |
-|---|---|
-| `ghosthand daemon stop` | no screenshots, no input, until the next command starts it |
-| unplug the cable | no screenshots and no input: every command finds the phone over USB first |
-| iPhone: Settings > Bluetooth > the Mac > (i) > Forget This Device | no input until you pair again |
-| iPhone: Settings > General > Transfer or Reset > Reset > Reset Location & Privacy | removes the USB trust of every computer |
+| Action                                                                            | Effect                                                                    |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `ghosthand daemon stop`                                                           | no screenshots, no input, until the next command starts it                |
+| unplug the cable                                                                  | no screenshots and no input: every command finds the phone over USB first |
+| iPhone: Settings > Bluetooth > the Mac > (i) > Forget This Device                 | no input until you pair again                                             |
+| iPhone: Settings > General > Transfer or Reset > Reset > Reset Location & Privacy | removes the USB trust of every computer                                   |
 
 - **The passcode is never stored.** `unlock` gets it per call; prefer a direct pipe to `unlock -l 42 --stdin`, not an argument.
 - **Apple Pay still needs you.** It asks for a double press of the side button, which the Mac cannot press.
@@ -699,9 +695,9 @@ error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames si
 2. QuickTime Player > **File > New Movie Recording**
 3. Click the **⌄** arrow next to the record button. Under **Camera**:
 
-| Entry | What it is |
-|---|---|
-| `Morse’s iPhone (2)` | the iPhone **screen** over USB (what ghosthand uses) |
+| Entry                       | What it is                                            |
+| --------------------------- | ----------------------------------------------------- |
+| `Morse’s iPhone (2)`        | the iPhone **screen** over USB (what ghosthand uses)  |
 | `Morse’s iPhone (2) Camera` | the iPhone camera (Continuity Camera), not the screen |
 
 - **Screen entry shows the live screen:** capture works; the problem is on the Mac side.
@@ -710,29 +706,40 @@ error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames si
 
 ## Alternatives
 
-| | ghosthand | iPhone Mirroring | Appium (XCUITest) |
-|---|---|---|---|
-| App on the iPhone | none | none | WebDriverAgent (signed) |
-| Xcode, Developer Mode | no | no | yes |
-| Screen | USB capture | Wi-Fi mirror | XCTest |
-| Input | Bluetooth Classic HID | Mac input | XCTest |
-| iOS 15 | yes over BLE (relative pointer); not tested over Classic | no (iOS 18+) | yes |
-| Unlock with passcode | yes | no | no |
-| iPhones per Mac | ~7, 2 tested | 1 | many |
-| Account, cloud | none, local daemon | same Apple ID on Mac and iPhone | none |
+|                       | ghosthand                                                | iPhone Mirroring                | Appium (XCUITest)       |
+| --------------------- | -------------------------------------------------------- | ------------------------------- | ----------------------- |
+| App on the iPhone     | none                                                     | none                            | WebDriverAgent (signed) |
+| Xcode, Developer Mode | no                                                       | no                              | yes                     |
+| Screen                | USB capture                                              | Wi-Fi mirror                    | XCTest                  |
+| Input                 | Bluetooth Classic HID                                    | Mac input                       | XCTest                  |
+| iOS 15                | yes over BLE (relative pointer); not tested over Classic | no (iOS 18+)                    | yes                     |
+| Unlock with passcode  | yes                                                      | no                              | no                      |
+| iPhones per Mac       | \~7, 2 tested                                            | 1                               | many                    |
+| Account, cloud        | none, local daemon                                       | same Apple ID on Mac and iPhone | none                    |
+
+## Publish to npm
+
+**`npm/` is the npm package.** `pnpm build` there compiles arm64 and x86_64 release builds, merges them with `lipo` into one universal `npm/dist/ghosthand`, and checks that `ghosthand --version` matches `package.json`. Bump `ghosthandVersion` in `Sources/ghosthand/daemon.swift` and the package version together.
+
+```bash
+cd npm
+pnpm publish   # prepublishOnly cleans dist and runs the build
+```
 
 <details>
 <summary>Architecture</summary>
 
-```
+```diagram
 CLI / curl / any language
    │ HTTP over ~/.ghosthand/daemon.sock (mode 0600, no token)
    │ HTTP or HTTPS over TCP with --port (Bearer token)
-   ▼
-Hummingbird ──▶ generated API (openapi.yaml) ──▶ own thread ──▶ Controller
-                                                                  ├─ FrameStream per iPhone (AVFoundation), OCR (Vision)
-                                                                  ├─ Lockdown lock state (MobileDevice.framework)
-                                                                  └─ HIDDevice (Bluetooth Classic HID, private CBClassicManager)
+   v
+Hummingbird ──> generated API (openapi.yaml) ──> own thread ──> Controller
+                                                                  │
+      ┌───────────────────────────────────────┬───────────────────┤
+      v                                       v                   v
+  FrameStream per iPhone (AVFoundation)   Lockdown lock state     HIDDevice: BT Classic
+  OCR (Vision)                            (MobileDevice)          HID, CBClassicManager
 ```
 
 - `Sources/ghosthand/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.

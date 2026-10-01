@@ -330,6 +330,25 @@ secret-provider | iphonectl type -l 42 --stdin
 
 One final **LF or CRLF** is removed. Other whitespace is preserved. LF sends Enter and tab moves focus. `--keep-final-newline` preserves LF; `--enter` adds one more Enter. Unsupported controls, invalid UTF-8 and non-ASCII fail before input.
 
+### Mute
+
+**`mute` sets a state; it does not toggle.** It is safe to run twice.
+
+```bash
+iphonectl mute -l 42     # muted iPhone XR Tommy
+iphonectl unmute -l 42
+```
+
+The keyboard Mute key (consumer `0xE2`) toggles iOS **full mute**: all output, media in every app too. The ringer switch does not silence app media. iOS has no mute state readable over USB lockdown, so the daemon reads SpringBoard's log line after each press:
+
+```
+Mac ──BT Mute key──▶ SpringBoard ──FullMute──▶ audiomxd
+ ▲                       │
+ └──USB syslog_relay─────┘  "Updated fullyMuted to true"
+```
+
+If the phone was already in the asked state, the first press toggles it away and a second press toggles it back (about 50 ms of sound). No log line in 3 s fails with `mute-unconfirmed` and no second press. Tested on an XR, iOS 18.7. Full mute stays on when screen capture starts or stops.
+
 ### Bounded text verification
 
 **Send once, then check OCR.** `tap`, `swipe`, `scroll`, `key`, `type` and `wake` accept an expected case-insensitive text substring:

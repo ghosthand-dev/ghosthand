@@ -66,6 +66,8 @@ To compile it yourself, see [Build from source](#build-from-source).
 
 **Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch and keep-awake are automatic. Screenshots work after you plug in, trust, and unlock the iPhone.
 
+**Prefer a window?** `ghosthand app` opens a small setup window that shows the step you are on (plug in, trust, unlock, pair), updates by itself, and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
+
 ### 1. Plug in and trust
 
 Connect the iPhone over USB, unlock it, and tap **Trust**. Then check:

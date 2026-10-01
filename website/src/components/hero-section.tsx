@@ -86,7 +86,7 @@ export function HeroSection() {
             href={GITHUB_URL}
             target='_blank'
             rel='noopener noreferrer'
-            className={`${BUTTON} border-primary bg-primary text-primary-foreground hover:bg-primary/90`}
+            className={`${BUTTON} border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80`}
           >
             GitHub Repo ↗
           </a>

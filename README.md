@@ -521,6 +521,16 @@ iphonectl release -l 42
 - **Failed capture after an action:** the error says **action completed**. Do not repeat the action blindly; take a screenshot first.
 - **No frames:** `screenshot` and `screentext` reject a locked iPhone quickly. If `list` reports unlocked but capture still gets no frame, see [USB screen capture stops](#usb-screen-capture-stops-ios-bug-restart-the-daemon-then-the-iphone).
 
+**Screen shrunk to the bottom half? That is iOS Reachability, not a hidden dialog.** The app and its sheets slide down, the top half is empty, and a sheet can look stale or dimmed. A tap in the empty top area restores it (tested on an XR, iOS 18.7: `tap 207 100`). Check for it first when a screen looks wrong. A stale screen can also come from a secure field: tap outside it and read again.
+
+```bash
+iphonectl tap 207 100 --screenshot s.png --screentext   # empty top area: full screen returns
+```
+
+**A dialog that USB capture does not show** (seen once: the App Store location prompt, with the page dimmed) cannot be dismissed with Enter, Esc, Space, Tab or a center tap in our tests. It needs a person on the phone. Ask the user to press **Don't Allow**. Apple documents Tab, Shift+Tab and Space for Full Keyboard Access ([guide](https://support.apple.com/en-euro/guide/iphone/ipha4375873f/ios)), but that setting is off by default.
+
+**Some iOS dialogs are invisible to USB capture and OCR** (tested on an XR, iOS 18.7: the App Store location prompt, the Install sheet, the cellular-data prompt). The page behind looks dimmed or unchanged, and `screentext` shows no dialog. Take `screenshot` and read the image, then tap by position. Esc, Enter, Space, Tab and a center tap did not dismiss the location prompt; a person had to tap **Don't Allow**. Secure password fields also freeze frames for 10 to 30 seconds: wait, do not type again.
+
 **Leave the iPhone unlocked.** Do not run `iphonectl lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`; use `lock` only when the task explicitly needs a locked phone.
 
 **Agents:** `.passcode` is stale. Never read it. Use only the user-confirmed Sigillo `IPHONE_PASSCODE`, piped directly to `iphonectl unlock -l 42 --stdin`, without printing it or putting it in arguments. Do not retry a failed unlock.

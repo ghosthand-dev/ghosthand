@@ -66,7 +66,7 @@ To compile it yourself, see [Build from source](#build-from-source).
 
 **Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch and keep-awake are automatic. Screenshots work after you plug in, trust, and unlock the iPhone.
 
-**Prefer a window?** `ghosthand app` opens a small setup window that shows the step you are on (plug in, trust, unlock, pair), updates by itself, and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
+**Prefer a window?** `ghosthand setup` opens a small setup window that shows the step you are on (plug in, trust, unlock, pair), with tips for each one. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
 
 ### 1. Plug in and trust
 
@@ -158,6 +158,27 @@ ghosthand type "on my way" --enter --screentext
 
 See [Agent feedback loop](#agent-feedback-loop) for the rules the agent follows.
 
+## Control plane: watch your agents
+
+**Many agents, many iPhones?** `ghosthand app` opens a window that shows what each one is doing:
+
+```diagram
+┌ iPhones on USB ──────┐┌ Morse’s iPhone   iPhone XR · iOS 18.7                     ● In use ┐
+│ ● Morse’s iPhone   1 ││ ┌──────────┐   Agent         ses_f089c49bfffe                      │
+│   reply to Anna      ││ │  live    │   Task          reply to Anna in Messages             │
+│ ● Test iPhone        ││ │  screen  │   Last command  tap · 4s ago                          │
+│ ● iPhone 15          ││ │  (2 s)   │   Waiting       ses_f08a12c3 · install Reddit         │
+│ + Set Up iPhone…     ││ └──────────┘   Connection · Device ids                             │
+└──────────────────────┘└────────────────────────────────────────────────────────────────────┘
+```
+
+- **Sidebar:** each iPhone with a status dot: blue in use, green free, orange locked, yellow connecting, red needs setup. A badge counts agents waiting for it.
+- **Lease:** agent label, task, lease age, last command, idle timeout, and agents running `ghosthand wait`.
+- **Screen:** small and read-only, refreshed every 2 s. It needs no lease and does not reset the agent's idle timer.
+- **Connection and ids:** USB, Bluetooth, pointer mode, AssistiveTouch, and the device id to copy for `acquire -d`.
+
+`app` and `setup` share one process; running either again brings its window to the front. Both read `GET /v1/phones` (see [HTTP API](#http-api)).
+
 ## Agent feedback loop
 
 **Each tool call is the slow part**, not the phone. So an action returns the new screen in the same call: `--screenshot` saves it, `--screentext` prints its text. One call per step instead of three.
@@ -237,6 +258,8 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 | `lock`                                                              | lock over Bluetooth with Control-Command-Q                                                                         |
 | `rename <name>`                                                     | set the iPhone's name over USB; the id does not change                                                             |
 | `forget`                                                            | remove the Mac's Bluetooth bond with the iPhone, to pair again                                                     |
+| `setup`                                                             | window for people: connect a new iPhone step by step                                                               |
+| `app`                                                               | window for people: every iPhone, its agent, task, last command and live screen                                     |
 | `daemon start\|stop\|restart\|status\|run`                          | manage the background daemon                                                                                       |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
@@ -512,6 +535,7 @@ click ──> screen on ──> two fast swipes up ──> check USB lock state 
 ```bash
 S=~/.ghosthand/daemon.sock
 curl --unix-socket $S http://localhost/v1/devices
+curl --unix-socket $S http://localhost/v1/phones   # setup step, lease, last command, waiting agents
 curl --unix-socket $S -H 'content-type: application/json' \
   -d '{"device":"default","label":"curl","reason":"reply to Anna"}' http://localhost/v1/leases   # {"id":"42",…}
 L=http://localhost/v1/leases/42

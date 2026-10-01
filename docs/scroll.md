@@ -1,11 +1,11 @@
 ---
 title: Scrolling with the HID mouse wheel
-description: How `iphonectl scroll` sends wheel reports, what iOS does with them, and the numbers measured on an iPhone XR (iOS 18.7).
+description: How `ghosthand scroll` sends wheel reports, what iOS does with them, and the numbers measured on an iPhone XR (iOS 18.7).
 ---
 
 # Scrolling with the HID mouse wheel
 
-`iphonectl scroll down 5` scrolls **like a real mouse wheel**. It does not drag.
+`ghosthand scroll down 5` scrolls **like a real mouse wheel**. It does not drag.
 
 ```
 scroll down 5
@@ -77,5 +77,5 @@ Horizontal scroll would be AC Pan (Consumer page 0x0238). Report 7 has no AC Pan
 ## Other implementations
 
 - [yoyicue/glassbox picokvm_ipad_wheel.md](https://github.com/yoyicue/glassbox/blob/main/docs/reference/picokvm_ipad_wheel.md): USB gadget (PicoKVM) on iPad, wheel-only report id 2 next to an absolute report id 1: 9/9 scrolled. One tick is barely visible; use batches of 5-10+, 40 ms apart. Wheel was ignored until the gadget re-enumerated once (unexplained "activation"). Adding Wheel to the absolute report made iPad reject the device. iPhone 17: 30 ticks moved a fixed ±599 px after warm-up.
-- [egarl004/mirrordeck BluetoothHID.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/BluetoothHID.swift): the same design as iphonectl (Mac as Bluetooth Classic HID, iPhone with AssistiveTouch). Absolute report 2 without wheel, relative report 3 with Wheel (0x38, -127...127); `scroll()` sends the wheel on the relative report. It forwards live Mac scroll events (`scrollingDeltaY / 8` notches, [InputController.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/InputController.swift)), so the continuous stream hides the dropped first reports.
+- [egarl004/mirrordeck BluetoothHID.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/BluetoothHID.swift): the same design as ghosthand (Mac as Bluetooth Classic HID, iPhone with AssistiveTouch). Absolute report 2 without wheel, relative report 3 with Wheel (0x38, -127...127); `scroll()` sends the wheel on the relative report. It forwards live Mac scroll events (`scrollingDeltaY / 8` notches, [InputController.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/InputController.swift)), so the continuous stream hides the dropped first reports.
 - [T-vK/ESP32-BLE-Mouse](https://github.com/T-vK/ESP32-BLE-Mouse/blob/master/BleMouse.cpp): BLE mouse, one report with buttons, X, Y, Wheel (0x38) and AC Pan (0x0238), each signed 8-bit.

@@ -1,0 +1,21 @@
+{
+  "name": "ghosthand-website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@holocron.so/vite": "^0.36.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest"
+  }
+}

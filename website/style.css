@@ -1,0 +1,23 @@
+/* Holocron already imports Tailwind; @reference avoids duplicate style layers. */
+@reference 'tailwindcss';
+@custom-variant dark (&:where(.dark, .dark *));
+
+@font-face {
+  font-family: 'IvarText';
+  src: url('/fonts/ivartext-regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --content-max-width: 1200px;
+  /* Warm off-white, same as sigillo */
+  --background: #fdfcfb;
+  --sidebar: #f8f7f6;
+
+  @variant dark {
+    --background: var(--color-neutral-950);
+    --sidebar: var(--color-neutral-950);
+  }
+}

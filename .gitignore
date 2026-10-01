@@ -1,3 +1,5 @@
 .build/
 tmp/
 .passcode
+node_modules/
+dist/

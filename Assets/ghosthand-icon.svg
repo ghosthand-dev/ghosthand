@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#9a9aa0"/>
-      <stop offset="1" stop-color="#5e5e64"/>
+      <stop offset="0" stop-color="#6b63f2"/>
+      <stop offset="1" stop-color="#4f46e5"/>
     </linearGradient>
     <linearGradient id="ghost" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff"/>
       <stop offset="1" stop-color="#e2e2e6"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.22"/>
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.3"/>
     </filter>
   </defs>
   <!-- macOS icon grid: 824 pt tile centered in 1024 -->
@@ -17,9 +17,9 @@
   <!-- ghost: round head, straight sides, four soft scallops at the hem -->
   <path filter="url(#shadow)" fill="url(#ghost)" d="M 512 250 C 650 250 730 350 730 480 L 730 744 Q 675.5 812 621 744 Q 566.5 812 512 744 Q 457.5 812 403 744 Q 348.5 812 294 744 L 294 480 C 294 350 374 250 512 250 Z"/>
   <!-- eyes -->
-  <ellipse cx="452" cy="478" rx="30" ry="40" fill="#3a3a3f"/>
-  <ellipse cx="584" cy="478" rx="30" ry="40" fill="#3a3a3f"/>
+  <ellipse cx="452" cy="478" rx="30" ry="40" fill="#26244f"/>
+  <ellipse cx="584" cy="478" rx="30" ry="40" fill="#26244f"/>
   <!-- cheeks -->
-  <ellipse cx="418" cy="548" rx="26" ry="14" fill="#c9c9cf"/>
-  <ellipse cx="618" cy="548" rx="26" ry="14" fill="#c9c9cf"/>
+  <ellipse cx="418" cy="548" rx="26" ry="14" fill="#c9c6f7"/>
+  <ellipse cx="618" cy="548" rx="26" ry="14" fill="#c9c6f7"/>
 </svg>

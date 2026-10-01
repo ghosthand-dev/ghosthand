@@ -117,7 +117,7 @@ ghosthand key home  # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 
 ### 4. Keep awake (automatic)
 
-**No need to change Auto-Lock.** The daemon keeps every iPhone connected over Bluetooth awake, leased or not, so it is always ready for the next command:
+**No need to change Auto-Lock.** The daemon keeps every iPhone connected over both USB and Bluetooth awake, leased or not, so it is always ready for the next command:
 
 ```diagram
 daemon, every 2 s ──> iPhone idle for 10 s? ──yes──> Left Control press (Bluetooth)
@@ -128,7 +128,7 @@ daemon, every 2 s ──> iPhone idle for 10 s? ──yes──> Left Control pr
 - **No visible effect.** A lone Control key types nothing and shows no pointer, so screenshots stay clean. It works with AssistiveTouch off.
 - **Never between input.** A tap or typed text holds the Bluetooth link; the key waits for it.
 - **It does not wake the phone.** iOS drops keys while the display is off or locked. Lock it with the side button and it stays locked.
-- **To let the iPhone lock by itself**, unplug it or stop the daemon (`ghosthand daemon stop`).
+- **To let the iPhone lock by itself**, unplug USB or stop the daemon (`ghosthand daemon stop`). Keep-awake stops on the next check (every 2 seconds).
 
 Tested on an iPhone XR, iOS 18.7, Auto-Lock 30 seconds: without the key SpringBoard dims at 20 s; with it, no dim for 75 s, with and without AssistiveTouch.
 
@@ -700,7 +700,7 @@ sqlite3 -header -column ~/.ghosthand/state.db 'SELECT * FROM phone; SELECT * FRO
 - **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, the AssistiveTouch setting.
 - **Bluetooth pairing is not here.** macOS keeps the bond. A phone paired while the daemon was stopped, or with no `state.db`, reconnects on the next command (tested).
 - **A saved match is never changed by itself**, even while its phone is missing from one list during a plug-in. If one is wrong, delete its `phone` row (below).
-- **Schema changes preserve the lease counter.** Cache tables can be recreated, but IDs must keep increasing.
+- **Schema migrations preserve state.** Version 5 → 6 adds AssistiveTouch ownership without deleting matches, pointer settings, leases or the lease counter. Newer or unsupported schemas are refused without deleting data. Never delete `state.db` to bypass that error.
 
 **Fix a bad state** with `sqlite3`, also while the daemon runs (it keeps no copy in memory). Turn on `foreign_keys`: the `sqlite3` shell has it off, and without it the pointer row is not deleted with its phone.
 

@@ -77,10 +77,6 @@ export function HeroSection() {
           <span>with AI agents</span>
         </h1>
 
-        <p className='max-w-[520px] text-base text-muted-foreground'>
-          Screenshots over USB, taps over Bluetooth. No jailbreak, no Xcode, no app on the phone.
-        </p>
-
         <div className='flex gap-3 flex-wrap justify-center'>
           <a
             href={GITHUB_URL}

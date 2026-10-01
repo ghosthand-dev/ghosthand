@@ -17,6 +17,22 @@ Agents learn ghosthand from `ghosthand --help` and `ghosthand <command> --help` 
 
 When you find a new limit or a rule while testing on a real iPhone, add it to the matching command's `details` first, then to the README if a human needs it too. Keep help text short and concrete: say what to do, not only what went wrong.
 
+# Two front ends: CLI and MCP
+
+The daemon has two thin front ends over the same `Controller` calls. Keep them equal:
+
+```
+ghosthand CLI (main.swift) ──HTTP /v1/... (api.swift, openapi.yaml)──┐
+                                                                     ├──> Controller
+MCP clients ──POST /mcp (mcp.swift, one tool per CLI command)────────┘
+```
+
+- **Logic goes in the daemon**, never in a front end. If the CLI or a tool needs OCR, polling, retries or matching, add it to `Controller` and expose it on the HTTP route, so both front ends share it.
+- **One manual for both.** MCP tool descriptions and instructions are built from the CLI help (`mcpDocs()` in `main.swift`): `description`, `details`, option names, `examples`, `agentLoopHelp`. Write help text there, never a second copy in `mcp.swift`.
+- **A new route or capability gets both.** Add the HTTP route (`openapi.yaml` + `api.swift`), the CLI command or flag (`main.swift`), and the MCP tool or argument (`tools` in `mcp.swift`) in the same change. A tool name is the CLI command name.
+- **A new CLI flag needs its MCP argument:** add it to the tool's `properties`, and to `MCPDescription.arguments` (flag -> argument) or `MCPDescription.positionals`. Otherwise its examples are dropped from the tool description without an error.
+- **Check both:** `swift test` covers the MCP protocol and the description conversion. For a real check, run the daemon with `--port` and call `tools/list` (see `ghosthand mcp --help`).
+
 # Relative pointer (iOS 15)
 
 Read `docs/relative-pointer.md` before changing relative pointer code: the acceleration table, the measurements, and the timing rules (150 ms after homing, 100 ms before a press).

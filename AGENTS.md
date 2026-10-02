@@ -22,16 +22,19 @@ When you find a new limit or a rule while testing on a real iPhone, add it to th
 The daemon has two thin front ends over the same `Controller` calls. Keep them equal:
 
 ```
-ghosthand CLI (main.swift) ──HTTP /v1/... (api.swift, openapi.yaml)──┐
-                                                                     ├──> Controller
-MCP clients ──POST /mcp (mcp.swift, one tool per CLI command)────────┘
+ghosthand CLI (main.swift) ──HTTP /v1/... (api.swift, openapi.yaml)──────────────────┐
+                                                                                     ├──> Controller
+MCP client ──stdio──> ghosthand mcp (MCPStdio) ──POST /mcp (MCPServer, mcp.swift)────┘
 ```
+
+MCP is stdio only: `ghosthand mcp` relays each stdin line to the daemon over the unix socket (or `--url` for a remote daemon). The protocol and the tools live in the daemon.
 
 - **Logic goes in the daemon**, never in a front end. If the CLI or a tool needs OCR, polling, retries or matching, add it to `Controller` and expose it on the HTTP route, so both front ends share it.
 - **One manual for both.** MCP tool descriptions and instructions are built from the CLI help (`mcpDocs()` in `main.swift`): `description`, `details`, option names, `examples`, `agentLoopHelp`. Write help text there, never a second copy in `mcp.swift`.
 - **A new route or capability gets both.** Add the HTTP route (`openapi.yaml` + `api.swift`), the CLI command or flag (`main.swift`), and the MCP tool or argument (`tools` in `mcp.swift`) in the same change. A tool name is the CLI command name.
 - **A new CLI flag needs its MCP argument:** add it to the tool's `properties`, and to `MCPDescription.arguments` (flag -> argument) or `MCPDescription.positionals`. Otherwise its examples are dropped from the tool description without an error.
-- **Check both:** `swift test` covers the MCP protocol and the description conversion. For a real check, run the daemon with `--port` and call `tools/list` (see `ghosthand mcp --help`).
+- **`ghosthand mcp` never writes to stdout except JSON-RPC replies.** Stdout is the protocol channel: one stray line breaks the client's parser. Logs and errors go to stderr (`stderrLog`). `MCPStdio.run` points fd 1 at stderr and writes replies to a saved copy of stdout, so do not remove that, and never add `print` to code that runs in `ghosthand mcp`.
+- **Check both:** `swift test` covers the MCP protocol and the description conversion. For a real check, pipe JSON-RPC lines into `ghosthand mcp` and check that every stdout line parses with `jq`, or run `npx @modelcontextprotocol/inspector --cli ghosthand mcp --method tools/list`.
 
 # Relative pointer (iOS 15)
 

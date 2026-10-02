@@ -142,7 +142,7 @@ npx -y skills add https://ghosthand.dev
 
 This works with Claude Code, Cursor, OpenCode, Codex and other agents that read [skills](https://skills.sh). The skill tells the agent to read `ghosthand --help` first; the help text is the full agent manual.
 
-**Agent without a shell?** Connect it to the daemon's [MCP server](#mcp-server) instead: the same commands as tools.
+**Agent without a shell?** Add `ghosthand mcp` as an [MCP server](#mcp-server): the same commands as tools.
 
 **Then ask in plain words**, with the iPhone plugged in and unlocked:
 
@@ -263,7 +263,7 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 | `setup`                                                             | window for people: connect a new iPhone step by step                                                               |
 | `app`                                                               | window for people: every iPhone, its agent, task, last command and live screen                                     |
 | `daemon start\|stop\|restart\|status\|run`                          | manage the background daemon                                                                                       |
-| `mcp`                                                               | print the MCP endpoint and client configs; see [MCP server](#mcp-server)                                           |
+| `mcp`                                                               | MCP server on stdio for agents; see [MCP server](#mcp-server)                                                      |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
 
@@ -570,24 +570,30 @@ ghosthand --url https://mac.local:7420 --token secret --ca cert.pem list
 
 ## MCP server
 
-**The daemon is also an MCP server** at `POST /mcp`. Every CLI command is a tool with the same name and the same help text, so MCP clients (Claude Code, Cursor, opencode) can drive the iPhone without a shell.
+**`ghosthand mcp` is an MCP server on stdio.** Every CLI command is a tool with the same name and the same help text, so agents without a shell (Claude Code, Cursor, opencode) can drive the iPhone.
 
 ```bash
-GHOSTHAND_TOKEN=secret ghosthand daemon restart --port 7420   # MCP clients cannot use the unix socket
-ghosthand mcp                                                 # prints the endpoint and client configs
-claude mcp add --transport http ghosthand http://127.0.0.1:7420/mcp \
-  --header "Authorization: Bearer $GHOSTHAND_TOKEN"
+claude mcp add ghosthand -- npx -y ghosthand mcp
+```
+
+```jsonc
+// opencode.json
+{ "mcp": { "ghosthand": { "type": "local", "command": ["npx", "-y", "ghosthand", "mcp"] } } }
+// .cursor/mcp.json
+{ "mcpServers": { "ghosthand": { "command": "npx", "args": ["-y", "ghosthand", "mcp"] } } }
 ```
 
 ```diagram
-MCP client ──POST /mcp (JSON-RPC)──> daemon ──> same Controller calls as the HTTP API
-           <──JSON, or SSE for tools/call (pings; closing the stream cancels the input)
+MCP client ──stdin/stdout──> ghosthand mcp ──POST /mcp, unix socket──> daemon ──> Controller
+           one JSON-RPC message per line     no token: file mode 0600     same calls as the HTTP API
 ```
 
 - **Flags are arguments:** `lease`, `text` and `index` on `tap`, `waitText`, `timeoutMs`, `screenshot: true`, `screentext: true`. Screenshots come back as image content, not files.
-- **Stateless, both protocol eras:** legacy clients (`initialize`, MCP 2025-03-26 to 2025-11-25) and modern ones (2026-07-28, `_meta` and `Mcp-Method` headers on every request). No session id, no GET stream.
-- **Same auth as the TCP API:** `Authorization: Bearer <token>`. Requests from browsers (`Origin` or `Sec-Fetch-Site`) are rejected.
-- **No MCP library:** five JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift). The CLI and the MCP tools are both thin: tap by text, text verification and the screenshot after an action run in the daemon.
+- **No token, no port:** `ghosthand mcp` uses the local unix socket and starts the daemon if needed.
+- **iPhones on another Mac:** run the daemon there with `--port` and TLS (see [Remote daemon](#remote-daemon)), then use `ghosthand mcp --url https://mac.local:7420`. Put `GHOSTHAND_TOKEN` in the MCP config's `env`, not in its args.
+- **Both protocol eras:** legacy clients (`initialize`, MCP 2025-03-26 to 2025-11-25) and modern ones (2026-07-28, `_meta` on every request).
+- **Cancel:** `notifications/cancelled`, or the end of the process, stops a running tool.
+- **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift). `ghosthand mcp` only relays lines; the tools run in the daemon.
 
 ## Security
 

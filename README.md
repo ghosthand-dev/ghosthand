@@ -256,6 +256,8 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 | `mute` / `unmute`                                                   | silence all iPhone sound, or turn it back on; confirmed from the iPhone log                                        |
 | `type <text> \| type --stdin [--enter]`                             | validated US-ASCII text; stdin keeps secrets out of arguments                                                      |
 | `unlock --stdin`                                                    | wake and unlock (or `GHOSTHAND_PASSCODE`); no screenshot while locked                                              |
+| `record-start <file.mov\|.mp4> [--fps n] [--max-duration s]`        | record screen and sound to a file; stops by itself after 5 min. See [Record the screen](#record-the-screen)      |
+| `record-stop`                                                       | stop the recording; prints duration, size and fps                                                                  |
 | `assistivetouch [on\|off]`                                          | show or set AssistiveTouch over USB; `acquire` turns it on by itself                                               |
 | `lock`                                                              | lock over Bluetooth with Control-Command-Q                                                                         |
 | `rename <name>`                                                     | set the iPhone's name over USB; the id does not change                                                             |
@@ -295,6 +297,30 @@ Mac ──BT Mute key──> SpringBoard ──FullMute──> audiomxd
 ```
 
 If the phone was already in the asked state, the first press toggles it away and a second press toggles it back (about 50 ms of sound). No log line in 3 s fails with `mute-unconfirmed` and no second press. Tested on an XR, iOS 18.7. Full mute stays on when screen capture starts or stops.
+
+### Record the screen
+
+**Record while an agent works.** The recording uses the same USB capture as screenshots, so input and screenshots keep working while it runs.
+
+```bash
+ghosthand record-start demo.mov --fps 30   # returns at once
+ghosthand tap --text "Settings"
+ghosthand record-stop
+# /Users/me/demo.mov  12.4s  2.1 MB  828x1792  30 fps  sound  stopped by request
+```
+
+```
+iPhone ──USB──> capture session ──┬──> latest frame ──> screenshot, screentext, tap --text
+                                  └──> fps cap ──> AVAssetWriter (H.264 + AAC) ──> demo.mov
+                 sound output ────────────────────────────┘  (added only while recording)
+```
+
+| Rule | Detail |
+| ---- | ------ |
+| **Auto stop** | after `--max-duration` (default 300 s, max 3600), when the lease ends, or when the daemon stops. The file is complete in each case |
+| **Size** | measured on an XR: 3-5 MB per minute on a still screen, at most about 17 MB per minute while it moves |
+| **Path** | a new `.mov` or `.mp4` on the daemon's Mac; it never overwrites a file |
+| **Sound** | the iPhone's sound output; `--no-audio` leaves it out |
 
 ### Bounded text verification
 

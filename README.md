@@ -230,6 +230,14 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 
 **Some iOS dialogs are invisible to USB capture and OCR** (tested on an XR, iOS 18.7: the App Store location prompt, the Install sheet, the cellular-data prompt). The page behind looks dimmed or unchanged, and `screentext` shows no dialog. Take a `screenshot`, read the image, and tap by position. Enter, Esc, Space, Tab and a center tap did not dismiss the location prompt: a person had to tap **Don't Allow**. Apple documents Tab and Space for [Full Keyboard Access](https://support.apple.com/en-euro/guide/iphone/ipha4375873f/ios), but that setting is off by default.
 
+**`lock`, then `unlock`, closes an invisible dialog** without picking any of its options (tested on an XR, iOS 18.7: the dim went away after a Maps prompt). Use it only with a passcode the user confirmed.
+
+```bash
+ghosthand lock
+secret-provider | ghosthand unlock --stdin
+ghosthand screenshot   # the dim is gone
+```
+
 **Secure password fields freeze frames** for 10 to 30 seconds. Wait; do not type again.
 
 > [!IMPORTANT]
@@ -320,7 +328,7 @@ iPhone ──USB──> capture session ──┬──> latest frame ──> sc
 | **Auto stop** | after `--max-duration` (default 300 s, max 3600), when the lease ends, or when the daemon stops. The file is complete in each case |
 | **Size** | measured on an XR: 3-5 MB per minute on a still screen, at most about 17 MB per minute while it moves |
 | **Path** | a new `.mov` or `.mp4` on the daemon's Mac; it never overwrites a file |
-| **Sound** | the iPhone's sound output; `--no-audio` leaves it out |
+| **Sound** | the iPhone's sound output; `--no-audio` leaves it out. With sound, start and stop pause media that plays on the iPhone: start the recording first, then press play |
 
 ### Bounded text verification
 

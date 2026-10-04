@@ -1,11 +1,17 @@
-// Page-width hero with an ASCII VideoBackgroundShader, serif title, and a GitHub CTA.
+// Page-width hero with an ASCII VideoBackgroundShader, serif title, and a copy-setup-prompt CTA.
 'use client'
 
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { VideoBackgroundShader } from '@holocron.so/vite/mdx'
 
 const HERO_FONT = "'IvarText', serif"
-const GITHUB_URL = 'https://github.com/remorses/ghosthand'
+
+const SETUP_PROMPT = [
+  'Set up ghosthand so you can control my iPhone.',
+  'Read the docs at https://ghosthand.dev/index.md and follow them.',
+  'Then run the CLI with `npx ghosthand list` to check that the iPhone is found.',
+  'Before you start, tell me that ghosthand requires a Mac and that I must plug my iPhone into the Mac with a USB cable.',
+].join('\n')
 
 // Shader color is a WebGL uniform, so CSS dark: variants cannot reach it.
 // Colors sit close to the page background so the title keeps contrast.
@@ -23,6 +29,7 @@ function subscribeToThemeClass(onChange: () => void) {
 
 export function HeroSection() {
   const [fontsReady, setFontsReady] = useState(false)
+  const [copied, setCopied] = useState(false)
   const isDark = useSyncExternalStore(
     subscribeToThemeClass,
     () => document.documentElement.classList.contains('dark'),
@@ -77,15 +84,21 @@ export function HeroSection() {
           <span>with AI agents</span>
         </h1>
 
-        <div className='flex gap-3 flex-wrap justify-center'>
-          <a
-            href={GITHUB_URL}
-            target='_blank'
-            rel='noopener noreferrer'
-            className={`${BUTTON} border-transparent text-foreground hover:bg-accent`}
+        <div className='flex flex-col items-center gap-2'>
+          <button
+            type='button'
+            onClick={async () => {
+              await navigator.clipboard.writeText(SETUP_PROMPT)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 2000)
+            }}
+            className={`${BUTTON} cursor-pointer border-transparent bg-primary text-primary-foreground hover:opacity-90`}
           >
-            GitHub Repo ↗
-          </a>
+            {copied ? 'Copied ✓' : 'Copy setup prompt'}
+          </button>
+          <p className='text-sm text-muted-foreground'>
+            Paste the prompt into your agent to set up ghosthand
+          </p>
         </div>
       </div>
     </div>

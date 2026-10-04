@@ -3,6 +3,8 @@
 import { Spiceflow } from 'spiceflow'
 import { app as holocronApp } from '@holocron.so/vite/app'
 import skillMd from '../../skills/ghosthand/SKILL.md?raw'
+// wrangler main is this file, so holocron's auto-import of a root style.css never runs.
+import './globals.css'
 
 // Shown in the skills CLI picker. The full trigger text lives in the SKILL.md frontmatter.
 const SKILL_DESCRIPTION =

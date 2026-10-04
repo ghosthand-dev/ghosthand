@@ -19,14 +19,8 @@
   "layout": {
     "mode": "compact"
   },
-  "navbar": {
-    "links": [
-      { "type": "github", "href": "https://github.com/remorses/ghosthand" }
-    ]
-  },
   "footer": {
     "socials": {
-      "github": "https://github.com/remorses/ghosthand",
       "x": "https://x.com/__morse"
     }
   },
@@ -42,12 +36,7 @@
         "icon": "lucide:cpu",
         "pages": ["docs/scroll", "docs/relative-pointer"]
       }
-    ],
-    "global": {
-      "anchors": [
-        { "anchor": "GitHub", "href": "https://github.com/remorses/ghosthand", "icon": "lucide:github" }
-      ]
-    }
+    ]
   },
   "decorativeLines": "none"
 }

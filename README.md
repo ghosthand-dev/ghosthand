@@ -60,8 +60,6 @@ npm install -g ghosthand  # install the `ghosthand` command
 
 The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
 
-To compile it yourself, see [Build from source](#build-from-source).
-
 ## Setup (once per iPhone)
 
 **Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch and keep-awake are automatic. Screenshots work after you plug in, trust, and unlock the iPhone.
@@ -848,26 +846,6 @@ tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
 - **The daemon remembers where the pointer is.** Only when it does not know (daemon start, Bluetooth reconnect, rotation, 60 s idle) does it push the pointer into the top-left corner first (+0.3 s).
 - **Tracking Speed:** the pointer check measures a `gain` (1.000 at the default speed) and scales the table by it. Other speeds are not tested.
 - **Swipes follow `--duration`**: reports are spread over it and sized so the drag ends exactly at the target.
-
-## Build from source
-
-Needs Swift 5.9 or later. Xcode is not needed: the Command Line Tools (`xcode-select --install`) build it too. Tested with Command Line Tools (Swift 6.1) and Xcode 26 (Swift 6.3).
-
-```bash
-git clone https://github.com/remorses/ghosthand
-cd ghosthand
-swift build -c release
-cp .build/release/ghosthand /usr/local/bin/
-```
-
-## Publish to npm
-
-**`npm/` is the npm package.** `pnpm build` there compiles arm64 and x86_64 release builds, merges them with `lipo` into one universal `npm/dist/ghosthand`, and checks that `ghosthand --version` matches `package.json`. Bump `ghosthandVersion` in `Sources/ghosthand/daemon.swift` and the package version together.
-
-```bash
-cd npm
-pnpm publish   # prepublishOnly cleans dist and runs the build
-```
 
 <details>
 <summary>Architecture</summary>

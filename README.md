@@ -97,17 +97,26 @@ iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows n
 ```bash
 ghosthand acquire --reason "reply to Anna"  # AssistiveTouch on
 ghosthand release -l 42                     # lease released; AssistiveTouch turned off
+ghosthand release -l 42 --keep-assistivetouch  # lease released; AssistiveTouch stays on
 ```
 
-- **Your own setting stays.** If AssistiveTouch was already on before `acquire`, `release` leaves it on.
+- **Always off after the lease.** `release` turns it off also when it was on before `acquire`. Pass `--keep-assistivetouch` (HTTP: `?keepAssistiveTouch=true`) to leave it on.
 - **Expired leases too.** A lease that ends by its idle timeout gets AssistiveTouch turned off a few seconds later.
 - **Tap, swipe and wake check again** (in case a person turned it off mid-task).
 
-The state is kept in `state.db` (`phone.assistive_touch_by_ghosthand`).
+The state is kept in `state.db` (`phone.assistive_touch_off_after_lease`).
 
 The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchEnabledByiTunes`, about 35 ms (a write is about 40 ms).
 
-**Hide the floating button (recommended).** On the same page, turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots. You do not need its Home action; the keyboard has one:
+**Hide the floating button (recommended).** Open **Settings > Accessibility > Touch > AssistiveTouch** and turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots and [recordings](#record-the-screen). You do not need its Home action; the keyboard has one:
+
+```diagram
+Always Show Menu ON   ──> round button on screen ──> in screenshots and videos
+Always Show Menu OFF  ──> hidden while the Mac mouse is connected; taps still work
+```
+
+- **Set it on the iPhone, once.** USB lockdown has only the AssistiveTouch on/off key (`AssistiveTouchEnabledByiTunes`), no key for this switch, so ghosthand cannot change it over USB. An agent can flip it with taps in Settings (tested on an XR, iOS 18.7).
+- **It stays off** when `acquire` and `release` turn AssistiveTouch on and off.
 
 ```bash
 ghosthand key home  # Home Screen (HID consumer Menu key; tested on iOS 15.8)
@@ -785,7 +794,7 @@ sqlite3 -header -column ~/.ghosthand/state.db 'SELECT * FROM phone; SELECT * FRO
 
 | Table               | Written when                                                                                                           | If the row is missing                                                                |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `phone`             | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)). `assistive_touch_by_ghosthand`: 1 while AssistiveTouch is on because ghosthand turned it on | matched again the same way                                                           |
+| `phone`             | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)). `assistive_touch_off_after_lease`: 1 when AssistiveTouch goes off once no lease holds the iPhone | matched again the same way                                                           |
 | `bluetooth_pointer` | the first tap or swipe                                                                                                 | iOS 17+: absolute again, no check. Older iOS: the pointer check runs on the next tap |
 
 - **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, the AssistiveTouch setting.

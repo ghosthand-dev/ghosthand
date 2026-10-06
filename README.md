@@ -9,6 +9,8 @@
 
 Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** No jailbreak, no Xcode, no app on the phone.
 
+**The Mac becomes a Bluetooth mouse and keyboard for the iPhone.** An agent sees the screen, points, clicks, scrolls and types like a person with a desk setup, so it can use **any iOS app**: App Store apps, system apps, Settings, the lock screen.
+
 > [!IMPORTANT]
 > **Requires a Mac and a real iPhone.** The CLI runs only on macOS, and the iPhone must be connected over USB and paired over Bluetooth. Linux, Windows and the iOS Simulator are not supported.
 
@@ -23,6 +25,8 @@ secret-provider | npx ghosthand type --stdin  # secrets stay out of argv
 npx ghosthand key home                        # Home Screen, not Back
 npx ghosthand tap 207 448 --screenshot s.png --screentext
 npx ghosthand screentext --language it-IT
+npx ghosthand record-start demo.mov           # screen + sound; keep acting meanwhile
+npx ghosthand record-stop
 ```
 
 ```diagram
@@ -37,13 +41,19 @@ agent / CLI / curl                       Mac                                  iP
 
 ## Features
 
+- **Any iOS app**: input goes through AssistiveTouch, like a real mouse; no app or test runner on the iPhone
+- **Tap and swipe** with the mouse pointer, at screenshot coordinates or on OCR text (`tap --text`)
+- **Scroll** with the mouse wheel: lists that a drag cannot scroll
+- **Fast keyboard input**: `type` sends text as key presses, plus Home, Enter, Esc, arrows and volume keys
 - **Screenshots** over USB, PNG or JPEG, about 0.1s each once the capture is open
-- **Tap, swipe, key, type** through a Bluetooth mouse and keyboard served by the Mac
+- **Screen recording with sound**: `record-start` / `record-stop` write H.264 + AAC; actions and screenshots keep working while it records
 - **Screen points by default**: screenshots, OCR boxes and taps share one small coordinate space, sized for LLM vision
 - **Screen text** with on-device OCR (Vision), boxes in screenshot coordinates
 - **Unlock** a locked iPhone with its passcode, no touch; lock state in `list`
 - **Lock** over the Bluetooth keyboard, verified over USB
+- **Mute and unmute** all iPhone sound, confirmed from the iPhone log
 - **Several iPhones at once**, each controlled on its own
+- **CLI, MCP server and skill** for agents, with the same help text
 - **Leases**: one agent per iPhone at a time; others wait or get a clear "leased by" error
 - **HTTP API** described by OpenAPI, usable from any language
 - **Remote daemon** over TCP with a bearer token and HTTPS
@@ -336,6 +346,7 @@ iPhone ──USB──> capture session ──┬──> latest frame ──> sc
 | **Size** | measured on an XR: 3-5 MB per minute on a still screen, at most about 17 MB per minute while it moves |
 | **Path** | a new `.mov` or `.mp4` on the daemon's Mac; it never overwrites a file |
 | **Sound** | the iPhone's sound output; `--no-audio` leaves it out. With sound, start and stop pause media that plays on the iPhone: start the recording first, then press play |
+| **Clean video** | turn **Always Show Menu** off in Settings > Accessibility > Touch > AssistiveTouch, or the round AssistiveTouch button is in the video. See [AssistiveTouch](#3-assistivetouch-automatic). The mouse pointer dot is still drawn by iOS and stays in the video |
 
 ### Bounded text verification
 

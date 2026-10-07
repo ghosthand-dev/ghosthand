@@ -68,13 +68,26 @@ bunx ghosthand list       # same, with Bun
 npm install -g ghosthand  # install the `ghosthand` command
 ```
 
-The first run asks for **Camera** access (screen capture) and, on the first tap, **Bluetooth** access for your terminal.
+**Permissions are user-controlled.** Run `ghosthand setup`, then click **Allow Camera** and **Allow Bluetooth**. macOS asks for access for Ghosthand, not your terminal or editor. Normal commands never show permission dialogs or open System Settings.
+
+```bash
+ghosthand setup  # open the app, then let the user click its permission buttons
+```
 
 ## Setup (once per iPhone)
 
 **Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch and keep-awake are automatic. Screenshots work after you plug in, trust, and unlock the iPhone.
 
-**Prefer a window?** `ghosthand setup` opens a small setup window that shows the step you are on (plug in, trust, unlock, pair), with tips for each one. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
+**Setup starts with permissions.** `ghosthand setup` shows Camera and Bluetooth buttons before the phone steps (plug in, trust, unlock, pair). Denied access shows an **Open Settings** button instead. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
+
+**Agents wait for readiness.** Open setup once and tell the user the window is open. Poll `ghosthand setup-status` every 2 seconds, then continue automatically when `ready` is `true`. Do not reopen setup, request permissions, or retry input while waiting. If still incomplete after 10 minutes, report the current status. Use `ghosthand setup --permissions` to review access that is already allowed.
+
+```bash
+ghosthand setup-status                     # JSON, works before permissions or USB trust
+ghosthand setup-status --device "iPhone XR" # select the intended phone when several exist
+```
+
+**Readiness is per phone.** It requires Camera access, USB capture, an unlocked phone and connected Bluetooth. Once a poll selects a phone, use its returned `device` id on later polls. When ready, acquire that phone with its `captureId` from `overview` (the id shown by `list`). The MCP tools are `setup` and `setup-status`; neither status check needs a lease.
 
 ### 1. Plug in and trust
 
@@ -427,7 +440,7 @@ ghosthand tap 414 896 --scale 1             # native pixel coordinates
 1. **USB:** connect the iPhone, unlock it, and accept **Trust This Computer**.
 2. **Bluetooth:** pair the Mac as a mouse and keyboard from the iPhone's Settings.
 
-Nothing to install on the iPhone. No Xcode, Developer Mode, developer account, signing certificates, or test runner. AssistiveTouch is enabled automatically; accept the Mac's Camera and Bluetooth permissions when prompted. Keep the phone unlocked and its screen awake. See [Setup](#setup-once-per-iphone).
+Nothing to install on the iPhone. No Xcode, Developer Mode, developer account, signing certificates, or test runner. AssistiveTouch is enabled automatically; allow Camera and Bluetooth using the buttons in `ghosthand setup`. Keep the phone unlocked and its screen awake. See [Setup](#setup-once-per-iphone).
 
 **Appium on iOS uses WebDriverAgent (WDA)**, a signed test runner that controls the UI through Apple's XCTest framework. It can control existing App Store apps too, not just apps you develop. Its [device setup](https://appium.github.io/appium-xcuitest-driver/latest/getting-started/device-setup/) requires trust, Developer Mode on modern iOS, and provisioning for WDA.
 
@@ -536,7 +549,7 @@ sudo scutil --set LocalHostName "lab-mac-1"   # optional: network name, no space
 
 ## Devices in `list`
 
-**Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone. The first `list` asks for Bluetooth access, because it starts Bluetooth.
+**Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone. Missing permissions tell the agent to open `ghosthand setup` and poll `setup-status` until ready, without showing a system dialog.
 
 ```text
 7EF219AD-69B4-423E-B8C4-4F4A6140822F  Morse’s iPhone (2)  iPhone XR (iPhone11,8) iOS 18.7.10  (bluetooth connected, absolute pointer)

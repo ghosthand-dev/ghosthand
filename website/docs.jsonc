@@ -25,16 +25,29 @@
     }
   },
   "navigation": {
-    "groups": [
+    "tabs": [
       {
-        "group": "Getting Started",
-        "icon": "lucide:rocket",
-        "pages": ["index"]
+        "tab": "Docs",
+        "icon": "lucide:book-open",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "icon": "lucide:rocket",
+            "pages": ["index"]
+          },
+          {
+            "group": "Internals",
+            "icon": "lucide:cpu",
+            "pages": ["docs/scroll", "docs/relative-pointer"]
+          }
+        ]
       },
       {
-        "group": "Internals",
-        "icon": "lucide:cpu",
-        "pages": ["docs/scroll", "docs/relative-pointer"]
+        "tab": "API Reference",
+        "icon": "lucide:server",
+        // Single source of truth: the spec the daemon is generated from and serves.
+        "openapi": "../Sources/ghosthand/openapi.yaml",
+        "pages": ["docs/api/overview", "..."]
       }
     ]
   },

@@ -4,9 +4,14 @@
 import { useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { createAuthClient } from 'better-auth/react'
+import { oauthProviderClient } from '@better-auth/oauth-provider/client'
 import { ErrorBoundary } from 'spiceflow/react'
+import { cn } from '../lib/utils.ts'
 import { PRIMARY, SECONDARY } from './button-styles.ts'
 
+// oauthProviderClient sends the signed oauth_query of /login with sign-in, so after Google
+// better-auth resumes an MCP client's authorize request and goes to /consent.
+const authClient = createAuthClient({ plugins: [oauthProviderClient()] })
 
 function GoogleMark() {
   return (
@@ -19,22 +24,31 @@ function GoogleMark() {
   )
 }
 
-/** Full-page navigation: /login/google builds the OAuth redirect with its state cookie. */
-export function GoogleSignInButton({ href }: { href: string }) {
+export function GoogleSignInButton({ callbackURL }: { callbackURL: string }) {
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   return (
-    <button
-      type='button'
-      className={SECONDARY}
-      disabled={loading}
-      onClick={() => {
-        setLoading(true)
-        window.location.href = href
-      }}
-    >
-      <GoogleMark />
-      {loading ? 'Opening Google…' : 'Continue with Google'}
-    </button>
+    <>
+      <button
+        type='button'
+        className={SECONDARY}
+        disabled={loading}
+        onClick={async () => {
+          setLoading(true)
+          setError(null)
+          // Navigates to Google on success.
+          const { error } = await authClient.signIn.social({ provider: 'google', callbackURL })
+          if (error) {
+            setError(error.message || 'Cannot open Google sign-in. Try again.')
+            setLoading(false)
+          }
+        }}
+      >
+        <GoogleMark />
+        {loading ? 'Opening Google…' : 'Continue with Google'}
+      </button>
+      {error ? <p className='text-sm text-red-600'>{error}</p> : null}
+    </>
   )
 }
 
@@ -44,10 +58,10 @@ export function SignOutButton() {
     <button
       type='button'
       disabled={loading}
-      className='text-sm text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 cursor-pointer'
+      className='cursor-pointer text-sm text-muted-foreground transition-colors hover:text-foreground disabled:cursor-wait'
       onClick={async () => {
         setLoading(true)
-        await createAuthClient().signOut()
+        await authClient.signOut()
         window.location.href = '/login'
       }}
     >
@@ -65,9 +79,9 @@ function SubmitButton({ className, children, pendingText }: { className: string;
   )
 }
 
-type DeviceAction = (formData: FormData) => Promise<void>
+type FormAction = (formData: FormData) => Promise<void>
 
-export function DeviceButtons({ userCode, approve, deny }: { userCode: string; approve: DeviceAction; deny: DeviceAction }) {
+export function DeviceButtons({ userCode, approve, deny }: { userCode: string; approve: FormAction; deny: FormAction }) {
   return (
     <ErrorBoundary
       fallback={
@@ -91,6 +105,53 @@ export function DeviceButtons({ userCode, approve, deny }: { userCode: string; a
   )
 }
 
+export function ConsentButtons({ oauthQuery, consent }: { oauthQuery: string; consent: FormAction }) {
+  return (
+    <ErrorBoundary
+      fallback={
+        <div className='flex flex-col gap-2 text-sm text-red-600'>
+          <ErrorBoundary.ErrorMessage />
+          <ErrorBoundary.ResetButton className='underline underline-offset-4'>Try again</ErrorBoundary.ResetButton>
+        </div>
+      }
+    >
+      <div className='flex w-full flex-col gap-2'>
+        <form action={consent}>
+          <input type='hidden' name='oauthQuery' value={oauthQuery} />
+          <input type='hidden' name='accept' value='true' />
+          <SubmitButton className={PRIMARY} pendingText='Allowing…'>Allow</SubmitButton>
+        </form>
+        <form action={consent}>
+          <input type='hidden' name='oauthQuery' value={oauthQuery} />
+          <input type='hidden' name='accept' value='false' />
+          <SubmitButton className={SECONDARY} pendingText='Denying…'>Deny</SubmitButton>
+        </form>
+      </div>
+    </ErrorBoundary>
+  )
+}
+
+/** A value in a code box with a Copy button. */
+export function CopyField({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className='flex items-center gap-2 rounded-lg border border-border bg-muted/60 py-1.5 pl-4 pr-1.5'>
+      <code className='flex-1 overflow-x-auto whitespace-pre font-mono text-[13px] text-foreground'>{value}</code>
+      <button
+        type='button'
+        className='h-7 shrink-0 cursor-pointer rounded-md border border-border bg-background px-2.5 text-xs font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring'
+        onClick={async () => {
+          await navigator.clipboard.writeText(value)
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        }}
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
+  )
+}
+
 /** A small inline form button, e.g. "Sign out" on a Mac row. */
 export function RowAction({ action, name, value, children, pendingText }: {
   action: (formData: FormData) => Promise<void>
@@ -102,7 +163,10 @@ export function RowAction({ action, name, value, children, pendingText }: {
   return (
     <form action={action}>
       <input type='hidden' name={name} value={value} />
-      <SubmitButton className='text-sm text-neutral-500 hover:text-red-600 cursor-pointer disabled:cursor-wait' pendingText={pendingText}>
+      <SubmitButton
+        className='h-8 cursor-pointer whitespace-nowrap rounded-md border border-border px-3 text-xs font-medium text-muted-foreground transition-colors outline-none hover:border-red-500/40 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait dark:hover:text-red-400'
+        pendingText={pendingText}
+      >
         {children}
       </SubmitButton>
     </form>
@@ -110,44 +174,54 @@ export function RowAction({ action, name, value, children, pendingText }: {
 }
 
 const TABS = ['CLI', 'MCP'] as const
-const QUICK_START = {
-  CLI: [
-    { note: 'Give your agent the skill', code: 'npx -y skills add https://ghosthand.dev -g -y' },
-    { note: 'On the Mac with the iPhone: sign in, allow access, plug in, pair', code: 'npx ghosthand setup' },
-    { note: 'Then ask your agent', code: 'Take a screenshot of my iPhone and tell me what you see.' },
-  ],
-  MCP: [
-    { note: 'Claude Code', code: 'claude mcp add ghosthand -- npx -y ghosthand mcp' },
-    { note: 'Cursor (mcp.json)', code: '{ "mcpServers": { "ghosthand": { "command": "npx", "args": ["-y", "ghosthand", "mcp"] } } }' },
-    { note: 'On the Mac with the iPhone, once', code: 'npx ghosthand setup' },
-  ],
-} as const
 
-export function QuickStart() {
+function quickStart(mcpUrl: string) {
+  return {
+    CLI: [
+      { note: 'Give your agent the skill', code: 'npx -y skills add https://ghosthand.dev -g -y' },
+      { note: 'On the Mac with the iPhone: sign in, allow access, plug in, pair', code: 'npx ghosthand setup' },
+      { note: 'Then ask your agent', code: 'Take a screenshot of my iPhone and tell me what you see.' },
+    ],
+    MCP: [
+      { note: 'On the Mac with the iPhone, once', code: 'npx ghosthand setup' },
+      { note: 'Claude Code', code: `claude mcp add --transport http ghosthand ${mcpUrl}` },
+      { note: 'Cursor (mcp.json)', code: `{ "mcpServers": { "ghosthand": { "url": "${mcpUrl}" } } }` },
+    ],
+  }
+}
+
+export function QuickStart({ mcpUrl }: { mcpUrl: string }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>('CLI')
   return (
     <div className='flex flex-col gap-6'>
-      <div className='flex gap-1 self-start rounded-lg bg-neutral-100 p-1 dark:bg-neutral-900'>
+      <div className='flex gap-1 self-start rounded-lg border border-border bg-muted/60 p-1' role='tablist'>
         {TABS.map((name) => (
           <button
             key={name}
             type='button'
+            role='tab'
+            aria-selected={tab === name}
             onClick={() => setTab(name)}
-            className={`cursor-pointer rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              tab === name ? 'bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100'
-            }`}
+            className={cn(
+              'cursor-pointer rounded-md px-3 py-1 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              tab === name && 'bg-background text-foreground ring-1 ring-border',
+              tab !== name && 'text-muted-foreground hover:text-foreground',
+            )}
           >
             {name}
           </button>
         ))}
       </div>
-      <ol className='flex flex-col gap-5 text-sm text-neutral-600 dark:text-neutral-400'>
-        {QUICK_START[tab].map((step, i) => (
-          <li key={step.code} className='flex flex-col gap-2'>
-            <span><span className='tabular-nums text-neutral-400'>{i + 1}.</span> {step.note}</span>
-            <code className='block overflow-x-auto whitespace-pre rounded-lg bg-neutral-100 px-4 py-3 font-mono text-[13px] text-neutral-800 dark:bg-neutral-900 dark:text-neutral-200'>
-              {step.code}
-            </code>
+      <ol className='flex flex-col gap-6'>
+        {quickStart(mcpUrl)[tab].map((step, i) => (
+          <li key={step.code} className='flex gap-4'>
+            <span className='flex size-6 shrink-0 items-center justify-center rounded-full border border-border text-xs font-medium tabular-nums text-muted-foreground'>
+              {i + 1}
+            </span>
+            <div className='flex min-w-0 flex-1 flex-col gap-2 pt-0.5'>
+              <span className='text-sm text-foreground'>{step.note}</span>
+              <CopyField value={step.code} />
+            </div>
           </li>
         ))}
       </ol>

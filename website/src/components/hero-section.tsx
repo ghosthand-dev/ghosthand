@@ -8,7 +8,8 @@ const HERO_FONT = "'IvarText', serif"
 
 const SETUP_PROMPT = [
   'Set up ghosthand so you can control my iPhone.',
-  'Read the docs at https://ghosthand.dev/index.md and follow them.',
+  'Install the ghosthand skill by running: npx -y skills add https://ghosthand.dev -g -y',
+  'Then read the skill to learn the CLI, and the docs at https://ghosthand.dev/index.md, and follow them.',
   'Then run the CLI with `npx ghosthand list` to check that the iPhone is found.',
   'Before you start, tell me that ghosthand requires a Mac and that I must plug my iPhone into the Mac with a USB cable.',
 ].join('\n')
@@ -55,8 +56,6 @@ export function HeroSection() {
         animSpeed={3}
         gamma={0.8}
         enableMask={false}
-        fluidStrength={0.2}
-        fluidCurl={80}
       />
 
       {/* Soft scrim behind the title and CTAs so text stays readable over glyphs */}
@@ -80,8 +79,8 @@ export function HeroSection() {
           className='flex flex-col items-center leading-none text-[36px] sm:text-[44px] md:text-[52px] text-foreground'
           style={{ fontFamily: HERO_FONT }}
         >
-          <span>Control your iPhone</span>
-          <span>with AI agents</span>
+          <span>iPhone control</span>
+          <span>for your agent</span>
         </h1>
 
         <div className='flex flex-col items-center gap-2'>

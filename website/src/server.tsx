@@ -3,6 +3,7 @@
 import { Spiceflow } from 'spiceflow'
 import { app as holocronApp } from '@holocron.so/vite/app'
 import skillMd from '../../skills/ghosthand/SKILL.md?raw'
+import { routeTunnelRequest } from './tunnel.ts'
 // wrangler main is this file, so holocron's auto-import of a root style.css never runs.
 import './globals.css'
 
@@ -48,8 +49,10 @@ export const app = new Spiceflow()
   })
   .use(holocronApp)
 
+export { GhosthandTunnel } from './tunnel.ts'
+
 export default {
-  fetch(request: Request): Promise<Response> {
-    return app.handle(request)
+  fetch(request: Request, env: Env): Promise<Response> {
+    return routeTunnelRequest(request, env) ?? app.handle(request)
   },
-}
+} satisfies ExportedHandler<Env>

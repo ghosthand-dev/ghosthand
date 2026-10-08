@@ -45,7 +45,7 @@ agent / CLI / curl                       Mac                                  iP
 - **Tap and swipe** with the mouse pointer, at screenshot coordinates or on OCR text (`tap --text`)
 - **Scroll** with the mouse wheel: lists that a drag cannot scroll
 - **Fast keyboard input**: `type` sends text as key presses, plus Home, Enter, Esc, arrows and volume keys
-- **Screenshots** over USB, PNG or JPEG, about 0.1s each once the capture is open
+- **Screenshots** over USB, PNG or JPEG, about 0.3s each. The capture stops 1s after the last frame, so an idle daemon uses no CPU for it
 - **Screen recording with sound**: `record-start` / `record-stop` write H.264 + AAC; actions and screenshots keep working while it records
 - **Screen points by default**: screenshots, OCR boxes and taps share one small coordinate space, sized for LLM vision
 - **Screen text** with on-device OCR (Vision), boxes in screenshot coordinates
@@ -56,7 +56,7 @@ agent / CLI / curl                       Mac                                  iP
 - **CLI, MCP server and skill** for agents, with the same help text
 - **Leases**: one agent per iPhone at a time; others wait or get a clear "leased by" error
 - **HTTP API** described by OpenAPI, usable from any language
-- **Remote daemon** over TCP with a bearer token and HTTPS
+- **Remote daemon** over a secret ghosthand.dev tunnel URL, or TCP with a bearer token and HTTPS
 
 ## Install
 
@@ -147,17 +147,17 @@ ghosthand key home  # Home Screen (HID consumer Menu key; tested on iOS 15.8)
 
 ### 4. Keep awake (automatic)
 
-**No need to change Auto-Lock.** The daemon keeps every iPhone connected over both USB and Bluetooth awake, leased or not, so it is always ready for the next command:
+**No need to change Auto-Lock.** The daemon keeps every unlocked iPhone connected over both USB and Bluetooth awake, leased or not, so it is always ready for the next command:
 
 ```diagram
-daemon, every 2 s ──> iPhone idle for 10 s? ──yes──> Left Control press (Bluetooth)
-                            │                              │
-                            └─ command running: skip       └─> iOS resets the Auto-Lock timer
+daemon, every 2 s ──> unlocked and idle for 10 s? ──yes──> Left Control press (Bluetooth)
+                            │                                    │
+                            └─ locked or command running: skip   └─> iOS resets the Auto-Lock timer
 ```
 
 - **No visible effect.** A lone Control key types nothing and shows no pointer, so screenshots stay clean. It works with AssistiveTouch off.
 - **Never between input.** A tap or typed text holds the Bluetooth link; the key waits for it.
-- **It does not wake the phone.** iOS drops keys while the display is off or locked. Lock it with the side button and it stays locked.
+- **Locked iPhones are skipped.** The lock state comes from USB lockdown. A key would light the Lock Screen (seen on iOS 18), so a locked iPhone gets no key and its display turns off normally.
 - **To let the iPhone lock by itself**, unplug USB or stop the daemon (`ghosthand daemon stop`). Keep-awake stops on the next check (every 2 seconds).
 
 Tested on an iPhone XR, iOS 18.7, Auto-Lock 30 seconds: without the key SpringBoard dims at 20 s; with it, no dim for 75 s, with and without AssistiveTouch.
@@ -167,7 +167,7 @@ Tested on an iPhone XR, iOS 18.7, Auto-Lock 30 seconds: without the key SpringBo
 **Install the skill** so your agent knows the commands, the lease rules and the feedback loop:
 
 ```bash
-npx -y skills add https://ghosthand.dev
+npx -y skills add https://ghosthand.dev -g -y
 ```
 
 This works with Claude Code, Cursor, OpenCode, Codex and other agents that read [skills](https://skills.sh). The skill tells the agent to read `ghosthand --help` first; the help text is the full agent manual.
@@ -622,6 +622,31 @@ curl --unix-socket $S -X DELETE $L                  # release
 
 ### Remote daemon
 
+**`--tunnel` exposes the daemon over the internet** at a secret URL. No open port, no certificate, works behind NAT.
+
+```bash
+# on the Mac with the iPhones
+ghosthand daemon start --tunnel
+# tunnel: https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2
+
+# anywhere else
+ghosthand --url https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2 list
+```
+
+```diagram
+remote CLI or MCP ──HTTPS──> ghosthand.dev/tunnel/<id> ──WebSocket──> daemon (dials out) ──> Controller
+                              one Durable Object per id   requests and streamed responses
+```
+
+> [!IMPORTANT]
+> **The URL is the password.** The id is 128 random bits and there is no other check: whoever has the URL can use every iPhone on the Mac. Share it only with clients you trust.
+
+- **Revoke** with `ghosthand daemon restart --tunnel` (new URL) or `ghosthand daemon stop`.
+- **A new start makes a new URL.** A restart without options keeps it. Set `GHOSTHAND_TUNNEL_ID` (`openssl rand -hex 16`) to keep one URL across stops.
+- **Same rules as TCP:** browsers are rejected, and a remote client cannot pick the binary for `daemon restart`.
+
+**On your own network**, listen on TCP instead, with a bearer token:
+
 ```bash
 # on the Mac with the iPhones
 GHOSTHAND_TOKEN=secret ghosthand daemon start --port 7420 --host 0.0.0.0 \
@@ -655,7 +680,7 @@ MCP client ──stdin/stdout──> ghosthand mcp ──POST /mcp, unix socket�
 
 - **Flags are arguments:** `lease`, `text` and `index` on `tap`, `waitText`, `timeoutMs`, `screenshot: true`, `screentext: true`. Screenshots come back as image content, not files.
 - **No token, no port:** `ghosthand mcp` uses the local unix socket and starts the daemon if needed.
-- **iPhones on another Mac:** run the daemon there with `--port` and TLS (see [Remote daemon](#remote-daemon)), then use `ghosthand mcp --url https://mac.local:7420`. Put `GHOSTHAND_TOKEN` in the MCP config's `env`, not in its args.
+- **iPhones on another Mac:** run the daemon there with `--tunnel` (see [Remote daemon](#remote-daemon)), then use `ghosthand mcp --url https://ghosthand.dev/tunnel/<id>`. With `--port` and TLS instead, put `GHOSTHAND_TOKEN` in the MCP config's `env`, not in its args.
 - **Both protocol eras:** legacy clients (`initialize`, MCP 2025-03-26 to 2025-11-25) and modern ones (2026-07-28, `_meta` on every request).
 - **Cancel:** `notifications/cancelled`, or the end of the process, stops a running tool.
 - **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift). `ghosthand mcp` only relays lines; the tools run in the daemon.
@@ -670,6 +695,7 @@ Everything runs on your Mac. No account, no cloud, nothing installed on the iPho
 ```diagram
 who can reach the phone              how
 local user who owns ~/.ghosthand ──> unix socket, file mode 0600
+remote client ─────────────────────> --tunnel: the secret URL is the credential
 remote client ─────────────────────> TCP with --port: Bearer token, TLS off localhost
 ```
 
@@ -887,6 +913,7 @@ tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
 CLI / curl / any language
    │ HTTP over ~/.ghosthand/daemon.sock (mode 0600, no token)
    │ HTTP or HTTPS over TCP with --port (Bearer token)
+   │ HTTPS via ghosthand.dev/tunnel/<id> with --tunnel (WebSocket the daemon opens)
    v
 Hummingbird ──> generated API (openapi.yaml) ──> own thread ──> Controller
                                                                   │

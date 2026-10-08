@@ -3,16 +3,25 @@
   "name": "ghosthand-website",
   "main": "./src/server.tsx",
   "compatibility_date": "2026-09-01",
-  "compatibility_flags": ["nodejs_compat"],
+  // enable_request_signal: the tunnel cancels a daemon request when its client disconnects.
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   "routes": [
     { "pattern": "ghosthand.dev", "custom_domain": true }
   ],
+  "durable_objects": {
+    "bindings": [{ "name": "GHOSTHAND_TUNNEL", "class_name": "GhosthandTunnel" }]
+  },
+  "migrations": [{ "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] }],
   "env": {
     "preview": {
       "name": "ghosthand-website-preview",
       "routes": [
         { "pattern": "preview.ghosthand.dev", "custom_domain": true }
-      ]
+      ],
+      "durable_objects": {
+        "bindings": [{ "name": "GHOSTHAND_TUNNEL", "class_name": "GhosthandTunnel" }]
+      },
+      "migrations": [{ "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] }]
     }
   }
 }

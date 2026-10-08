@@ -22,11 +22,12 @@ scroll down 5
 
 ## The report
 
-**No descriptor change.** Report id 7 (relative mouse) already has a signed 8-bit Wheel field (Generic Desktop 0x38, logical -127...127):
+Report id 7 (relative mouse) has a signed 8-bit Wheel field (Generic Desktop 0x38) and a signed 8-bit AC Pan field (Consumer 0x0238), both logical -127...127:
 
 ```
-report 7: [buttons, dx lo, dx hi, dy lo, dy hi, wheel]
-wheel:    [0,       0,     0,     0,     0,     +3]    positive = content further down
+report 7: [buttons, dx lo, dx hi, dy lo, dy hi, wheel, pan]
+down:     [0,       0,     0,     0,     0,     +3,    0]     positive wheel = content further down
+right:    [0,       0,     0,     0,     0,     0,     +3]    horizontal, same lead-in and timing
 ```
 
 `HIDDevice.sendWheel` clamps to -127...127 (-128 is outside the logical range). The absolute report 1 has no wheel; iOS still scrolls from report 7 while it uses the absolute pointer.
@@ -72,7 +73,7 @@ Wait 3.5-4 s after each scroll, then compare `screentext` y positions of the sam
    - The Bluetooth link groups reports, so iOS timestamps can differ from our 16 ms spacing. This can explain the scale change after a daemon restart.
 4. UIKit then turns the events into scrolling (not open source).
 
-Horizontal scroll would be AC Pan (Consumer page 0x0238). Report 7 has no AC Pan field; adding one needs a descriptor change, so the user must forget the Mac on the iPhone and pair again. [HID Usage Tables](https://usb.org/document-library/hid-usage-tables-15)
+Horizontal scroll (`scroll left|right`) uses AC Pan (Consumer page 0x0238) in report 7. iPhones paired before it was added must forget the Mac and pair again: iOS keeps the report map from pairing. [HID Usage Tables](https://usb.org/document-library/hid-usage-tables-15)
 
 ## Other implementations
 

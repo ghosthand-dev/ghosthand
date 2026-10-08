@@ -326,6 +326,70 @@ secret-provider | ghosthand type --stdin
 
 One final **LF or CRLF** is removed. Other whitespace is preserved. LF sends Enter and tab moves focus. `--keep-final-newline` preserves LF; `--enter` adds one more Enter. Unsupported controls, invalid UTF-8 and non-ASCII fail before input.
 
+### Keyboard shortcuts
+
+**The Mac is a real keyboard and mouse** for the iPhone, so iOS keyboard shortcuts work with `key`. To replace the text in a field, select all and delete it:
+
+```bash
+ghosthand key -l 42 cmd+a
+ghosthand key -l 42 backspace
+```
+
+**Modifiers:** `cmd`, `shift`, `alt` (option), `ctrl`, `fn` (Globe). `fn` is sent as the standard Globe key of non-Apple keyboards (Consumer AC Keyboard Layout Select, `0x29D`); `key fn` alone is a Globe tap. Keys in a combo go down in order, so `tab+h` holds Tab, then presses H.
+
+| Combo | Action |
+| ----- | ------ |
+| `cmd+a` | select all |
+| `alt+backspace` | delete the previous word |
+| `cmd+backspace` | delete to start of line |
+| `shift+left` | extend the selection by one letter |
+| `cmd+left` / `cmd+right` | go to start / end of line |
+| `cmd+shift+left` / `right` | select to start / end of line |
+| `cmd+up` / `cmd+down` | go to start / end of the text |
+| `cmd+shift+up` / `down` | select to start / end of the text |
+| `cmd+c`, `cmd+v`, `cmd+z` | copy, paste, undo |
+| `tab` / `shift+tab` | next / previous field or focused item |
+| `space` | activate the focused item |
+| `esc` | dismiss menus, suggestions, some dialogs |
+| `cmd+l`, `cmd+f`, `cmd+r` | Safari: address bar, find on page, reload |
+| `fn+h` | Home Screen |
+| `fn+up` | App Switcher |
+| `fn+c`, `fn+n` | Control Center, Notification Center |
+| `tab+h` | show all commands (only with **Full Keyboard Access** on) |
+
+Tested on an iPhone SE 2, iOS 18.6: `fn+h`, `fn+up`, `fn+c`, `fn+n` work with Full Keyboard Access off. `tab+h` shows the command list in every app (Safari, Messages, Settings, Home Screen) only after Settings > Accessibility > Keyboards & Typing > Full Keyboard Access is on. Other combos are iPadOS shortcuts; read the screen after each one.
+
+**iPhones paired before the `fn` fix:** forget the Mac on the iPhone and pair again. The old report map dropped the Globe usage (logical max `0xB0` was read as -80). The same pairing also adds `scroll left|right`.
+
+### Full Keyboard Access (optional)
+
+**Full Keyboard Access** is an iOS accessibility setting that controls the whole iPhone from a keyboard, with a blue focus box instead of touch. The user turns it on in Settings > Accessibility > Keyboards & Typing > Full Keyboard Access. It is off by default and ghosthand does not need it. Ask the user before turning it on: it changes the iPhone for them too.
+
+| Combo | Action | Tested |
+| ----- | ------ | ------ |
+| `tab` / `shift+tab` | move focus to the next / previous group | yes (the first Tab focuses the AssistiveTouch button) |
+| arrows | move focus inside a group (list rows); in a text field they move the cursor | yes |
+| `space` | activate the focused item | yes |
+| `esc`, `tab+b` | go back | yes |
+| `tab+f` | **find**: type an item's name, Enter activates it | yes in Settings; no result on the Home Screen |
+| `tab+h` | show all commands | yes |
+| `tab+m` | contextual menu (long press) | no |
+| `tab+z` | actions of the focused item (e.g. delete a row) | no |
+| `tab+l` | lock screen | no |
+| `tab+r` | rotate device | no |
+| `tab+g` | keyboard gestures (touch, swipes, zoom, two-finger gestures) | no |
+| `tab+x` | Accessibility Shortcut | no |
+| `fn+s` | Siri | no |
+| `ctrl+tab` / `ctrl+shift+tab` | next / previous item | no |
+
+The full list, with custom keys, is in Settings > Full Keyboard Access > Commands.
+
+**Limits seen in tests (iPhone SE 2, iOS 18.6):**
+
+- **Focus box in screenshots.** It is blue and can frame the whole screen. Set Auto-Hide to hide it after idle time.
+- **A command can do nothing.** The first `tab+f` and the first `tab+b` did nothing; the second worked. Check the screen after each key.
+- **Dangerous chords.** With it on, `ctrl+alt+shift+cmd+s` calls Emergency SOS and `ctrl+alt+shift+cmd+r` restarts the iPhone. Never send them.
+
 ### Mute
 
 **`mute` sets a state; it does not toggle.** It is safe to run twice.
@@ -783,7 +847,7 @@ Mac (daemon)                                          iPhone
 │ L2CAP 0x11 control  (handshakes) │ <──opens─────── │                             │
 │ L2CAP 0x13 interrupt             │ ──reports─────> │ AssistiveTouch              │
 │  report 1: mouse (absolute)      │                 │  pointer + clicks = touches │
-│  report 7: mouse (relative)      │                 │                             │
+│  report 7: mouse (rel.), wheels  │                 │                             │
 │  report 2: keyboard, 6: media    │                 │                             │
 └──────────────────────────────────┘                 └─────────────────────────────┘
 ```

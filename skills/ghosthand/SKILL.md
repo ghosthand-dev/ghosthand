@@ -25,3 +25,4 @@ Rules:
 - Always `acquire` a lease with `--reason "<task>"` first, pass `-l <id>` to every command, and `release` it when done.
 - Never retry a passcode or repeat input after a verification timeout. Take a screenshot first.
 - Leave the iPhone unlocked when done.
+- `login-required` or `subscription-required` from acquire: follow the error text. Open `ghosthand setup` for sign-in, or show the user the subscribe link. Never run `ghosthand login` yourself and never retry in a loop.

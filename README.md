@@ -68,6 +68,14 @@ bunx ghosthand list       # same, with Bun
 npm install -g ghosthand  # install the `ghosthand` command
 ```
 
+**Sign in once per Mac.** Every lease needs a ghosthand.dev account: **7 days free from sign-up, then $99/month**. `ghosthand setup` starts with **Sign in with Google**: it opens the browser, you approve the Mac, and the window continues by itself. Agents never sign in for you; they open setup and wait.
+
+```bash
+ghosthand account   # who is signed in, the plan, the subscribe link
+ghosthand login     # for people without the setup window; agents use setup
+ghosthand logout
+```
+
 **Permissions are user-controlled.** Run `ghosthand setup`, then click **Allow Camera** and **Allow Bluetooth**. macOS asks for access for Ghosthand, not your terminal or editor. Normal commands never show permission dialogs or open System Settings.
 
 ```bash
@@ -78,7 +86,7 @@ ghosthand setup  # open the app, then let the user click its permission buttons
 
 **Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch and keep-awake are automatic. Screenshots work after you plug in, trust, and unlock the iPhone.
 
-**Setup starts with permissions.** `ghosthand setup` shows Camera and Bluetooth buttons before the phone steps (plug in, trust, unlock, pair). Denied access shows an **Open Settings** button instead. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
+**Setup starts with sign-in, then permissions.** `ghosthand setup` shows Sign in with Google, then Camera and Bluetooth buttons, before the phone steps (plug in, trust, unlock, pair). Denied access shows an **Open Settings** button instead. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
 
 **Agents wait for readiness.** Open setup once and tell the user the window is open. Poll `ghosthand setup-status` every 2 seconds, then continue automatically when `ready` is `true`. Do not reopen setup, request permissions, or retry input while waiting. If still incomplete after 10 minutes, report the current status. Use `ghosthand setup --permissions` to review access that is already allowed.
 
@@ -87,7 +95,7 @@ ghosthand setup-status                     # JSON, works before permissions or U
 ghosthand setup-status --device "iPhone XR" # select the intended phone when several exist
 ```
 
-**Readiness is per phone.** It requires Camera access, USB capture, an unlocked phone and connected Bluetooth. Once a poll selects a phone, use its returned `device` id on later polls. When ready, acquire that phone with its `captureId` from `overview` (the id shown by `list`). The MCP tools are `setup` and `setup-status`; neither status check needs a lease.
+**Readiness is per phone.** It requires a signed-in Mac, Camera access, USB capture, an unlocked phone and connected Bluetooth. Once a poll selects a phone, use its returned `device` id on later polls. When ready, acquire that phone with its `captureId` from `overview` (the id shown by `list`). The MCP tools are `setup` and `setup-status`; neither status check needs a lease.
 
 ### 1. Plug in and trust
 
@@ -300,6 +308,7 @@ ghosthand screenshot   # the dim is gone
 | `lock`                                                              | lock over Bluetooth with Control-Command-Q                                                                         |
 | `rename <name>`                                                     | set the iPhone's name over USB; the id does not change                                                             |
 | `forget`                                                            | remove the Mac's Bluetooth bond with the iPhone, to pair again                                                     |
+| `random <name\|lastname\|username\|birthdate\|password>`            | random account detail, saved in state.db with the lease's task and iPhone; `random list` shows them all            |
 | `setup`                                                             | window for people: connect a new iPhone step by step                                                               |
 | `app`                                                               | window for people: every iPhone, its agent, task, last command and live screen                                     |
 | `daemon start\|stop\|restart\|status\|run`                          | manage the background daemon                                                                                       |
@@ -696,7 +705,7 @@ MCP client ──stdin/stdout──> ghosthand mcp ──POST /mcp, unix socket�
 > [!WARNING]
 > **Whoever reaches the daemon can use the iPhone like a person holding it**: open apps, read messages, type.
 
-Everything runs on your Mac. No account, no cloud, nothing installed on the iPhone.
+Everything runs on your Mac and nothing is installed on the iPhone. Screenshots, screen text and typed text never leave the Mac (except through a tunnel you start). The only server call is the plan check at each `acquire`: the daemon sends the account's session token to ghosthand.dev (`GHOSTHAND_SERVER` overrides the server, e.g. a local `vite dev`). The token is in `~/.ghosthand/state.db`, mode 0600. If ghosthand.dev cannot be reached, the lease is allowed.
 
 ```diagram
 who can reach the phone              how

@@ -63,3 +63,17 @@ To find code, search one unique function name or constant (`gh search code 'IOHI
 - Publish with `cd npm && pnpm publish --no-git-checks`. Do not run `pnpm build` first: `prepublishOnly` cleans `dist` and runs the full build (about 3 min).
 - The registry can take ~5 min before `npx ghosthand@<version>` resolves. Poll `curl -s https://registry.npmjs.org/ghosthand | jq '."dist-tags"'`; do not publish again.
 - Build from the committed tree: `prepublishOnly` compiles whatever Swift code is in the working tree, including uncommitted changes from other sessions.
+
+# Account and billing
+
+Every lease needs a ghosthand.dev account with a trial or plan. The daemon owns it (`Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
+
+```
+setup app / ghosthand login ──POST /v1/account/login──> daemon ──POST /api/cli/login──> website
+browser approves /device ─────────────────────────────> daemon polls /api/cli/login/token
+acquire ──> Account.authorizeLease() ──GET /api/cli/account──> plan from website/src/lib/billing.ts
+```
+
+- The daemon never computes trial dates: the server answers `allowed` and a `notice`. Only acquire and wait check, so a running lease is never stopped. Unreachable server: the lease is allowed (fail-open).
+- `GHOSTHAND_SERVER` at daemon start picks the server (default https://ghosthand.dev; `http://localhost:8047` for `pnpm dev` in website/). A saved account counts only for its own server. Restart the daemon after changing it.
+- Website: `db/` has the D1 schema (drizzle). Stripe rows store their Stripe account id; today the account is shared with Playwriter (sigillo project `website` in the `ghosthand` org).

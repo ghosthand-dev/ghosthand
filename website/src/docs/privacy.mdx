@@ -18,13 +18,15 @@ Stripe processes payments; we never see card numbers.
 
 ## What stays on your Mac
 
-**Screenshots, screen text, typed text, passcodes and phone data never reach our
-servers.** The ghosthand daemon on your Mac sends only your session token to
+**Screenshots, screen text, typed text, passcodes and phone data are never stored on
+our servers.** The ghosthand daemon on your Mac sends only your session token to
 ghosthand.dev, to check your plan when an agent takes a lease on an iPhone.
 
-The exception is the optional remote tunnel (`ghosthand daemon start --tunnel`): it
-relays requests and responses, including screenshots, through ghosthand.dev without
-storing them.
+The exception is the remote MCP server (`https://ghosthand.dev/mcp`): while your Mac is
+signed in, the daemon keeps a connection to ghosthand.dev, and MCP calls and their results,
+including screenshots, pass through it without being stored. We keep only each Mac's name,
+the tool list (so MCP clients can connect while the Mac is offline), and which MCP clients
+you allowed.
 
 ## Your choices
 

@@ -28,7 +28,7 @@ One subscription covers **every Mac and iPhone** signed in with your account. No
 | iPhones and Macs                          | No limit            | No limit                |
 | CLI, MCP server and HTTP API              | ✓                   | ✓                       |
 | Screenshots, OCR, taps, typing, recording | ✓                   | ✓                       |
-| Remote use over a tunnel                  | ✓                   | ✓                       |
+| Remote MCP from anywhere                  | ✓                   | ✓                       |
 | Control plane app                         | ✓                   | ✓                       |
 | Event log, secrets manager, hosted skills | Coming soon         | Coming soon             |
 | Price                                     | **$0**              | **$99 / month**         |
@@ -47,7 +47,7 @@ Agents drive the iPhone through the **CLI**, the **MCP server** or the **HTTP AP
 
 ### Remote use
 
-**Run the agent anywhere.** `ghosthand daemon start --tunnel` serves the Mac's iPhones at a secret ghosthand.dev URL, so a bot on a server, or an agent on another computer, controls them over HTTPS. No port forwarding, no TLS files.
+**Run the agent anywhere.** Add `https://ghosthand.dev/mcp` as a remote MCP server in Claude, Cursor or opencode and sign in with the same Google account. The agent reaches the iPhones on every signed-in Mac, from any computer. No port forwarding, no TLS files.
 
 ### Coming next
 

@@ -1,18 +1,33 @@
-// `ghosthand daemon start --tunnel`: exposes a daemon at https://ghosthand.dev/tunnel/{id}.
-// One Durable Object per tunnel id. The id is the clients' only credential: whoever
-// knows the URL can use the iPhone. It is in the path, not a subdomain, so it never
-// appears in DNS queries or TLS SNI. The id is the first 128 bits of sha256(secret),
-// and only the daemon knows the secret: a client cannot connect as the upstream.
+// Per-user hub: every signed-in Mac keeps a WebSocket here, and the remote MCP at
+// https://ghosthand.dev/mcp reaches the Macs through it. One Durable Object per user.
 //
-//   remote CLI ── HTTPS /tunnel/{id}/v1/... ──▶ GhosthandTunnel ◀── WSS /tunnel/{id}/upstream ── daemon
-//                ◀── streamed response ────────    (this file)     ── request / cancel ─────────▶
-//                                                                   ◀── response, chunk, end ────
+//   MCP client ── POST /mcp (OAuth JWT) ──▶ requireMcpAuth ──▶ GhosthandHub(user) ◀── WSS /tunnel/upstream ── daemon (Mac A)
+//              ◀── JSON or SSE stream ─────                    (this file)        ◀── WSS /tunnel/upstream ── daemon (Mac B)
+//                                                                   │  request / cancel ──────────────────▶
+//                                                                   │  ◀── response, chunk, end, error ────
+//                                                                   ▼
+//                                     routeMcpCall (lib/mcp-routing.ts): lease prefix, `mac`, `list` fan-out
 //
-// HTTP over one WebSocket, JSON text frames, bodies in base64. The daemon replays each
-// request on its local tunnel socket and streams the response back, so server-sent
-// events work. Same design as Playwriter's remote-control tunnel, HTTP only.
+// The daemon authenticates with its better-auth session token; the Worker checks it and
+// passes the session id and Mac name to the DO in headers it sets itself. HTTP goes over the
+// WebSocket as JSON text frames, bodies in base64, so server-sent events stream through.
+// The hub never runs MCP itself: each daemon serves the JSON-RPC on its own POST /mcp.
 
-import { DurableObject } from 'cloudflare:workers'
+import { DurableObject, env } from 'cloudflare:workers'
+import { requireMcpAuth } from '@better-auth/mcp'
+import { getAuth, getDb, getMcpResource, getSessionStrict, parseDaemonUserAgent } from './db.ts'
+import {
+  macSlug,
+  mcpCacheKey,
+  mergeListReplies,
+  parseJsonRpc,
+  parseSseMessage,
+  routeMcpCall,
+  rpcError,
+  type JsonRpcId,
+  type JsonRpcMessage,
+  type MacReply,
+} from './lib/mcp-routing.ts'
 
 /** Daemon → DO. */
 type UpstreamMessage =
@@ -23,104 +38,223 @@ type UpstreamMessage =
 
 /** DO → daemon. */
 type DownstreamMessage =
-  | { type: 'accepted' }
+  | { type: 'accepted'; mac: string }
   | { type: 'request'; id: string; method: string; path: string; headers: Record<string, string>; body: string | null }
   | { type: 'cancel'; id: string }
 
-// Same rule as the daemon (Tunnel.publicID in Sources/ghosthand/tunnel.swift).
-const TUNNEL_PATH = /^\/tunnel\/([a-f0-9]{32})(\/.*)?$/
-const UPSTREAM_WAIT_MS = 5_000
-// Headers Cloudflare adds or that only make sense for one hop.
-const DROPPED_HEADERS = /^(host|connection|upgrade|content-length|transfer-encoding|keep-alive|cf-.*|x-forwarded-.*|x-real-ip|cdn-loop)$/i
+/** Registry entry, stored per better-auth session id. The slug never changes for a session. */
+type MacEntry = { slug: string; name: string; lastSeenAt: number }
+type Attachment = { sessionId: string; connectedAt: number }
+export type HubMac = { sessionId: string; slug: string; name: string; online: boolean }
 
-/** Handles /tunnel/* requests; null for every other path. */
-export function routeTunnelRequest(request: Request, env: Env): Promise<Response> | null {
-  const url = new URL(request.url)
-  if (!url.pathname.startsWith('/tunnel/')) return null
-  const match = url.pathname.match(TUNNEL_PATH)
-  if (!match) return Promise.resolve(problem({ status: 404, code: 'not-found', title: 'Not found', detail: 'Not a ghosthand tunnel URL' }))
-  const stub = env.GHOSTHAND_TUNNEL.get(env.GHOSTHAND_TUNNEL.idFromName(match[1]))
-  return stub.fetch(request)
+const UPSTREAM_PATH = '/tunnel/upstream'
+const SESSION_HEADER = 'x-ghosthand-session-id'
+const MAC_NAME_HEADER = 'x-ghosthand-mac-name'
+// A daemon restart reconnects within seconds: calls wait for it instead of failing.
+const RECONNECT_WAIT_MS = 5_000
+const RECENTLY_ONLINE_MS = 60_000
+// Hop-by-hop and Cloudflare headers, credentials, and our trusted headers.
+const DROPPED_HEADERS = /^(host|connection|upgrade|content-length|transfer-encoding|keep-alive|authorization|cookie|cf-.*|x-forwarded-.*|x-real-ip|cdn-loop|x-ghosthand-.*)$/i
+
+export function getHub(userId: string) {
+  return env.GHOSTHAND_HUB.get(env.GHOSTHAND_HUB.idFromName(userId))
 }
 
-export class GhosthandTunnel extends DurableObject<Env> {
-  private pending = new Map<string, {
-    respond(response: Response): void
-    body?: ReadableStreamDefaultController<Uint8Array>
-  }>()
+/** Handles /mcp, /tunnel/upstream and old /tunnel/* URLs; null for every other path. */
+export function routeHubRequest(request: Request): Promise<Response> | null {
+  const { pathname } = new URL(request.url)
+  if (pathname === '/mcp') return handleMcpRequest(request)
+  if (pathname === UPSTREAM_PATH) return connectUpstream(request)
+  if (pathname.startsWith('/tunnel/')) {
+    return Promise.resolve(problem({
+      status: 410,
+      code: 'gone',
+      title: 'Tunnel URLs were removed',
+      detail: 'Update ghosthand (`npx ghosthand@latest setup`). Agents now connect to the remote MCP at https://ghosthand.dev/mcp.',
+    }))
+  }
+  return null
+}
+
+async function handleMcpRequest(request: Request): Promise<Response> {
+  // Browsers send Origin; native MCP clients do not. No page may call this with a user's token.
+  if (request.headers.has('origin')) return new Response(null, { status: 403 })
+  if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } })
+  return requireMcpAuth(
+    getAuth(),
+    (authenticated, claims) => {
+      if (typeof claims.sub !== 'string' || !claims.sub) return new Response(null, { status: 401 })
+      return getHub(claims.sub).fetch(new Request(authenticated, { headers: withoutTrustedHeaders(authenticated.headers) }))
+    },
+    { resource: getMcpResource() },
+  )(request)
+}
+
+async function connectUpstream(request: Request): Promise<Response> {
+  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+    return problem({ status: 426, code: 'upgrade-required', title: 'Upgrade required', detail: 'Connect with a WebSocket.' })
+  }
+  // Errors (D1 down) throw and become 500: the daemon must not take an outage for a sign-out.
+  const session = await getSessionStrict(request)
+  if (!session) {
+    return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'This Mac is signed out. Sign in again with `ghosthand setup`.' })
+  }
+  const headers = withoutTrustedHeaders(request.headers)
+  headers.set(SESSION_HEADER, session.sessionId)
+  // Header values must be Latin-1; Mac names often have curly quotes.
+  headers.set(MAC_NAME_HEADER, encodeURIComponent(parseDaemonUserAgent(request.headers.get('user-agent')).name))
+  return getHub(session.userId).fetch(new Request(request, { headers }))
+}
+
+function withoutTrustedHeaders(source: Headers): Headers {
+  const headers = new Headers(source)
+  for (const key of [...headers.keys()]) if (key.startsWith('x-ghosthand-')) headers.delete(key)
+  return headers
+}
+
+type Pending = {
+  sessionId: string
+  rpcId: JsonRpcId
+  respond(response: Response): void
+  body?: ReadableStreamDefaultController<Uint8Array>
+}
+
+export class GhosthandHub extends DurableObject<Env> {
+  private pending = new Map<string, Pending>()
   private waitingForUpstream = new Set<() => void>()
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
     // The daemon pings every 30 s (the edge drops idle sockets after ~100 s). The edge
-    // answers without waking the DO, so an idle tunnel costs nothing.
+    // answers without waking the DO, so idle Macs cost nothing.
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'))
   }
 
+  /** Only the Worker calls this, with the trusted headers it set (routeHubRequest). */
   async fetch(request: Request): Promise<Response> {
-    const match = new URL(request.url).pathname.match(TUNNEL_PATH)
-    const path = match?.[2] || '/'
-    if (path === '/upstream' && request.headers.get('Upgrade') === 'websocket') {
-      const secret = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? ''
-      if (!match || (await publicID(secret)) !== match[1]) {
-        return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'Only the daemon that owns this tunnel can serve it' })
-      }
-      return this.openUpstream()
-    }
-    return this.forward(request, path)
+    if (new URL(request.url).pathname === UPSTREAM_PATH) return this.openUpstream(request)
+    return this.handleMcp(request)
   }
 
-  /** The newest daemon connection wins: after a network drop or a daemon restart the
-   *  old socket can look open for up to ~100 s. Only the secret holder gets here. */
-  private openUpstream(): Response {
-    for (const old of this.ctx.getWebSockets()) close({ socket: old, code: 4409, reason: 'Replaced by a newer daemon connection' })
-    this.failAll('the daemon reconnected')
+  /** Every Mac this account connected, for the dashboard. */
+  macs(): HubMac[] {
+    const online = new Set(this.onlineMacs().map((mac) => mac.sessionId))
+    return Object.entries(this.registry()).map(([sessionId, mac]) => ({ sessionId, slug: mac.slug, name: mac.name, online: online.has(sessionId) }))
+  }
+
+  /** Called after the session row is deleted: the daemon reconnects, gets 401 and stops. */
+  revoke(sessionId: string): void {
+    for (const socket of this.ctx.getWebSockets(sessionId)) close({ socket, code: 4401, reason: 'Mac signed out' })
+    this.failSession(sessionId, 'the Mac was signed out')
+    const registry = this.registry()
+    delete registry[sessionId]
+    this.ctx.storage.kv.put('macs', registry)
+  }
+
+  /** One socket per session; other Macs keep theirs. A newer connection of the same session
+   *  wins: after a network drop the old socket can look open for up to ~100 s. */
+  private async openUpstream(request: Request): Promise<Response> {
+    const sessionId = request.headers.get(SESSION_HEADER)
+    if (!sessionId) return problem({ status: 400, code: 'bad-request', title: 'Bad request', detail: 'Missing session' })
+    const name = decodeURIComponent(request.headers.get(MAC_NAME_HEADER) ?? 'Mac')
+    // Signed-out sessions free their slug. Query before reading the registry: the await lets other events in.
+    const known = Object.keys(this.registry())
+    const live = known.length ? await getDb().query.session.findMany({ where: { id: { in: known } } }) : []
+    const liveIds = new Set(live.map((row) => row.id))
+
+    const registry = Object.fromEntries(Object.entries(this.registry()).filter(([id]) => liveIds.has(id) || !known.includes(id)))
+    const slug = registry[sessionId]?.slug ?? macSlug(name, Object.values(registry).map((mac) => mac.slug))
+    registry[sessionId] = { slug, name, lastSeenAt: Date.now() }
+    this.ctx.storage.kv.put('macs', registry)
+
+    for (const old of this.ctx.getWebSockets(sessionId)) close({ socket: old, code: 4409, reason: 'Replaced by a newer daemon connection' })
+    this.failSession(sessionId, 'the daemon reconnected')
     const [client, server] = Object.values(new WebSocketPair())
-    this.ctx.acceptWebSocket(server)
-    this.ctx.storage.kv.put('served', true)
-    send(server, { type: 'accepted' })
+    this.ctx.acceptWebSocket(server, [sessionId])
+    server.serializeAttachment({ sessionId, connectedAt: Date.now() } satisfies Attachment)
+    send(server, { type: 'accepted', mac: slug })
     this.waitingForUpstream.forEach((done) => done())
     return new Response(null, { status: 101, webSocket: client })
   }
 
-  private async forward(request: Request, path: string): Promise<Response> {
-    let upstream = this.upstream()
-    // Wait only for a tunnel that had a daemon: a random id must not hold the DO for 5 s.
-    if (!upstream && this.ctx.storage.kv.get('served')) {
-      // The daemon may be reconnecting, e.g. right after `ghosthand daemon restart`.
-      await new Promise<void>((resolve) => {
-        const done = () => { clearTimeout(timer); this.waitingForUpstream.delete(done); resolve() }
-        const timer = setTimeout(done, UPSTREAM_WAIT_MS)
-        this.waitingForUpstream.add(done)
-      })
-      upstream = this.upstream()
-    }
-    if (!upstream) {
-      return problem({ status: 503, code: 'tunnel-offline', title: 'Tunnel offline', detail: 'The daemon behind this tunnel is not connected. On its Mac, run `ghosthand daemon status`; start it with `ghosthand daemon start --tunnel`.' })
-    }
+  private async handleMcp(request: Request): Promise<Response> {
+    const text = await request.text()
+    const parsed = parseJsonRpc(text)
+    if (!parsed.ok) return Response.json(parsed.body, { status: parsed.status })
+    const { message } = parsed
 
-    const id = crypto.randomUUID()
-    const url = new URL(request.url)
+    let route = this.route(message)
+    if (route.kind === 'reply' && route.offline && this.recentlyOnline()) {
+      await this.waitForUpstream()
+      route = this.route(message)
+    }
+    const rpcId = message.id ?? null
+    switch (route.kind) {
+      case 'reply':
+        return route.body ? Response.json(route.body, { status: route.status }) : new Response(null, { status: route.status })
+      case 'forward': {
+        const response = await this.dispatch({ slug: route.slug, request, body: text, rpcId })
+        const cacheKey = mcpCacheKey(message)
+        if (!cacheKey || !response.ok || !response.headers.get('content-type')?.includes('application/json')) return response
+        // Small JSON: keep its result so clients can connect while every Mac is offline.
+        const json = await response.text()
+        const reply = parseJsonRpc(json)
+        const result = reply.ok ? reply.message.result : undefined
+        if (result !== undefined) this.ctx.storage.kv.put(cacheKey, result)
+        return new Response(json, { status: response.status, headers: response.headers })
+      }
+      case 'fanout': {
+        const replies = await Promise.all(route.slugs.map((slug) => this.collect({ slug, request, body: text, rpcId })))
+        return Response.json(mergeListReplies(rpcId, replies))
+      }
+    }
+  }
+
+  private route(message: JsonRpcMessage) {
+    const online = this.onlineMacs()
+    const cacheKey = online.length ? null : mcpCacheKey(message)
+    return routeMcpCall({ message, online, cached: cacheKey ? this.ctx.storage.kv.get(cacheKey) : undefined })
+  }
+
+  /** Sends one request to a Mac; resolves with its streamed response. */
+  private async dispatch({ slug, request, body, rpcId }: { slug: string; request: Request; body: string; rpcId: JsonRpcId }): Promise<Response> {
+    const mac = this.onlineMacs().find((m) => m.slug === slug)
+    if (!mac) return Response.json(rpcError(rpcId, -32603, `Mac ${slug} disconnected. Try again.`))
+    if (request.signal.aborted) return new Response(null, { status: 499 })
     const headers: Record<string, string> = {}
     request.headers.forEach((value, key) => { if (!DROPPED_HEADERS.test(key)) headers[key] = value })
-    const body = request.body ? toBase64(new Uint8Array(await request.arrayBuffer())) : null
-    // Abort events do not replay: the client may have left during the awaits above.
-    if (request.signal.aborted) return new Response(null, { status: 499 })
-    const response = new Promise<Response>((respond) => this.pending.set(id, { respond }))
-    // The client went away (needs the enable_request_signal flag).
+    headers['ghosthand-mac'] = slug
+    const id = crypto.randomUUID()
+    const response = new Promise<Response>((respond) => this.pending.set(id, { sessionId: mac.sessionId, rpcId, respond }))
+    // The client went away (needs the enable_request_signal flag): stop the call on the Mac too.
     request.signal.addEventListener('abort', () => this.cancel(id))
-    if (!send(upstream, { type: 'request', id, method: request.method, path: path + url.search, headers, body })) {
+    if (!send(mac.socket, { type: 'request', id, method: 'POST', path: '/mcp', headers, body: toBase64(new TextEncoder().encode(body)) })) {
       this.pending.delete(id)
-      return problem({ status: 503, code: 'tunnel-offline', title: 'Tunnel offline', detail: 'Lost the connection to the daemon. Try again.' })
+      return Response.json(rpcError(rpcId, -32603, `Lost the connection to Mac ${slug}. Try again.`))
     }
     return response
+  }
+
+  /** A whole JSON-RPC reply from one Mac, for the `list` fan-out. */
+  private async collect(options: { slug: string; request: Request; body: string; rpcId: JsonRpcId }): Promise<MacReply> {
+    const { slug } = options
+    try {
+      const response = await this.dispatch(options)
+      const text = await response.text()
+      if (!response.ok) return { slug, error: `HTTP ${response.status} ${text.slice(0, 200)}` }
+      const isStream = response.headers.get('content-type')?.includes('text/event-stream')
+      return { slug, message: isStream ? parseSseMessage(text) : JSON.parse(text) }
+    } catch (cause) {
+      return { slug, error: cause instanceof Error ? cause.message : String(cause) }
+    }
   }
 
   webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer): void {
     if (typeof raw !== 'string') return
     const message = parse(raw)
     const pending = message && this.pending.get(message.id)
-    if (!message || !pending) return
+    // A Mac can only answer its own requests.
+    if (!message || !pending || pending.sessionId !== attachment(socket)?.sessionId) return
     switch (message.type) {
       case 'response': {
         const body = new ReadableStream<Uint8Array>({
@@ -142,42 +276,85 @@ export class GhosthandTunnel extends DurableObject<Env> {
       case 'error':
         this.pending.delete(message.id)
         if (pending.body) pending.body.error(new Error(message.message))
-        else pending.respond(problem({ status: 502, code: 'internal-error', title: 'Tunnel error', detail: message.message }))
+        else pending.respond(Response.json(rpcError(pending.rpcId, -32603, message.message)))
     }
-  }
-
-  webSocketClose(socket: WebSocket): void {
-    if (!this.upstream()) this.failAll('the daemon disconnected')
   }
 
   webSocketError(socket: WebSocket): void {
     close({ socket, code: 1011, reason: 'WebSocket error' })
-    if (!this.upstream()) this.failAll('the daemon disconnected')
+    this.webSocketClose(socket)
+  }
+
+  webSocketClose(socket: WebSocket): void {
+    const sessionId = attachment(socket)?.sessionId
+    if (!sessionId) return
+    // A replacement socket of the same session keeps its requests.
+    if (this.ctx.getWebSockets(sessionId).some((s) => s !== socket && s.readyState === WebSocket.OPEN)) return
+    this.failSession(sessionId, 'the Mac disconnected')
+    const registry = this.registry()
+    const mac = registry[sessionId]
+    if (!mac) return
+    mac.lastSeenAt = Date.now()
+    this.ctx.storage.kv.put('macs', registry)
   }
 
   /** Stops the request in the daemon too, which stops a running command. */
   private cancel(id: string): void {
-    if (!this.pending.delete(id)) return
-    const upstream = this.upstream()
-    if (upstream) send(upstream, { type: 'cancel', id })
+    const pending = this.pending.get(id)
+    if (!pending) return
+    this.pending.delete(id)
+    const mac = this.onlineMacs().find((m) => m.sessionId === pending.sessionId)
+    if (mac) send(mac.socket, { type: 'cancel', id })
   }
 
-  private upstream(): WebSocket | null {
-    return this.ctx.getWebSockets().find((socket) => socket.readyState === WebSocket.OPEN) ?? null
-  }
-
-  private failAll(reason: string): void {
-    for (const pending of this.pending.values()) {
+  private failSession(sessionId: string, reason: string): void {
+    for (const [id, pending] of this.pending) {
+      if (pending.sessionId !== sessionId) continue
+      this.pending.delete(id)
       if (pending.body) pending.body.error(new Error(reason))
-      else pending.respond(problem({ status: 503, code: 'tunnel-offline', title: 'Tunnel offline', detail: `Request lost: ${reason}. Try again.` }))
+      else pending.respond(Response.json(rpcError(pending.rpcId, -32603, `Request lost: ${reason}. Try again.`)))
     }
-    this.pending.clear()
+  }
+
+  private registry(): Record<string, MacEntry> {
+    return this.ctx.storage.kv.get<Record<string, MacEntry>>('macs') ?? {}
+  }
+
+  /** Open sockets with their Mac, newest connection first. */
+  private onlineMacs() {
+    const registry = this.registry()
+    return this.ctx.getWebSockets()
+      .filter((socket) => socket.readyState === WebSocket.OPEN)
+      .flatMap((socket) => {
+        const info = attachment(socket)
+        const mac = info && registry[info.sessionId]
+        return info && mac ? [{ ...info, slug: mac.slug, name: mac.name, socket }] : []
+      })
+      .sort((a, b) => b.connectedAt - a.connectedAt)
+  }
+
+  /** A Mac dropped in the last minute: likely a daemon restart, worth waiting for. */
+  private recentlyOnline(): boolean {
+    const online = new Set(this.onlineMacs().map((mac) => mac.sessionId))
+    return Object.entries(this.registry()).some(([id, mac]) => !online.has(id) && Date.now() - mac.lastSeenAt < RECENTLY_ONLINE_MS)
+  }
+
+  private waitForUpstream(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const done = () => { clearTimeout(timer); this.waitingForUpstream.delete(done); resolve() }
+      const timer = setTimeout(done, RECONNECT_WAIT_MS)
+      this.waitingForUpstream.add(done)
+    })
   }
 }
 
-/** Same shape as the daemon's errors, so the CLI prints `detail`. */
+/** Same shape as the daemon's errors. */
 function problem({ status, code, title, detail }: { status: number; code: string; title: string; detail: string }): Response {
   return Response.json({ code, title, status, detail }, { status, headers: { 'content-type': 'application/problem+json' } })
+}
+
+function attachment(socket: WebSocket): Attachment | null {
+  return socket.deserializeAttachment() as Attachment | null
 }
 
 function parse(raw: string): UpstreamMessage | null {
@@ -201,11 +378,6 @@ function close({ socket, code, reason }: { socket: WebSocket; code: number; reas
   try {
     socket.close(code, reason)
   } catch {}
-}
-
-async function publicID(secret: string): Promise<string> {
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)))
-  return Array.from(hash.subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 function toBase64(bytes: Uint8Array): string {

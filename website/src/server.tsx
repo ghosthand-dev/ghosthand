@@ -1,23 +1,25 @@
 // Custom entry: account pages, the daemon API, Stripe, and the holocron docs.
 //
-//   /api/auth/*        better-auth (Google login, device flow, bearer tokens)
+//   /api/auth/*        better-auth (Google login, device flow, bearer tokens, MCP OAuth)
+//   /.well-known/oauth-*, /.well-known/openid-configuration   OAuth discovery (better-auth)
 //   /api/cli/*         the daemon's login and plan checks (cli-api.ts)
 //   /api/stripe/*      Stripe webhook
-//   /login /device /dashboard /subscribe     account pages
-//   /tunnel/*          daemon tunnels (tunnel.ts, before spiceflow)
+//   /login /device /consent /dashboard /subscribe     account pages
+//   /mcp               remote MCP, OAuth; routed to the user's Macs (tunnel.ts, before spiceflow)
+//   /tunnel/upstream   each signed-in daemon's WebSocket to its user's hub (tunnel.ts)
 //   everything else    holocron docs, plus /.well-known/agent-skills/* for `npx skills add`
-import { Spiceflow, json, redirect } from 'spiceflow'
+import { Spiceflow, redirect } from 'spiceflow'
 import { router } from 'spiceflow/react'
 import { z } from 'zod'
 import { app as holocronApp } from '@holocron.so/vite/app'
 import skillMd from '../../skills/ghosthand/SKILL.md?raw'
-import { routeTunnelRequest } from './tunnel.ts'
+import { getHub, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
-import { ensureOrg, getAuth, getBaseUrl, getSession, getUserSubscriptions, listMacSessions } from './db.ts'
+import { ensureOrg, getAuth, getBaseUrl, getDb, getMcpResource, getSession, getUserSubscriptions, listMacSessions } from './db.ts'
 import { entitlementFor, isProStatus } from './lib/billing.ts'
 import { subscribeRedirectUrl } from './lib/stripe.ts'
-import { approveDevice, denyDevice, signOutMac } from './actions.tsx'
+import { approveDevice, consentMcp, denyDevice, signOutMac } from './actions.tsx'
 // wrangler main is this file, so holocron's auto-import of a root style.css never runs.
 import './globals.css'
 
@@ -43,7 +45,7 @@ function safeCallback(value: string | undefined): string {
   return value
 }
 
-const loginQuery = z.object({ callbackURL: z.string().optional() })
+const loginQuery = z.object({ callbackURL: z.string().optional(), response_type: z.string().optional() })
 const deviceQuery = z.object({ user_code: z.string().optional(), status: z.enum(['approved', 'denied']).optional() })
 
 export const app = new Spiceflow()
@@ -55,7 +57,12 @@ export const app = new Spiceflow()
     throw redirect(url.toString(), { status: 301 })
   })
   .use(async ({ request }, next) => {
-    if (request.parsedUrl.pathname.startsWith('/api/auth')) {
+    const path = request.parsedUrl.pathname
+    const isAuthPath = path.startsWith('/api/auth')
+      || path.startsWith('/.well-known/oauth-authorization-server')
+      || path.startsWith('/.well-known/oauth-protected-resource')
+      || path.startsWith('/.well-known/openid-configuration')
+    if (isAuthPath) {
       const response = await getAuth().handler(request)
       if (response.ok || response.status !== 404) return response
     }
@@ -69,31 +76,18 @@ export const app = new Spiceflow()
     query: loginQuery,
     handler: async ({ request, query }) => {
       const callbackURL = safeCallback(query.callbackURL)
-      if (await getSession(request)) throw redirect(callbackURL)
+      if (await getSession(request)) {
+        // An MCP client's authorize request (signed query from /api/auth/oauth2/authorize): resume it.
+        if (query.response_type === 'code') throw redirect(`/api/auth/oauth2/authorize${request.parsedUrl.search}`)
+        throw redirect(callbackURL)
+      }
       const { AuthShell } = await import('./components/account-pages.tsx')
       const { GoogleSignInButton } = await import('./components/account-client.tsx')
       return (
         <AuthShell title='Sign in' description='Agents use your iPhones through ghosthand. Free for 7 days, then $99 per month.'>
-          <GoogleSignInButton href={router.href('/login/google', { callbackURL })} />
+          <GoogleSignInButton callbackURL={callbackURL} />
         </AuthShell>
       )
-    },
-  })
-  .route({
-    method: 'GET',
-    path: '/login/google',
-    query: loginQuery,
-    async handler({ request, query }) {
-      // signInSocial answers JSON with the OAuth URL; the redirect and its state cookie are ours to send.
-      const { response, headers } = await getAuth().api.signInSocial({
-        body: { provider: 'google', callbackURL: safeCallback(query.callbackURL) },
-        headers: request.headers,
-        returnHeaders: true,
-      })
-      if (!response?.url) throw json({ error: 'cannot start Google sign-in' }, { status: 500 })
-      const res = new Response(null, { status: 302, headers: { Location: response.url } })
-      for (const cookie of headers.getSetCookie()) res.headers.append('Set-Cookie', cookie)
-      return res
     },
   })
   .get('/signup', () => {
@@ -138,10 +132,50 @@ export const app = new Spiceflow()
     },
   })
 
+  // An MCP client asks for access: /api/auth/oauth2/authorize sends the signed query here.
+  .page('/consent', async ({ request }) => {
+    const { search, searchParams } = request.parsedUrl
+    if (!(await getSession(request))) throw redirect(router.href('/login', { callbackURL: `/consent${search}` }))
+    const { AuthShell } = await import('./components/account-pages.tsx')
+    const clientId = searchParams.get('client_id')
+    if (!clientId || !searchParams.get('sig')) {
+      return <AuthShell title='Nothing to approve' description='Open this page from the sign-in window of your MCP client.' />
+    }
+    const client = await getDb().query.oauthClient.findFirst({ where: { clientId } })
+    const { ConsentButtons } = await import('./components/account-client.tsx')
+    return (
+      <AuthShell
+        title={`Allow ${client?.name || 'this MCP client'}?`}
+        description='It can use the iPhones on every Mac signed in with this account: screenshots, taps and typing. Allow only clients you trust.'
+      >
+        <dl className='w-full break-all text-left text-xs text-neutral-500'>
+          {[
+            ['Client', clientId],
+            ['Scopes', searchParams.get('scope') || 'none'],
+            ['Resource', searchParams.get('resource') || getMcpResource()],
+            ['Redirect', searchParams.get('redirect_uri') || ''],
+          ].filter(([, value]) => value).map(([label, value]) => (
+            <div key={label} className='border-b border-neutral-200 py-2 last:border-b-0 dark:border-neutral-800'>
+              <dt className='text-neutral-400'>{label}</dt>
+              <dd className='font-mono text-neutral-900 dark:text-neutral-100'>{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <ConsentButtons oauthQuery={search.slice(1)} consent={consentMcp} />
+      </AuthShell>
+    )
+  })
+
   .page('/dashboard', async ({ request }) => {
     const session = await getSession(request)
     if (!session) throw redirect(router.href('/login', { callbackURL: '/dashboard' }))
-    const [subscriptions, macs] = await Promise.all([getUserSubscriptions(session.userId), listMacSessions(session.userId)])
+    const [subscriptions, sessions, hubMacs] = await Promise.all([
+      getUserSubscriptions(session.userId),
+      listMacSessions(session.userId),
+      getHub(session.userId).macs(),
+    ])
+    const hubBySession = new Map(hubMacs.map((mac) => [mac.sessionId, mac]))
+    const macs = sessions.map((mac) => ({ ...mac, slug: hubBySession.get(mac.sessionId)?.slug ?? null, online: hubBySession.get(mac.sessionId)?.online ?? false }))
     const entitlement = entitlementFor({ userCreatedAt: session.user.createdAt, subscriptions, now: new Date() })
     // The Pro one, else the newest, so a canceled or failed plan still shows.
     const subscription = subscriptions.find((s) => isProStatus(s.status)) ?? subscriptions[0] ?? null
@@ -153,6 +187,7 @@ export const app = new Spiceflow()
         entitlement={entitlement}
         subscription={subscription}
         macs={macs}
+        mcpUrl={getMcpResource()}
         signOutMac={signOutMac}
       />
     )
@@ -199,10 +234,10 @@ declare module 'spiceflow/react' {
   }
 }
 
-export { GhosthandTunnel } from './tunnel.ts'
+export { GhosthandHub } from './tunnel.ts'
 
 export default {
-  fetch(request: Request, env: Env): Promise<Response> {
-    return routeTunnelRequest(request, env) ?? app.handle(request)
+  fetch(request: Request): Promise<Response> {
+    return routeHubRequest(request) ?? app.handle(request)
   },
 } satisfies ExportedHandler<Env>

@@ -1,6 +1,7 @@
 // Schema of the ghosthand.dev D1 database.
 //
 //   user ──< session, account, device_code          (better-auth: Google login, CLI device flow)
+//   user ──< oauth_consent, oauth_*_token >── oauth_client   (remote MCP OAuth; jwks signs tokens)
 //   user ──< org_member >── org
 //                           org ──< stripe_customer  one per (org, Stripe account)
 //                           org ──< subscription     mirrored from Stripe webhooks
@@ -90,6 +91,167 @@ export const deviceCode = s.sqliteTable('device_code', {
   s.index('device_code_user_id_idx').on(table.userId),
 ])
 
+// ── remote MCP OAuth (jwt + @better-auth/mcp + cimd) ────────────────
+// Fields and onDelete rules copy @better-auth/oauth-provider 1.7 exactly: no onDelete means
+// NO ACTION. A CIMD client is one shared row (client_id is its metadata URL), so CASCADE on
+// it would drop every user's tokens. string[] fields are JSON text: D1 rejects array binds.
+
+/** Signing keys for MCP access tokens (jwt plugin, served at /api/auth/jwks). */
+export const jwks = s.sqliteTable('jwks', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  publicKey: s.text('public_key').notNull(),
+  privateKey: s.text('private_key').notNull(),
+  createdAt: createdAt(),
+  expiresAt: s.integer('expires_at', { mode: 'timestamp_ms' }),
+  alg: s.text('alg'),
+  crv: s.text('crv'),
+})
+
+export const oauthClient = s.sqliteTable('oauth_client', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  clientId: s.text('client_id').notNull().unique(),
+  clientSecret: s.text('client_secret'),
+  /** "cimd" when CIMD fetched it; NULL for admin or DCR clients. */
+  clientDiscoveryId: s.text('client_discovery_id'),
+  disabled: s.integer('disabled', { mode: 'boolean' }).default(false),
+  skipConsent: s.integer('skip_consent', { mode: 'boolean' }),
+  enableEndSession: s.integer('enable_end_session', { mode: 'boolean' }),
+  subjectType: s.text('subject_type'),
+  scopes: s.text('scopes', { mode: 'json' }).$type<string[]>(),
+  clientCredentialsScopes: s.text('client_credentials_scopes', { mode: 'json' }).$type<string[]>(),
+  userId: s.text('user_id').references(() => user.id),
+  createdAt: s.integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+  updatedAt: s.integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+  name: s.text('name'),
+  uri: s.text('uri'),
+  icon: s.text('icon'),
+  contacts: s.text('contacts', { mode: 'json' }).$type<string[]>(),
+  tos: s.text('tos'),
+  policy: s.text('policy'),
+  softwareId: s.text('software_id'),
+  softwareVersion: s.text('software_version'),
+  softwareStatement: s.text('software_statement'),
+  redirectUris: s.text('redirect_uris', { mode: 'json' }).$type<string[]>().notNull(),
+  postLogoutRedirectUris: s.text('post_logout_redirect_uris', { mode: 'json' }).$type<string[]>(),
+  backchannelLogoutUri: s.text('backchannel_logout_uri'),
+  backchannelLogoutSessionRequired: s.integer('backchannel_logout_session_required', { mode: 'boolean' }),
+  tokenEndpointAuthMethod: s.text('token_endpoint_auth_method'),
+  applicationType: s.text('application_type'),
+  jwks: s.text('jwks'),
+  jwksUri: s.text('jwks_uri'),
+  grantTypes: s.text('grant_types', { mode: 'json' }).$type<string[]>(),
+  responseTypes: s.text('response_types', { mode: 'json' }).$type<string[]>(),
+  requirePKCE: s.integer('require_pkce', { mode: 'boolean' }),
+  dpopBoundAccessTokens: s.integer('dpop_bound_access_tokens', { mode: 'boolean' }).default(false),
+  referenceId: s.text('reference_id'),
+  metadata: s.text('metadata', { mode: 'json' }),
+}, (table) => [
+  s.index('oauth_client_user_id_idx').on(table.userId),
+])
+
+/** The MCP URL as a token audience (RFC 8707 resource). */
+export const oauthResource = s.sqliteTable('oauth_resource', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  identifier: s.text('identifier').notNull().unique(),
+  name: s.text('name').notNull(),
+  accessTokenTtl: s.integer('access_token_ttl', { mode: 'number' }),
+  refreshTokenTtl: s.integer('refresh_token_ttl', { mode: 'number' }),
+  signingAlgorithm: s.text('signing_algorithm'),
+  signingKeyId: s.text('signing_key_id'),
+  allowedScopes: s.text('allowed_scopes', { mode: 'json' }).$type<string[]>(),
+  customClaims: s.text('custom_claims', { mode: 'json' }),
+  dpopBoundAccessTokensRequired: s.integer('dpop_bound_access_tokens_required', { mode: 'boolean' }).default(false),
+  disabled: s.integer('disabled', { mode: 'boolean' }).default(false),
+  createdAt: s.integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+  updatedAt: s.integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+  policyVersion: s.integer('policy_version', { mode: 'number' }).default(1),
+  metadata: s.text('metadata', { mode: 'json' }),
+})
+
+export const oauthClientResource = s.sqliteTable('oauth_client_resource', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  clientId: s.text('client_id').notNull().references(() => oauthClient.clientId, { onDelete: 'cascade' }),
+  resourceId: s.text('resource_id').notNull().references(() => oauthResource.identifier, { onDelete: 'cascade' }),
+  metadata: s.text('metadata', { mode: 'json' }),
+  createdAt: s.integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+}, (table) => [
+  s.index('oauth_client_resource_client_id_idx').on(table.clientId),
+  s.index('oauth_client_resource_resource_id_idx').on(table.resourceId),
+  s.uniqueIndex('oauth_client_resource_client_id_resource_id_unique').on(table.clientId, table.resourceId),
+])
+
+export const oauthRefreshToken = s.sqliteTable('oauth_refresh_token', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  token: s.text('token').notNull().unique(),
+  clientId: s.text('client_id').notNull().references(() => oauthClient.clientId),
+  sessionId: s.text('session_id').references(() => session.id, { onDelete: 'set null' }),
+  userId: s.text('user_id').notNull().references(() => user.id),
+  referenceId: s.text('reference_id'),
+  authorizationCodeId: s.text('authorization_code_id'),
+  resources: s.text('resources', { mode: 'json' }).$type<string[]>(),
+  requestedUserInfoClaims: s.text('requested_user_info_claims', { mode: 'json' }).$type<string[]>(),
+  expiresAt: s.integer('expires_at', { mode: 'timestamp_ms' }),
+  createdAt: s.integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+  revoked: s.integer('revoked', { mode: 'timestamp_ms' }),
+  rotatedAt: s.integer('rotated_at', { mode: 'timestamp_ms' }),
+  rotationReplayResponse: s.text('rotation_replay_response'),
+  rotationReplayExpiresAt: s.integer('rotation_replay_expires_at', { mode: 'timestamp_ms' }),
+  authTime: s.integer('auth_time', { mode: 'timestamp_ms' }),
+  confirmation: s.text('confirmation', { mode: 'json' }),
+  scopes: s.text('scopes', { mode: 'json' }).$type<string[]>().notNull(),
+}, (table) => [
+  s.index('oauth_refresh_token_client_id_idx').on(table.clientId),
+  s.index('oauth_refresh_token_session_id_idx').on(table.sessionId),
+  s.index('oauth_refresh_token_user_id_idx').on(table.userId),
+  s.index('oauth_refresh_token_authorization_code_id_idx').on(table.authorizationCodeId),
+])
+
+/** Opaque access tokens; MCP tokens are JWTs and do not land here. */
+export const oauthAccessToken = s.sqliteTable('oauth_access_token', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  token: s.text('token').unique(),
+  clientId: s.text('client_id').notNull().references(() => oauthClient.clientId),
+  sessionId: s.text('session_id').references(() => session.id, { onDelete: 'set null' }),
+  userId: s.text('user_id').references(() => user.id),
+  referenceId: s.text('reference_id'),
+  authorizationCodeId: s.text('authorization_code_id'),
+  resources: s.text('resources', { mode: 'json' }).$type<string[]>(),
+  requestedUserInfoClaims: s.text('requested_user_info_claims', { mode: 'json' }).$type<string[]>(),
+  refreshId: s.text('refresh_id').references(() => oauthRefreshToken.id),
+  expiresAt: s.integer('expires_at', { mode: 'timestamp_ms' }),
+  createdAt: s.integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+  revoked: s.integer('revoked', { mode: 'timestamp_ms' }),
+  confirmation: s.text('confirmation', { mode: 'json' }),
+  scopes: s.text('scopes', { mode: 'json' }).$type<string[]>().notNull(),
+}, (table) => [
+  s.index('oauth_access_token_client_id_idx').on(table.clientId),
+  s.index('oauth_access_token_session_id_idx').on(table.sessionId),
+  s.index('oauth_access_token_user_id_idx').on(table.userId),
+  s.index('oauth_access_token_authorization_code_id_idx').on(table.authorizationCodeId),
+  s.index('oauth_access_token_refresh_id_idx').on(table.refreshId),
+])
+
+export const oauthConsent = s.sqliteTable('oauth_consent', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  clientId: s.text('client_id').notNull().references(() => oauthClient.clientId),
+  userId: s.text('user_id').references(() => user.id),
+  referenceId: s.text('reference_id'),
+  resources: s.text('resources', { mode: 'json' }).$type<string[]>(),
+  requestedUserInfoClaims: s.text('requested_user_info_claims', { mode: 'json' }).$type<string[]>(),
+  scopes: s.text('scopes', { mode: 'json' }).$type<string[]>().notNull(),
+  createdAt: s.integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+  updatedAt: s.integer('updated_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
+}, (table) => [
+  s.index('oauth_consent_client_id_idx').on(table.clientId),
+  s.index('oauth_consent_user_id_idx').on(table.userId),
+])
+
+/** Single-use private_key_jwt assertion ids (replay guard). */
+export const oauthClientAssertion = s.sqliteTable('oauth_client_assertion', {
+  id: s.text('id').primaryKey(),
+  expiresAt: s.integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
 // ── orgs ────────────────────────────────────────────────────────────
 
 /** Billing owner. Each user gets one org on first need; teams can join it later. */
@@ -143,12 +305,35 @@ export const subscription = s.sqliteTable('subscription', {
 ])
 
 export const relations = defineRelations(
-  { user, session, account, verification, deviceCode, org, orgMember, stripeCustomer, subscription },
+  {
+    user, session, account, verification, deviceCode,
+    jwks, oauthClient, oauthResource, oauthClientResource, oauthRefreshToken, oauthAccessToken, oauthConsent, oauthClientAssertion,
+    org, orgMember, stripeCustomer, subscription,
+  },
   (r) => ({
     user: {
       sessions: r.many.session(),
       accounts: r.many.account(),
       memberships: r.many.orgMember(),
+    },
+    oauthClient: {
+      user: r.one.user({ from: r.oauthClient.userId, to: r.user.id }),
+    },
+    oauthClientResource: {
+      client: r.one.oauthClient({ from: r.oauthClientResource.clientId, to: r.oauthClient.clientId }),
+      resource: r.one.oauthResource({ from: r.oauthClientResource.resourceId, to: r.oauthResource.identifier }),
+    },
+    oauthRefreshToken: {
+      client: r.one.oauthClient({ from: r.oauthRefreshToken.clientId, to: r.oauthClient.clientId }),
+      user: r.one.user({ from: r.oauthRefreshToken.userId, to: r.user.id }),
+    },
+    oauthAccessToken: {
+      client: r.one.oauthClient({ from: r.oauthAccessToken.clientId, to: r.oauthClient.clientId }),
+      user: r.one.user({ from: r.oauthAccessToken.userId, to: r.user.id }),
+    },
+    oauthConsent: {
+      client: r.one.oauthClient({ from: r.oauthConsent.clientId, to: r.oauthClient.clientId }),
+      user: r.one.user({ from: r.oauthConsent.userId, to: r.user.id }),
     },
     session: {
       user: r.one.user({ from: r.session.userId, to: r.user.id }),

@@ -17,15 +17,21 @@
     "deploy:prod": "pnpm db:migrate:prod && tsc && vite build && wrangler deploy"
   },
   "dependencies": {
+    "@better-auth/cimd": "1.7.7",
+    "@better-auth/core": "1.7.7",
+    "@better-auth/mcp": "1.7.7",
+    "@better-auth/oauth-provider": "1.7.7",
     "@holocron.so/vite": "^0.36.0",
     "better-auth": "^1.7.7",
     "better-auth-drizzle-adapter": "^1.2.1",
+    "clsx": "^2.1.1",
     "db": "workspace:^",
     "drizzle-orm": "1.0.0-beta.22",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "spiceflow": "1.26.0-rsc.18",
     "stripe": "^22.6.2",
+    "tailwind-merge": "^3.7.0",
     "ulid": "^3.0.2",
     "vite": "latest",
     "zod": "^4.6.5"

@@ -3,8 +3,10 @@
   "name": "ghosthand-website",
   "main": "./src/server.tsx",
   "compatibility_date": "2026-09-01",
-  // enable_request_signal: the tunnel cancels a daemon request when its client disconnects.
-  "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
+  // enable_request_signal: the hub cancels a daemon request when its MCP client disconnects.
+  // global_fetch_strictly_public: requireMcpAuth fetches this Worker's own /api/auth/jwks;
+  // without it a same-zone fetch skips the Worker and fails ("Jwks failed").
+  "compatibility_flags": ["nodejs_compat", "enable_request_signal", "global_fetch_strictly_public"],
   "routes": [
     { "pattern": "ghosthand.dev", "custom_domain": true }
   ],
@@ -18,9 +20,13 @@
     }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "GHOSTHAND_TUNNEL", "class_name": "GhosthandTunnel" }]
+    "bindings": [{ "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" }]
   },
-  "migrations": [{ "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] }],
+  // hub-v1: per-tunnel-id DOs replaced by one per user (tunnel.ts); old tunnel state is dropped.
+  "migrations": [
+    { "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] },
+    { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] }
+  ],
   "secrets": {
     "required": [
       "BETTER_AUTH_SECRET",
@@ -48,9 +54,12 @@
         }
       ],
       "durable_objects": {
-        "bindings": [{ "name": "GHOSTHAND_TUNNEL", "class_name": "GhosthandTunnel" }]
+        "bindings": [{ "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" }]
       },
-      "migrations": [{ "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] }],
+      "migrations": [
+        { "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] },
+        { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] }
+      ],
       "secrets": {
         "required": [
           "BETTER_AUTH_SECRET",

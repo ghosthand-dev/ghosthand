@@ -50,27 +50,11 @@ curl --unix-socket $SOCK -X DELETE http://localhost/v1/leases/42
 The daemon always listens on the **unix socket**. Its file permissions allow only your
 user, so it needs no token. The host in the URL is ignored; use `http://localhost`.
 
-Start the daemon with `--tunnel` to reach it from **anywhere** over the internet. The
-daemon opens a WebSocket to ghosthand.dev and prints a secret URL. No port, no token, no
-certificate: the random id in the URL is the credential.
+The HTTP API is **local**. To reach the iPhones from anywhere, connect an agent to the
+**remote MCP server** at `https://ghosthand.dev/mcp` (OAuth, same Google account). While the
+Mac is signed in, the daemon keeps a WebSocket to ghosthand.dev and MCP calls go through it.
 
-```bash
-ghosthand daemon start --tunnel
-# tunnel: https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2
-
-curl https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2/v1/devices
-```
-
-<Aside>
-<Warning>
-**The tunnel URL is the password.** Whoever has it can use every iPhone on the Mac.
-`ghosthand daemon restart --tunnel` makes a new URL; the old one stops working. ghosthand.dev
-relays requests and responses in clear inside its TLS connections. Only the daemon can serve the
-URL: its id is a hash of a secret the daemon never shares.
-</Warning>
-</Aside>
-
-Or start it with `--port` to listen on **TCP**, for a client on your network. TCP
+Start the daemon with `--port` to listen on **TCP**, for a client on your network. TCP
 requests need a bearer token, and HTTPS needs a certificate:
 
 ```bash
@@ -82,7 +66,7 @@ curl https://mac.local:7420/v1/devices -H 'Authorization: Bearer secret'
 
 <Aside>
 <Warning>
-The TCP and tunnel listeners **reject browser requests** (any `Origin` or `Sec-Fetch-*` header) and
+The TCP listener **rejects browser requests** (any `Origin` or `Sec-Fetch-*` header) and
 never sends CORS headers. Call it from a server or a native client.
 </Warning>
 </Aside>
@@ -213,7 +197,6 @@ Switch on **`code`**; `detail` tells a person or an agent what to do next.
 | `cancelled`              | 499    | The client closed the stream.                               |
 | `internal-error`         | 500    | A bug in the daemon. The detail has the cause.              |
 | `recording-failed`       | 500    | The video writer failed, for example a full disk.           |
-| `tunnel-offline`         | 503    | The daemon behind the tunnel URL is not connected.          |
 | `bluetooth-unavailable`  | 503    | Bluetooth is off or not allowed on the Mac.                 |
 | `bluetooth-disconnected` | 503    | The Bluetooth link dropped during the input.                |
 | `no-frame`               | 503    | USB screen capture sent no frame.                           |

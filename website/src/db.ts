@@ -4,15 +4,20 @@
 // Its cookie cache keeps getSession free of D1 reads on most requests. The daemon
 // authenticates with the session token as a bearer header (bearer plugin), which it
 // gets from the device flow (deviceAuthorization plugin, see cli-api.ts).
+// Remote MCP clients get OAuth access tokens instead: mcp() is the OAuth provider,
+// jwt() signs resource-bound tokens, cimd() loads clients from their metadata URL.
 
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/d1'
 import * as schema from 'db/schema'
 import { betterAuth } from 'better-auth/minimal'
-import { bearer, deviceAuthorization } from 'better-auth/plugins'
+import { bearer, deviceAuthorization, jwt } from 'better-auth/plugins'
+import { mcp } from '@better-auth/mcp'
+import { cimd } from '@better-auth/cimd'
 import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 import { json } from 'spiceflow'
 import { ulid } from 'ulid'
+import { fetchCimdOnWorkers } from './cimd-fetch.ts'
 
 export function getDb() {
   return drizzle(env.DB, { schema, relations: schema.relations })
@@ -20,6 +25,11 @@ export function getDb() {
 
 export function getBaseUrl(): string {
   return env.BETTER_AUTH_URL
+}
+
+/** The remote MCP endpoint: OAuth token audience and RFC 9728 resource id. */
+export function getMcpResource(): string {
+  return new URL('/mcp', getBaseUrl()).href
 }
 
 export function getAuth() {
@@ -39,15 +49,22 @@ export function getAuth() {
         prompt: 'select_account',
       },
     },
+    // The jwt plugin's /token would hand out session JWTs; MCP uses /oauth2/token.
+    disabledPaths: ['/token'],
     plugins: [
       deviceAuthorization({ verificationUri: '/device', expiresIn: '15m', interval: '2s' }),
       bearer(),
+      jwt({ disableSettingJwtHeader: true }),
+      mcp({ loginPage: '/login', consentPage: '/consent', resource: getMcpResource() }),
+      cimd({ fetchClientMetadataResource: fetchCimdOnWorkers, metadataProfile: 'mcp-2026-07-28' }),
     ],
   })
 }
 
 export type Session = {
   userId: string
+  /** better-auth session id: one per signed-in Mac or browser. */
+  sessionId: string
   user: { id: string; name: string; email: string; image: string | null; createdAt: Date }
 }
 
@@ -70,6 +87,7 @@ export async function getSessionStrict(request: Pick<Request, 'headers'>): Promi
   const { user } = result
   return {
     userId: user.id,
+    sessionId: result.session.id,
     user: { id: user.id, name: user.name, email: user.email, image: user.image ?? null, createdAt: new Date(user.createdAt) },
   }
 }
@@ -120,14 +138,16 @@ export async function listMacSessions(userId: string): Promise<MacSession[]> {
     where: { userId, userAgent: { like: 'ghosthand/%' }, expiresAt: { gt: new Date() } },
     orderBy: { updatedAt: 'desc' },
   })
-  return rows.map((row) => {
-    const match = row.userAgent?.match(/^ghosthand\/(\S+)(?: \((.*)\))?$/)
-    return {
-      sessionId: row.id,
-      name: match?.[2] || 'Mac',
-      version: match?.[1] ?? null,
-      signedInAt: row.createdAt,
-      lastUsedAt: row.updatedAt,
-    }
-  })
+  return rows.map((row) => ({
+    sessionId: row.id,
+    ...parseDaemonUserAgent(row.userAgent),
+    signedInAt: row.createdAt,
+    lastUsedAt: row.updatedAt,
+  }))
+}
+
+/** The daemon's User-Agent: "ghosthand/<version> (<Mac name>)". */
+export function parseDaemonUserAgent(userAgent: string | null | undefined): { name: string; version: string | null } {
+  const match = userAgent?.match(/^ghosthand\/(\S+)(?: \((.*)\))?$/)
+  return { name: match?.[2] || 'Mac', version: match?.[1] ?? null }
 }

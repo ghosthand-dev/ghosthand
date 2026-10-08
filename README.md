@@ -53,10 +53,10 @@ agent / CLI / curl                       Mac                                  iP
 - **Lock** over the Bluetooth keyboard, verified over USB
 - **Mute and unmute** all iPhone sound, confirmed from the iPhone log
 - **Several iPhones at once**, each controlled on its own
-- **CLI, MCP server and skill** for agents, with the same help text
+- **CLI, remote MCP server and skill** for agents, with the same help text
 - **Leases**: one agent per iPhone at a time; others wait or get a clear "leased by" error
 - **HTTP API** described by OpenAPI, usable from any language
-- **Remote daemon** over a secret ghosthand.dev tunnel URL, or TCP with a bearer token and HTTPS
+- **Every Mac of your account** through one MCP URL, or TCP with a bearer token and HTTPS
 
 ## Install
 
@@ -180,7 +180,7 @@ npx -y skills add https://ghosthand.dev -g -y
 
 This works with Claude Code, Cursor, OpenCode, Codex and other agents that read [skills](https://skills.sh). The skill tells the agent to read `ghosthand --help` first; the help text is the full agent manual.
 
-**Agent without a shell?** Add `ghosthand mcp` as an [MCP server](#mcp-server): the same commands as tools.
+**Agent without a shell?** Add `https://ghosthand.dev/mcp` as a remote [MCP server](#mcp-server): the same commands as tools.
 
 **Then ask in plain words**, with the iPhone plugged in and unlocked:
 
@@ -631,86 +631,69 @@ curl --unix-socket $S -X DELETE $L                  # release
 
 ### Remote daemon
 
-**`--tunnel` exposes the daemon over the internet** at a secret URL. No open port, no certificate, works behind NAT.
+**For agents anywhere, use [remote MCP](#mcp-server).** It needs no port and no URL to share.
 
-```bash
-# on the Mac with the iPhones
-ghosthand daemon start --tunnel
-# tunnel: https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2
-
-# anywhere else: acquire with the URL once, then use the lease alone
-ghosthand --url https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2 acquire --reason "reply to Anna"
-# r1
-ghosthand screenshot -l r1 -o s.png
-ghosthand release -l r1
-```
-
-**Remote leases remember their daemon.** `acquire --url` prints a local id like `r1` and saves the URL (and `--token`, `--ca`) in `~/.ghosthand/remote-leases.json`, mode 0600. Later commands need only `-l r1`, so a forgotten `--url` can never hit a lease on the local daemon.
-
-```diagram
-remote CLI or MCP ──HTTPS──> ghosthand.dev/tunnel/<id> ──WebSocket──> daemon (dials out) ──> Controller
-                              one Durable Object per id   requests and streamed responses
-```
-
-> [!IMPORTANT]
-> **The URL is the password.** Whoever has it can use every iPhone on the Mac. Share it only with clients you trust. ghosthand.dev relays the traffic (screenshots, typed text) in clear inside its TLS connections.
-
-- **Revoke** with `ghosthand daemon restart --tunnel` (new URL) or `ghosthand daemon stop`.
-- **Only the daemon can serve its URL.** The id is the first 128 bits of `sha256(secret)`; the daemon sends the secret when it connects, and ghosthand.dev checks it. A client that knows the URL cannot take the daemon's place.
-- **A new start makes a new URL.** A restart without options keeps it. Set `GHOSTHAND_TUNNEL_SECRET` (`openssl rand -hex 32`) to keep one URL across stops.
-- **Same rules as TCP:** browsers are rejected, and a remote client cannot pick the binary for `daemon restart`.
-
-**On your own network**, listen on TCP instead, with a bearer token:
+**For the CLI on your own network**, listen on TCP with a bearer token:
 
 ```bash
 # on the Mac with the iPhones
 GHOSTHAND_TOKEN=secret ghosthand daemon start --port 7420 --host 0.0.0.0 \
   --tls-cert cert.pem --tls-key key.pem
 
-# anywhere else
-ghosthand --url https://mac.local:7420 --token secret --ca cert.pem list
+# anywhere else: acquire with the URL once, then use the lease alone
+ghosthand --url https://mac.local:7420 --token secret --ca cert.pem acquire --reason "reply to Anna"
+# r1
+ghosthand screenshot -l r1 -o s.png
 ```
+
+**Remote leases remember their daemon.** `acquire --url` prints a local id like `r1` and saves the URL (and `--token`, `--ca`) in `~/.ghosthand/remote-leases.json`, mode 0600. Later commands need only `-l r1`, so a forgotten `--url` can never hit a lease on the local daemon.
 
 **A host other than localhost needs TLS**, so the token never crosses the network in clear text.
 
 ## MCP server
 
-**`ghosthand mcp` is an MCP server on stdio.** Every CLI command is a tool with the same name and the same help text, so agents without a shell (Claude Code, Cursor, opencode) can drive the iPhone.
+**Add `https://ghosthand.dev/mcp` as a remote MCP server.** Every CLI command is a tool with the same name and the same help text, so agents without a shell (Claude Code, Cursor, opencode) can drive the iPhones. The client signs in with the same Google account as your Macs.
 
 ```bash
-claude mcp add ghosthand -- npx -y ghosthand mcp
+claude mcp add --transport http ghosthand https://ghosthand.dev/mcp
 ```
 
 ```jsonc
 // opencode.json
-{ "mcp": { "ghosthand": { "type": "local", "command": ["npx", "-y", "ghosthand", "mcp"] } } }
+{ "mcp": { "ghosthand": { "type": "remote", "url": "https://ghosthand.dev/mcp" } } }
 // .cursor/mcp.json
-{ "mcpServers": { "ghosthand": { "command": "npx", "args": ["-y", "ghosthand", "mcp"] } } }
+{ "mcpServers": { "ghosthand": { "url": "https://ghosthand.dev/mcp" } } }
 ```
+
+**Every signed-in Mac is reachable.** While a Mac is signed in, its daemon keeps a WebSocket to ghosthand.dev. One hub per account holds the sockets of all its Macs and routes each call:
 
 ```diagram
-MCP client ──stdin/stdout──> ghosthand mcp ──POST /mcp, unix socket──> daemon ──> Controller
-           one JSON-RPC message per line     no token: file mode 0600     same calls as the HTTP API
+MCP client ──POST /mcp, OAuth──> ghosthand.dev hub (one per account)
+                                   ├─ lease "studio:42" ──> Mac studio
+                                   ├─ mac: "laptop" ──────> Mac laptop
+                                   └─ list ───────────────> every Mac, joined
+                                          ▲  WebSocket the daemon opens (session token)
+                                          └── daemon ──> tunnel.sock, /mcp only ──> Controller
 ```
 
+- **Leases name their Mac:** `acquire` returns `studio:42`. Pass it as is; it picks the Mac.
+- **Several Macs:** `list` shows each iPhone under its Mac. Pass `mac` to `acquire`, `wait`, `setup` and `setup-status`. With one Mac online, `mac` is optional.
 - **Flags are arguments:** `lease`, `text` and `index` on `tap`, `waitText`, `timeoutMs`, `screenshot: true`, `screentext: true`. Screenshots come back as image content, not files.
-- **No token, no port:** `ghosthand mcp` uses the local unix socket and starts the daemon if needed.
-- **iPhones on another Mac:** run the daemon there with `--tunnel` (see [Remote daemon](#remote-daemon)), then use `ghosthand mcp --url https://ghosthand.dev/tunnel/<id>`. With `--port` and TLS instead, put `GHOSTHAND_TOKEN` in the MCP config's `env`, not in its args.
-- **Both protocol eras:** legacy clients (`initialize`, MCP 2025-03-26 to 2025-11-25) and modern ones (2026-07-28, `_meta` on every request).
-- **Cancel:** `notifications/cancelled`, or the end of the process, stops a running tool.
-- **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift). `ghosthand mcp` only relays lines; the tools run in the daemon.
+- **Stateless HTTP:** modern clients (MCP 2026-07-28) and legacy ones (`initialize`) both work. A closed request stops the tool.
+- **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift) run in the daemon; the hub in [website/src/tunnel.ts](website/src/tunnel.ts) only routes.
+- `ghosthand daemon status` shows this Mac's name in the account.
 
 ## Security
 
 > [!WARNING]
 > **Whoever reaches the daemon can use the iPhone like a person holding it**: open apps, read messages, type.
 
-Everything runs on your Mac and nothing is installed on the iPhone. Screenshots, screen text and typed text never leave the Mac (except through a tunnel you start). The only server call is the plan check at each `acquire`: the daemon sends the account's session token to ghosthand.dev (`GHOSTHAND_SERVER` overrides the server, e.g. a local `vite dev`). The token is in `~/.ghosthand/state.db`, mode 0600. If ghosthand.dev cannot be reached, the lease is allowed.
+Everything runs on your Mac and nothing is installed on the iPhone. Screenshots, screen text and typed text leave the Mac only for remote MCP calls, through ghosthand.dev. The only server call is the plan check at each `acquire`: the daemon sends the account's session token to ghosthand.dev (`GHOSTHAND_SERVER` overrides the server, e.g. a local `vite dev`). The token is in `~/.ghosthand/state.db`, mode 0600. If ghosthand.dev cannot be reached, the lease is allowed.
 
 ```diagram
 who can reach the phone              how
 local user who owns ~/.ghosthand ──> unix socket, file mode 0600
-remote client ─────────────────────> --tunnel: the secret URL is the credential
+MCP client of your account ────────> ghosthand.dev/mcp: OAuth, then the Mac's tunnel
 remote client ─────────────────────> TCP with --port: Bearer token, TLS off localhost
 ```
 
@@ -928,9 +911,11 @@ tap 300,500 with the pointer at 40,120 (move +260,+380 pt) on a 6s:
 CLI / curl / any language
    │ HTTP over ~/.ghosthand/daemon.sock (mode 0600, no token)
    │ HTTP or HTTPS over TCP with --port (Bearer token)
-   │ HTTPS via ghosthand.dev/tunnel/<id> with --tunnel (WebSocket the daemon opens)
    v
 Hummingbird ──> generated API (openapi.yaml) ──> own thread ──> Controller
+     ^
+     │ /mcp only, via tunnel.sock
+MCP clients ──> ghosthand.dev/mcp (OAuth) ──> WebSocket the daemon opens while signed in
                                                                   │
       ┌───────────────────────────────────────┬───────────────────┤
       v                                       v                   v

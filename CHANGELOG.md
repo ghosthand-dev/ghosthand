@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.4.0
+
+1. **Remote access with `--tunnel`**: reach the daemon from anywhere at a secret URL. No open port, no certificate, works behind NAT:
+
+   ```bash
+   # on the Mac with the iPhones
+   ghosthand daemon start --tunnel
+   # tunnel: https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2
+
+   # anywhere else
+   ghosthand --url https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2 list
+   ghosthand mcp --url https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2
+   ```
+
+   The daemon opens a WebSocket to ghosthand.dev; requests and streamed responses go through it. **The URL is the password**: whoever has it can use every iPhone on the Mac. `ghosthand daemon restart --tunnel` makes a new URL. Set `GHOSTHAND_TUNNEL_ID` (`openssl rand -hex 16`) to keep one URL across stops. Browsers are rejected.
+
+2. **Ghosthand.app**: the daemon now runs as `~/Applications/Ghosthand.app` with its own icon. macOS Camera and Bluetooth permissions belong to Ghosthand, not to the terminal or editor that started it. Open **Ghosthand** from Spotlight to show the control plane window.
+
+3. **New `setup-status` command**: agents poll setup readiness as JSON while the user follows the setup window. Missing permissions and incomplete setup are normal results, not errors:
+
+   ```bash
+   ghosthand setup
+   ghosthand setup-status --device "Tommy's iPhone"   # poll every 2 s until "ready": true
+   ```
+
+   The setup window now asks for Camera and Bluetooth permission first, with buttons the user clicks. Normal commands never open permission dialogs. Also an MCP tool with the same name.
+
+4. **AssistiveTouch goes off after every lease**, also when it was on before `acquire`, so the person gets the phone back without a pointer. New `--keep-assistivetouch` flag leaves it on:
+
+   ```bash
+   ghosthand release -l 42 --keep-assistivetouch
+   ```
+
+5. **Daemon upgrades itself**: after you update the CLI, the next command restarts the local daemon on the new binary, only when no lease is active. `ghosthand mcp` checks the daemon before each request and restarts a daemon that does not answer.
+
+6. **API Reference on ghosthand.dev**: every HTTP endpoint with examples, CLI and curl samples. The OpenAPI spec is stricter: request bodies with unknown keys get `400 invalid-request`, and a tap body is either `{x, y}` or `{text, index}`.
+
+7. **Screen capture stops 1 s after the last screenshot** (was 30 s): an idle daemon uses no CPU for capture, and iOS stops sending its sound to the Mac. A screenshot takes about 0.3 s.
+
+8. **Keep-awake skips locked iPhones**: on iOS 18 the key lit the Lock Screen. A locked iPhone now turns its display off normally.
+
+9. **Setup window fixes**: the connect step tells you to unlock the iPhone, the setup window closes when it opens the control plane, and the copied agent prompt installs the skill globally (`npx -y skills add https://ghosthand.dev -g -y`).
+
+10. **Fixed a daemon crash when an iPhone is unplugged while capture opens**, and recording logs no longer show up in another agent's command output.
+
 ## 0.3.0
 
 1. **MCP server** — every CLI command is now an MCP tool with the same name. `ghosthand mcp` is a stdio MCP server that talks to the local daemon over its unix socket, so no port or token is needed:

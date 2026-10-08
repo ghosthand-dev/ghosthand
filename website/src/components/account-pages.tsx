@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { Head, Link } from 'spiceflow/react'
 import { formatDay, TRIAL_DAYS, type Entitlement } from '../lib/billing.ts'
 import { cn } from '../lib/utils.ts'
-import { CopyField, QuickStart, RowAction, SignOutButton } from './account-client.tsx'
+import { CopyField, QuickStart, RowAction, SignOutButton, SubscribeLink } from './account-client.tsx'
 import { PRIMARY, SECONDARY } from './button-styles.ts'
 import type { MacSession } from '../db.ts'
 
@@ -21,11 +21,25 @@ function Logo({ className }: { className?: string }) {
   )
 }
 
-function ArrowRightIcon({ className }: { className?: string }) {
+// Runs before paint: `.dark` from the OS setting, the same rule as the docs (appearance.strict).
+const SYSTEM_THEME_SCRIPT = `document.documentElement.classList.toggle('dark', matchMedia('(prefers-color-scheme: dark)').matches)`
+
+/** Document shell of the account pages. Holocron's wildcard layout only renders a Fragment
+ *  around app pages, so without this they have no <html>, no viewport and no theme. */
+export function AccountDocument({ children }: { children: ReactNode }) {
   return (
-    <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth={1.5} strokeLinecap='round' strokeLinejoin='round' className={cn('size-4', className)} aria-hidden>
-      <path d='M3 8h10M9 4l4 4-4 4' />
-    </svg>
+    <html lang='en' suppressHydrationWarning>
+      <Head>
+        <Head.Meta charSet='utf-8' />
+        <Head.Meta name='viewport' content='width=device-width, initial-scale=1' />
+        <link rel='icon' href='/favicon.svg' />
+      </Head>
+      <body>
+        {/* Same place as holocron's theme script. Head.Script logs React ordering errors. */}
+        <script dangerouslySetInnerHTML={{ __html: SYSTEM_THEME_SCRIPT }} />
+        {children}
+      </body>
+    </html>
   )
 }
 
@@ -166,10 +180,9 @@ export function DashboardPage({
       <Section title='Plan' description='$99 per month covers every Mac and iPhone on your account.'>
         <PlanStatus entitlement={entitlement} subscription={subscription} />
         <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
-          <a href='/subscribe' className={cn(isPro ? SECONDARY : PRIMARY, 'w-auto px-5')}>
+          <SubscribeLink className={cn(isPro ? SECONDARY : PRIMARY, 'w-auto px-5')}>
             {isPro ? 'Manage subscription' : 'Subscribe for $99/month'}
-            <ArrowRightIcon className='transition-transform group-hover/button:translate-x-0.5' />
-          </a>
+          </SubscribeLink>
           <span className='text-xs text-muted-foreground'>
             {isPro ? 'Change card, get invoices or cancel in Stripe.' : 'Secure checkout with Stripe. Cancel anytime.'}
           </span>

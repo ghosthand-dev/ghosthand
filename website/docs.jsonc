@@ -11,7 +11,9 @@
     "primary": "#4f46e5"
   },
   "appearance": {
-    "default": "system"
+    "default": "system",
+    // Always follow the OS setting: no theme picker, no saved choice overriding the dashboard.
+    "strict": true
   },
   "icons": {
     "library": "lucide"

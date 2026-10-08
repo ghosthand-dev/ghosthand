@@ -1,8 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
-1. **Remote MCP for every Mac of your account**: add `https://ghosthand.dev/mcp` as a remote MCP server and sign in with Google. It reaches every signed-in Mac:
+1. **Breaking: every lease needs a ghosthand.dev account.** Sign the Mac in once with Google; the setup window's first step does it, or run:
+
+   ```bash
+   ghosthand login     # opens the browser, waits for approval
+   ghosthand account   # who is signed in, the plan, the subscribe link
+   ghosthand logout
+   ```
+
+   New accounts get 7 days free, then $99/month. Only `acquire` and `wait` check the plan; a running lease is never stopped. Without a plan, `acquire` fails with `subscription-required` and prints the subscribe link.
+
+2. **Remote MCP for every Mac of your account**: add `https://ghosthand.dev/mcp` as a remote MCP server and sign in with Google. It reaches every signed-in Mac: for every Mac of your account**: add `https://ghosthand.dev/mcp` as a remote MCP server and sign in with Google. It reaches every signed-in Mac:
 
    ```bash
    claude mcp add --transport http ghosthand https://ghosthand.dev/mcp
@@ -10,11 +20,21 @@
 
    `list` shows each iPhone under its Mac. Leases name their Mac (`studio:42`), so later calls go to the right one. With several Macs online, pass `mac` to `acquire`.
 
-2. **Breaking: `ghosthand mcp` (stdio) is removed.** Use the remote MCP URL above.
+3. **Breaking: `ghosthand mcp` (stdio) is removed.** Use the remote MCP URL above.
 
-3. **Breaking: `--tunnel` is removed.** A signed-in daemon always keeps its connection to ghosthand.dev, authenticated by the Mac's session; there is no secret URL anymore. Signing the Mac out closes it. `GHOSTHAND_TUNNEL_SECRET` is gone.
+4. **Breaking: `--tunnel` is removed.** A signed-in daemon always keeps its connection to ghosthand.dev, authenticated by the Mac's session; there is no secret URL anymore. Signing the Mac out closes it. `GHOSTHAND_TUNNEL_ID` is gone.
 
-4. **Remote leases remember their URL**: `acquire --url <url>` prints a lease like `r1`. Later commands need only `-l r1`, no `--url`:
+5. **New `random` command**: make a name, last name, username, birthdate (18+) or password for a new account. Every value is saved with the lease's reason and iPhone, so a lost value can be found again:
+
+   ```bash
+   ghosthand random -l 42 name       # e.g. Emma
+   ghosthand random -l 42 password
+   ghosthand random list
+   ```
+
+6. **`list` shows the SIM phone number** after the iOS version, when the carrier wrote it to the SIM. Also in the API as `phoneNumber`.
+
+7. **Remote leases remember their URL**: `acquire --url <url>` prints a lease like `r1`. Later commands need only `-l r1`, no `--url`:
 
    ```bash
    ghosthand --url https://mac.local:7420 --token secret acquire --reason "reply to Anna"

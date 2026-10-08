@@ -629,9 +629,14 @@ curl --unix-socket $S -X DELETE $L                  # release
 ghosthand daemon start --tunnel
 # tunnel: https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2
 
-# anywhere else
-ghosthand --url https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2 list
+# anywhere else: acquire with the URL once, then use the lease alone
+ghosthand --url https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2 acquire --reason "reply to Anna"
+# r1
+ghosthand screenshot -l r1 -o s.png
+ghosthand release -l r1
 ```
+
+**Remote leases remember their daemon.** `acquire --url` prints a local id like `r1` and saves the URL (and `--token`, `--ca`) in `~/.ghosthand/remote-leases.json`, mode 0600. Later commands need only `-l r1`, so a forgotten `--url` can never hit a lease on the local daemon.
 
 ```diagram
 remote CLI or MCP ──HTTPS──> ghosthand.dev/tunnel/<id> ──WebSocket──> daemon (dials out) ──> Controller
@@ -639,10 +644,11 @@ remote CLI or MCP ──HTTPS──> ghosthand.dev/tunnel/<id> ──WebSocket�
 ```
 
 > [!IMPORTANT]
-> **The URL is the password.** The id is 128 random bits and there is no other check: whoever has the URL can use every iPhone on the Mac. Share it only with clients you trust.
+> **The URL is the password.** Whoever has it can use every iPhone on the Mac. Share it only with clients you trust. ghosthand.dev relays the traffic (screenshots, typed text) in clear inside its TLS connections.
 
 - **Revoke** with `ghosthand daemon restart --tunnel` (new URL) or `ghosthand daemon stop`.
-- **A new start makes a new URL.** A restart without options keeps it. Set `GHOSTHAND_TUNNEL_ID` (`openssl rand -hex 16`) to keep one URL across stops.
+- **Only the daemon can serve its URL.** The id is the first 128 bits of `sha256(secret)`; the daemon sends the secret when it connects, and ghosthand.dev checks it. A client that knows the URL cannot take the daemon's place.
+- **A new start makes a new URL.** A restart without options keeps it. Set `GHOSTHAND_TUNNEL_SECRET` (`openssl rand -hex 32`) to keep one URL across stops.
 - **Same rules as TCP:** browsers are rejected, and a remote client cannot pick the binary for `daemon restart`.
 
 **On your own network**, listen on TCP instead, with a bearer token:

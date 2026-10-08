@@ -1,7 +1,8 @@
 // `ghosthand daemon start --tunnel`: exposes a daemon at https://ghosthand.dev/tunnel/{id}.
-// One Durable Object per tunnel id. The id is random (128 bits) and is the only
-// credential: whoever knows the URL can use the iPhone. It is in the path, not a
-// subdomain, so it never appears in DNS queries or TLS SNI.
+// One Durable Object per tunnel id. The id is the clients' only credential: whoever
+// knows the URL can use the iPhone. It is in the path, not a subdomain, so it never
+// appears in DNS queries or TLS SNI. The id is the first 128 bits of sha256(secret),
+// and only the daemon knows the secret: a client cannot connect as the upstream.
 //
 //   remote CLI ── HTTPS /tunnel/{id}/v1/... ──▶ GhosthandTunnel ◀── WSS /tunnel/{id}/upstream ── daemon
 //                ◀── streamed response ────────    (this file)     ── request / cancel ─────────▶
@@ -26,8 +27,8 @@ type DownstreamMessage =
   | { type: 'request'; id: string; method: string; path: string; headers: Record<string, string>; body: string | null }
   | { type: 'cancel'; id: string }
 
-// Same rule as the daemon (Sources/ghosthand/tunnel.swift): at least 128 bits of hex.
-const TUNNEL_PATH = /^\/tunnel\/([a-f0-9]{32,64})(\/.*)?$/
+// Same rule as the daemon (Tunnel.publicID in Sources/ghosthand/tunnel.swift).
+const TUNNEL_PATH = /^\/tunnel\/([a-f0-9]{32})(\/.*)?$/
 const UPSTREAM_WAIT_MS = 5_000
 // Headers Cloudflare adds or that only make sense for one hop.
 const DROPPED_HEADERS = /^(host|connection|upgrade|content-length|transfer-encoding|keep-alive|cf-.*|x-forwarded-.*|x-real-ip|cdn-loop)$/i
@@ -57,19 +58,26 @@ export class GhosthandTunnel extends DurableObject<Env> {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const path = new URL(request.url).pathname.match(TUNNEL_PATH)?.[2] || '/'
-    if (path === '/upstream' && request.headers.get('Upgrade') === 'websocket') return this.openUpstream()
+    const match = new URL(request.url).pathname.match(TUNNEL_PATH)
+    const path = match?.[2] || '/'
+    if (path === '/upstream' && request.headers.get('Upgrade') === 'websocket') {
+      const secret = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? ''
+      if (!match || (await publicID(secret)) !== match[1]) {
+        return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'Only the daemon that owns this tunnel can serve it' })
+      }
+      return this.openUpstream()
+    }
     return this.forward(request, path)
   }
 
   /** The newest daemon connection wins: after a network drop or a daemon restart the
-   *  old socket can look open for up to ~100 s. The id is the credential, so whoever
-   *  connects with it owns the tunnel. */
+   *  old socket can look open for up to ~100 s. Only the secret holder gets here. */
   private openUpstream(): Response {
     for (const old of this.ctx.getWebSockets()) close({ socket: old, code: 4409, reason: 'Replaced by a newer daemon connection' })
     this.failAll('the daemon reconnected')
     const [client, server] = Object.values(new WebSocketPair())
     this.ctx.acceptWebSocket(server)
+    this.ctx.storage.kv.put('served', true)
     send(server, { type: 'accepted' })
     this.waitingForUpstream.forEach((done) => done())
     return new Response(null, { status: 101, webSocket: client })
@@ -77,7 +85,8 @@ export class GhosthandTunnel extends DurableObject<Env> {
 
   private async forward(request: Request, path: string): Promise<Response> {
     let upstream = this.upstream()
-    if (!upstream) {
+    // Wait only for a tunnel that had a daemon: a random id must not hold the DO for 5 s.
+    if (!upstream && this.ctx.storage.kv.get('served')) {
       // The daemon may be reconnecting, e.g. right after `ghosthand daemon restart`.
       await new Promise<void>((resolve) => {
         const done = () => { clearTimeout(timer); this.waitingForUpstream.delete(done); resolve() }
@@ -192,6 +201,11 @@ function close({ socket, code, reason }: { socket: WebSocket; code: number; reas
   try {
     socket.close(code, reason)
   } catch {}
+}
+
+async function publicID(secret: string): Promise<string> {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)))
+  return Array.from(hash.subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 function toBase64(bytes: Uint8Array): string {

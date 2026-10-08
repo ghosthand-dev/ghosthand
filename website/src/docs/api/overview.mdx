@@ -64,7 +64,9 @@ curl https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2/v1/devices
 <Aside>
 <Warning>
 **The tunnel URL is the password.** Whoever has it can use every iPhone on the Mac.
-`ghosthand daemon restart --tunnel` makes a new URL; the old one stops working.
+`ghosthand daemon restart --tunnel` makes a new URL; the old one stops working. ghosthand.dev
+relays requests and responses in clear inside its TLS connections. Only the daemon can serve the
+URL: its id is a hash of a secret the daemon never shares.
 </Warning>
 </Aside>
 

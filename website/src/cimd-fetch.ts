@@ -8,7 +8,7 @@
 // redirects refused and the body capped.
 // Not `connect()` with a pinned IP (Strada's transport): Workers sockets cannot reach
 // Cloudflare IP ranges, and most client metadata (claude.ai, trycloudflare) is behind
-// Cloudflare. https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/#considerations
+// Cloudflare. https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/
 
 const MAX_BODY_BYTES = 64 * 1024
 

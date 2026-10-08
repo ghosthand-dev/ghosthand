@@ -2,20 +2,28 @@
 
 ## Unreleased
 
-1. **Remote leases remember their URL**: `acquire --url <url>` prints a lease like `r1`. Later commands need only `-l r1`, no `--url`:
+1. **Remote MCP for every Mac of your account**: add `https://ghosthand.dev/mcp` as a remote MCP server and sign in with Google. It reaches every signed-in Mac:
 
    ```bash
-   ghosthand --url https://ghosthand.dev/tunnel/3f9c0a6e8b2d4f71a5c3e9d07b16f4a2 acquire --reason "reply to Anna"
+   claude mcp add --transport http ghosthand https://ghosthand.dev/mcp
+   ```
+
+   `list` shows each iPhone under its Mac. Leases name their Mac (`studio:42`), so later calls go to the right one. With several Macs online, pass `mac` to `acquire`.
+
+2. **Breaking: `ghosthand mcp` (stdio) is removed.** Use the remote MCP URL above.
+
+3. **Breaking: `--tunnel` is removed.** A signed-in daemon always keeps its connection to ghosthand.dev, authenticated by the Mac's session; there is no secret URL anymore. Signing the Mac out closes it. `GHOSTHAND_TUNNEL_SECRET` is gone.
+
+4. **Remote leases remember their URL**: `acquire --url <url>` prints a lease like `r1`. Later commands need only `-l r1`, no `--url`:
+
+   ```bash
+   ghosthand --url https://mac.local:7420 --token secret acquire --reason "reply to Anna"
    # r1
    ghosthand screenshot -l r1 -o s.png
    ghosthand release -l r1
    ```
 
    The URL and token are saved in `~/.ghosthand/remote-leases.json` (mode 0600). A forgotten `--url` can no longer reach a lease with the same number on the local daemon.
-
-2. **Security fix: only the daemon can serve its tunnel URL.** Before, any client with the URL could connect as the daemon, receive the requests of other clients (including typed passwords) and stop the real tunnel. The tunnel id is now a hash of a secret the daemon sends when it connects. `GHOSTHAND_TUNNEL_ID` is replaced by `GHOSTHAND_TUNNEL_SECRET` (`openssl rand -hex 32`). Tunnel URLs from 0.4.0 change.
-
-3. A tunnel URL that never had a daemon answers `tunnel-offline` at once, instead of after 5 s.
 
 ## 0.4.0
 

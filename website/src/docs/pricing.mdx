@@ -1,0 +1,84 @@
+---
+$schema: https://holocron.so/frontmatter.json
+title: "Pricing: 7 days free, then $99 per month"
+sidebarTitle: "Pricing"
+description: "Try ghosthand free for 7 days with every feature. Then one plan, $99 per month, for every Mac and iPhone on your account. Cancel anytime."
+icon: lucide:credit-card
+prompt: |
+  Write the pricing page from @/website/src/lib/billing.ts, @/website/src/lib/stripe.ts,
+  @/Sources/ghosthand/account.swift and @/website/src/components/account-pages.tsx.
+  Explain the 7-day trial, the single $99/month plan, what it includes, what happens
+  when the trial ends, and billing through Stripe.
+---
+
+ghosthand has **one plan**. Sign in with Google in `ghosthand setup` and agents can use your iPhones **free for 7 days**, with every feature and no card. After that, **Ghosthand Pro is $99 per month**. [Subscribe from your dashboard](/dashboard).
+
+## Plans
+
+<Aside>
+<Info>
+One subscription covers **every Mac and iPhone** signed in with your account. No per-phone or per-seat fees.
+</Info>
+</Aside>
+
+|                                           | **Trial**           | **Pro**                 |
+| ----------------------------------------- | ------------------- | ----------------------- |
+| Length                                    | 7 days from sign-up | Monthly, cancel anytime |
+| Card needed                               | No                  | Yes                     |
+| iPhones and Macs                          | No limit            | No limit                |
+| CLI, MCP server and HTTP API              | ✓                   | ✓                       |
+| Screenshots, OCR, taps, typing, recording | ✓                   | ✓                       |
+| Remote use over a tunnel                  | ✓                   | ✓                       |
+| Control plane app                         | ✓                   | ✓                       |
+| Event log, secrets manager, hosted skills | Coming soon         | Coming soon             |
+| Price                                     | **$0**              | **$99 / month**         |
+
+There is **no free plan** after the trial. Prices are in USD, or the same amount in EUR.
+
+## What Pro includes
+
+### Every device on your account
+
+**No phone limit.** Plug in as many iPhones as you want, on as many Macs as you want. Each Mac signs in once with Google, and the [dashboard](/dashboard) lists every signed-in Mac so you can sign one out.
+
+### The full agent toolkit
+
+Agents drive the iPhone through the **CLI**, the **MCP server** or the **HTTP API**: screenshots over USB, on-device OCR, taps, swipes, wheel scrolls, typing, unlock, screen recording with sound, and leases so two agents never share one phone. See the [quick start](../index.mdx).
+
+### Remote use
+
+**Run the agent anywhere.** `ghosthand daemon start --tunnel` serves the Mac's iPhones at a secret ghosthand.dev URL, so a bot on a server, or an agent on another computer, controls them over HTTPS. No port forwarding, no TLS files.
+
+### Coming next
+
+<Aside>
+<Tip>
+Features in development reach Pro subscribers first, with **no price change** for existing subscriptions.
+</Tip>
+</Aside>
+
+- **Event log**: what each iPhone did and which agent did it, to audit work and turn past runs into skills.
+- **Secrets manager**: passcodes, Apple accounts and app logins stored per phone, typed by agents without passing through their context.
+- **Hosted skills**: ready flows like creating a TikTok or iCloud account, or warming up a new account.
+
+## When the trial ends
+
+**Running work is never cut off.** ghosthand checks the plan only when an agent takes a lease (`acquire` or `wait`). A lease that is already running finishes normally.
+
+After the trial, a new lease fails with `subscription-required`. The error tells the agent to show you the subscribe link and stop, so a scheduled run reports the link instead of retrying. Subscribe and the next lease works at once.
+
+```bash
+ghosthand account   # who is signed in, the plan, when the trial ends, the subscribe link
+```
+
+<Aside>
+<Note>
+If ghosthand.dev cannot be reached, the lease is **allowed**. An outage on our side never stops your agents.
+</Note>
+</Aside>
+
+## Billing
+
+**Billing runs on Stripe.** Subscribe from the [dashboard](/dashboard). After you subscribe, the same button opens the Stripe portal, where you change the card, download invoices or cancel. A canceled plan stays active until the end of the paid month.
+
+Your screenshots, screen text and typed text **never reach ghosthand.dev**: the only thing the Mac sends is the plan check. See the [privacy policy](./privacy.mdx).

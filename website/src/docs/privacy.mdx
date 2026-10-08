@@ -1,0 +1,32 @@
+---
+$schema: https://holocron.so/frontmatter.json
+title: "Privacy policy"
+sidebarTitle: "Privacy"
+description: "What ghosthand.dev stores about your account, and what stays on your Mac: screenshots, typed text and phone data never reach our servers."
+icon: lucide:shield
+prompt: |
+  Privacy policy from @/website/src/db.ts, @/db/src/schema.ts, @/website/src/cli-api.ts
+  and @/Sources/ghosthand/account.swift.
+---
+
+## What we store
+
+When you **sign in with Google**, ghosthand.dev stores your name, email address and
+profile picture URL, the sessions of your browsers and Macs, and when you signed up.
+If you subscribe, we store your Stripe customer and subscription ids and status.
+Stripe processes payments; we never see card numbers.
+
+## What stays on your Mac
+
+**Screenshots, screen text, typed text, passcodes and phone data never reach our
+servers.** The ghosthand daemon on your Mac sends only your session token to
+ghosthand.dev, to check your plan when an agent takes a lease on an iPhone.
+
+The exception is the optional remote tunnel (`ghosthand daemon start --tunnel`): it
+relays requests and responses, including screenshots, through ghosthand.dev without
+storing them.
+
+## Your choices
+
+Run `ghosthand logout` to remove the session from your Mac. To delete your account
+and its data, email t.de.rossi.01@gmail.com.

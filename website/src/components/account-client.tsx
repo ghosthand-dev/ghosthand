@@ -47,7 +47,7 @@ export function GoogleSignInButton({ callbackURL }: { callbackURL: string }) {
         <GoogleMark />
         {loading ? 'Opening Google…' : 'Continue with Google'}
       </button>
-      {error ? <p className='text-sm text-red-600'>{error}</p> : null}
+      {error ? <p className='text-sm text-destructive'>{error}</p> : null}
     </>
   )
 }
@@ -79,13 +79,52 @@ function SubmitButton({ className, children, pendingText }: { className: string;
   )
 }
 
+function ArrowRightIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth={1.5} strokeLinecap='round' strokeLinejoin='round' className={cn('size-4', className)} aria-hidden>
+      <path d='M3 8h10M9 4l4 4-4 4' />
+    </svg>
+  )
+}
+
+function SpinnerIcon() {
+  return (
+    <svg viewBox='0 0 16 16' fill='none' className='size-4 animate-spin' aria-hidden>
+      <circle cx='8' cy='8' r='6' stroke='currentColor' strokeOpacity={0.25} strokeWidth={2} />
+      <path d='M14 8a6 6 0 0 0-6-6' stroke='currentColor' strokeWidth={2} strokeLinecap='round' />
+    </svg>
+  )
+}
+
+/** Link to /subscribe. Shows a spinner while the server creates the Stripe session and redirects. */
+export function SubscribeLink({ className, children }: { className: string; children: React.ReactNode }) {
+  const [loading, setLoading] = useState(false)
+  return (
+    <a
+      href='/subscribe'
+      className={cn(className, loading && 'pointer-events-none cursor-wait opacity-60')}
+      aria-busy={loading}
+      onClick={(event) => {
+        // A modified click opens a new tab: this page does not navigate.
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+        setLoading(true)
+        // Back from Stripe can restore this page from the bfcache with the spinner still on.
+        window.addEventListener('pageshow', () => setLoading(false), { once: true })
+      }}
+    >
+      {children}
+      {loading ? <SpinnerIcon /> : <ArrowRightIcon className='transition-transform group-hover/button:translate-x-0.5' />}
+    </a>
+  )
+}
+
 type FormAction = (formData: FormData) => Promise<void>
 
 export function DeviceButtons({ userCode, approve, deny }: { userCode: string; approve: FormAction; deny: FormAction }) {
   return (
     <ErrorBoundary
       fallback={
-        <div className='flex flex-col gap-2 text-sm text-red-600'>
+        <div className='flex flex-col gap-2 text-sm text-destructive'>
           <ErrorBoundary.ErrorMessage />
           <ErrorBoundary.ResetButton className='underline underline-offset-4'>Try again</ErrorBoundary.ResetButton>
         </div>
@@ -109,7 +148,7 @@ export function ConsentButtons({ oauthQuery, consent }: { oauthQuery: string; co
   return (
     <ErrorBoundary
       fallback={
-        <div className='flex flex-col gap-2 text-sm text-red-600'>
+        <div className='flex flex-col gap-2 text-sm text-destructive'>
           <ErrorBoundary.ErrorMessage />
           <ErrorBoundary.ResetButton className='underline underline-offset-4'>Try again</ErrorBoundary.ResetButton>
         </div>

@@ -45,6 +45,11 @@ function safeCallback(value: string | undefined): string {
   return value
 }
 
+async function accountLayout({ children }: { children?: React.ReactNode }) {
+  const { AccountDocument } = await import('./components/account-pages.tsx')
+  return <AccountDocument>{children}</AccountDocument>
+}
+
 const loginQuery = z.object({ callbackURL: z.string().optional(), response_type: z.string().optional() })
 const deviceQuery = z.object({ user_code: z.string().optional(), status: z.enum(['approved', 'denied']).optional() })
 
@@ -70,6 +75,10 @@ export const app = new Spiceflow()
   })
   .use(cliApp)
   .use(stripeWebhookApp)
+  .layout('/login', accountLayout)
+  .layout('/device', accountLayout)
+  .layout('/consent', accountLayout)
+  .layout('/dashboard', accountLayout)
 
   .page({
     path: '/login',
@@ -124,7 +133,7 @@ export const app = new Spiceflow()
       return (
         <AuthShell
           title='Sign in this Mac?'
-          description={<>Check that the code matches the one in the ghosthand window: <span className='font-mono text-neutral-900 dark:text-neutral-100'>{userCode}</span></>}
+          description={<>Check that the code matches the one in the ghosthand window: <span className='font-mono text-foreground'>{userCode}</span></>}
         >
           <DeviceButtons userCode={userCode} approve={approveDevice} deny={denyDevice} />
         </AuthShell>

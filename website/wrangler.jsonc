@@ -8,20 +8,60 @@
   "routes": [
     { "pattern": "ghosthand.dev", "custom_domain": true }
   ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ghosthand-db",
+      "database_id": "4bceef41-15fa-4b3e-ab37-65ae9551593a",
+      "migrations_dir": "../db/drizzle",
+      "migrations_pattern": "../db/drizzle/*/migration.sql"
+    }
+  ],
   "durable_objects": {
     "bindings": [{ "name": "GHOSTHAND_TUNNEL", "class_name": "GhosthandTunnel" }]
   },
   "migrations": [{ "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] }],
+  "secrets": {
+    "required": [
+      "BETTER_AUTH_SECRET",
+      "BETTER_AUTH_URL",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "STRIPE_ACCOUNT_ID",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET"
+    ]
+  },
   "env": {
     "preview": {
       "name": "ghosthand-website-preview",
       "routes": [
         { "pattern": "preview.ghosthand.dev", "custom_domain": true }
       ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ghosthand-preview-db",
+          "database_id": "bcd41cd8-51df-4a01-90bb-3a748d28acfa",
+          "migrations_dir": "../db/drizzle",
+          "migrations_pattern": "../db/drizzle/*/migration.sql"
+        }
+      ],
       "durable_objects": {
         "bindings": [{ "name": "GHOSTHAND_TUNNEL", "class_name": "GhosthandTunnel" }]
       },
-      "migrations": [{ "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] }]
+      "migrations": [{ "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] }],
+      "secrets": {
+        "required": [
+          "BETTER_AUTH_SECRET",
+          "BETTER_AUTH_URL",
+          "GOOGLE_CLIENT_ID",
+          "GOOGLE_CLIENT_SECRET",
+          "STRIPE_ACCOUNT_ID",
+          "STRIPE_SECRET_KEY",
+          "STRIPE_WEBHOOK_SECRET"
+        ]
+      }
     }
   }
 }

@@ -19,6 +19,13 @@
   "layout": {
     "mode": "compact"
   },
+  "navbar": {
+    "links": [
+      { "label": "Log in", "href": "/login" },
+      { "label": "Dashboard", "href": "/dashboard" }
+    ],
+    "primary": { "type": "button", "label": "Start free trial", "href": "/signup" }
+  },
   "footer": {
     "socials": {
       "x": "https://x.com/__morse"
@@ -39,8 +46,18 @@
             "group": "Internals",
             "icon": "lucide:cpu",
             "pages": ["docs/scroll", "docs/relative-pointer"]
+          },
+          {
+            "group": "Legal",
+            "icon": "lucide:scale",
+            "pages": ["docs/privacy"]
           }
         ]
+      },
+      {
+        "tab": "Pricing",
+        "icon": "lucide:credit-card",
+        "pages": ["docs/pricing"]
       },
       {
         "tab": "API Reference",
@@ -51,5 +68,7 @@
       }
     ]
   },
-  "decorativeLines": "none"
+  "decorativeLines": "none",
+  // Spiceflow routes in src/server.tsx, not MDX pages.
+  "knownPaths": ["/login", "/signup", "/dashboard", "/subscribe", "/device"]
 }

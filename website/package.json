@@ -3,24 +3,39 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "pnpm db:migrate:local && sigillo run -c dev -- vite dev --port 8047 --strictPort",
     "build": "tsc && vite build",
     "typecheck": "tsc",
-    "deploy": "tsc && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
-    "deploy:prod": "tsc && vite build && wrangler deploy"
+    "test": "vitest --run",
+    "types": "wrangler types",
+    "db:migrate:local": "CI=1 wrangler d1 migrations apply DB --local",
+    "db:migrate:preview": "echo \"D1 pre-migration timestamp: $(date +%s)\" && CI=1 wrangler d1 migrations apply DB --remote --env preview",
+    "db:migrate:prod": "echo \"D1 pre-migration timestamp: $(date +%s)\" && CI=1 wrangler d1 migrations apply DB --remote",
+    "secrets:preview": "sigillo run -c preview --mount .env.preview --mount-format env -- wrangler secret bulk --env preview .env.preview",
+    "secrets:prod": "sigillo run -c prod --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod",
+    "deploy": "pnpm db:migrate:preview && tsc && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
+    "deploy:prod": "pnpm db:migrate:prod && tsc && vite build && wrangler deploy"
   },
   "dependencies": {
     "@holocron.so/vite": "^0.36.0",
+    "better-auth": "^1.7.7",
+    "better-auth-drizzle-adapter": "^1.2.1",
+    "db": "workspace:^",
+    "drizzle-orm": "1.0.0-beta.22",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "spiceflow": "1.26.0-rsc.18",
-    "vite": "latest"
+    "stripe": "^22.6.2",
+    "ulid": "^3.0.2",
+    "vite": "latest",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.62.2",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "typescript": "latest",
+    "vitest": "^4.1.11",
     "wrangler": "^4.144.0"
   }
 }

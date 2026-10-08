@@ -1,0 +1,23 @@
+{
+  "name": "db",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Drizzle schema and D1 migrations for the ghosthand.dev website",
+  "exports": {
+    "./schema": "./src/schema.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "drizzle-orm": "1.0.0-beta.22",
+    "ulid": "^3.0.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "1.0.0-beta.22",
+    "typescript": "^5.9.3"
+  }
+}

@@ -35,8 +35,15 @@ export async function consentMcp(formData: FormData) {
   const request = getActionRequest()
   await requireSession(request)
   const { accept, oauthQuery } = parseFormData(consentForm, formData)
-  const { url } = await getAuth().api.oauth2Consent({ body: { accept: accept === 'true', oauth_query: oauthQuery }, headers: request.headers })
-    .catch((e) => { console.error('DEBUG consent', JSON.stringify({ status: e?.status, body: e?.body, message: e?.message, len: oauthQuery.length, q: oauthQuery.slice(0, 80) })); throw e })
+  // `request` too: on accept, the endpoint resumes /oauth2/authorize, which fails with
+  // "request not found" when called with headers only. With a request, better-call
+  // answers a Response unless asResponse is false.
+  const { url } = await getAuth().api.oauth2Consent({
+    body: { accept: accept === 'true', oauth_query: oauthQuery },
+    headers: request.headers,
+    request,
+    asResponse: false,
+  })
   throw redirect(url)
 }
 

@@ -157,15 +157,20 @@ export class GhosthandHub extends DurableObject<Env> {
     const sessionId = request.headers.get(SESSION_HEADER)
     if (!sessionId) return problem({ status: 400, code: 'bad-request', title: 'Bad request', detail: 'Missing session' })
     const name = decodeURIComponent(request.headers.get(MAC_NAME_HEADER) ?? 'Mac')
-    // Signed-out sessions free their slug. Query before reading the registry: the await lets other events in.
-    const known = Object.keys(this.registry())
-    const live = known.length ? await getDb().query.session.findMany({ where: { id: { in: known } } }) : []
-    const liveIds = new Set(live.map((row) => row.id))
-
-    const registry = Object.fromEntries(Object.entries(this.registry()).filter(([id]) => liveIds.has(id) || !known.includes(id)))
-    const slug = registry[sessionId]?.slug ?? macSlug(name, Object.values(registry).map((mac) => mac.slug))
-    registry[sessionId] = { slug, name, lastSeenAt: Date.now() }
-    this.ctx.storage.kv.put('macs', registry)
+    // Blocks revoke() until the socket is accepted, so a sign-out during the D1 query cannot be undone.
+    const slug = await this.ctx.blockConcurrencyWhile(async () => {
+      // Signed-out sessions free their slug; the connecting one must still be valid.
+      const known = [...new Set([...Object.keys(this.registry()), sessionId])]
+      const live = await getDb().query.session.findMany({ where: { id: { in: known }, expiresAt: { gt: new Date() } } })
+      const liveIds = new Set(live.map((row) => row.id))
+      if (!liveIds.has(sessionId)) return null
+      const registry = Object.fromEntries(Object.entries(this.registry()).filter(([id]) => liveIds.has(id)))
+      const slug = registry[sessionId]?.slug ?? macSlug(name, Object.values(registry).map((mac) => mac.slug))
+      registry[sessionId] = { slug, name, lastSeenAt: Date.now() }
+      this.ctx.storage.kv.put('macs', registry)
+      return slug
+    })
+    if (!slug) return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'This Mac was signed out' })
 
     for (const old of this.ctx.getWebSockets(sessionId)) close({ socket: old, code: 4409, reason: 'Replaced by a newer daemon connection' })
     this.failSession(sessionId, 'the daemon reconnected')
@@ -303,6 +308,11 @@ export class GhosthandHub extends DurableObject<Env> {
     const pending = this.pending.get(id)
     if (!pending) return
     this.pending.delete(id)
+    // Settle it, so dispatch() and a fan-out reading the body never hang.
+    try {
+      if (pending.body) pending.body.error(new Error('request cancelled'))
+      else pending.respond(new Response(null, { status: 499 }))
+    } catch {}
     const mac = this.onlineMacs().find((m) => m.sessionId === pending.sessionId)
     if (mac) send(mac.socket, { type: 'cancel', id })
   }

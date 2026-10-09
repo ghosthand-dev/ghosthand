@@ -792,6 +792,31 @@ The iPhone accepts input only from a Mac that has **all three**:
 - **The cable must stay in.** Screenshots only come over USB; a phone on Bluetooth or Wi-Fi alone is not listed.
 - **Typing is US-ASCII only**: no accents or emoji. There is no length limit.
 
+### Something went wrong: read the daemon log
+
+**The daemon writes everything to `~/.ghosthand/daemon.log`**: each command, its errors, Bluetooth pairing, screen capture restarts, and the MCP calls from the remote tunnel. Each line starts with a UTC timestamp.
+
+```bash
+tail -n 100 ~/.ghosthand/daemon.log                   # last lines
+tail -f ~/.ghosthand/daemon.log                       # follow live while you run a command
+grep -iE 'error|fail' ~/.ghosthand/daemon.log | tail  # recent errors only
+```
+
+```text
+2026-10-08T13:02:40Z error no-device: No iPhone found on USB. A charge-only cable does not work.
+2026-10-08T16:43:31Z no iPhone visible yet, restarting the screen capture helper
+```
+
+| File                       | What writes it                                                       |
+| -------------------------- | -------------------------------------------------------------------- |
+| `~/.ghosthand/daemon.log`  | the daemon (`ghosthand daemon start`, or any command that starts it) |
+| `~/.ghosthand/app.log`     | the `setup` and `app` windows, and their app install step            |
+| your terminal (stderr)     | `ghosthand daemon run`: the daemon in the foreground, for debugging  |
+
+- **`ghosthand daemon status`** prints the log path, the pid, and the Bluetooth state.
+- **The log is never rotated.** Delete or truncate it when it gets large: `: > ~/.ghosthand/daemon.log`. Never delete `state.db`.
+- **Live progress** of one command (pairing, retries) is also streamed to that command's stderr, so you see it without the log.
+
 ### Pairing no longer works: forget on both sides
 
 **Symptoms:** Pair on the iPhone ends with "Connection unsuccessful", the Mac is missing from the iPhone's Bluetooth list, or `list` stays at `bluetooth disconnected`.

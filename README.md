@@ -15,6 +15,7 @@ Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** 
 > **Requires a Mac and a real iPhone.** The CLI runs only on macOS, and the iPhone must be connected over USB and paired over Bluetooth. Linux, Windows and the iOS Simulator are not supported.
 
 ```bash
+npx ghosthand setup                           # first: sign in, connect and pair the iPhone
 npx ghosthand list
 npx ghosthand screenshot -o home.png          # 414x896 on an iPhone XR: screen points
 npx ghosthand tap 207 448                     # same coordinates as the screenshot
@@ -63,9 +64,17 @@ agent / CLI / curl                       Mac                                  iP
 Needs **macOS 14 or later** on Apple silicon or Intel. The npm package ships one universal binary; no Node code runs at runtime. The Bluetooth Classic private API is tested on macOS 26.3 only.
 
 ```bash
-npx ghosthand list        # run without installing
-bunx ghosthand list       # same, with Bun
+npx ghosthand setup       # run without installing
+bunx ghosthand setup      # same, with Bun
 npm install -g ghosthand  # install the `ghosthand` command
+```
+
+**Start with `ghosthand setup`.** It opens the Ghosthand app and starts the daemon. The app walks you through sign-in, permissions, USB trust and Bluetooth pairing. When the iPhone is ready, `list`, `screenshot`, `tap` and the other commands work.
+
+```diagram
+npx ghosthand setup ──> Ghosthand app + daemon ──> sign in, allow access, plug in, pair
+                                                        │
+ghosthand list / screenshot / tap / type <──────────────┘ iPhone ready
 ```
 
 **Sign in once per Mac.** Every lease needs a ghosthand.dev account: **7 days free from sign-up, then $99/month**. `ghosthand setup` starts with **Sign in with Google**: it opens the browser, you approve the Mac, and the window continues by itself. Agents never sign in for you; they open setup and wait.

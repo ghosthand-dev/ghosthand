@@ -53,7 +53,7 @@ describe('routeMcpCall', () => {
           "body": {
             "error": {
               "code": -32603,
-              "message": "No Mac is online for this account. On a Mac, open Ghosthand (\`ghosthand setup\`) and sign in.",
+              "message": "No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. On that Mac, run \`npx ghosthand setup\` and click Sign in with Google, with the same Google account you used for this MCP server. Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.",
             },
             "id": 7,
             "jsonrpc": "2.0",
@@ -79,7 +79,7 @@ describe('routeMcpCall', () => {
           "body": {
             "error": {
               "code": -32602,
-              "message": "Mac mini is offline. Online: none",
+              "message": "Mac mini is offline. No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. On that Mac, run \`npx ghosthand setup\` and click Sign in with Google, with the same Google account you used for this MCP server. Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.",
             },
             "id": 7,
             "jsonrpc": "2.0",

@@ -31,7 +31,17 @@
   "footer": {
     "socials": {
       "x": "https://x.com/__morse"
-    }
+    },
+    "links": [
+      {
+        "header": "Legal",
+        "items": [
+          { "label": "Privacy", "href": "/docs/privacy" },
+          { "label": "Terms", "href": "/docs/terms" },
+          { "label": "Support", "href": "/docs/support" }
+        ]
+      }
+    ]
   },
   "navigation": {
     "tabs": [
@@ -50,9 +60,10 @@
             "pages": ["docs/scroll", "docs/relative-pointer"]
           },
           {
+            // Hidden from the sidebar, still served and indexed. Linked from the footer.
             "group": "Legal",
-            "icon": "lucide:scale",
-            "pages": ["docs/privacy"]
+            "hidden": true,
+            "pages": ["docs/privacy", "docs/terms", "docs/support"]
           }
         ]
       },

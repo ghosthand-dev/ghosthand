@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.6.0
+
+1. **Breaking: new Bluetooth report map. Every iPhone must forget the Mac and pair again.** The old map dropped key and button values above 127, so the Globe key never reached the iPhone. Forget the Mac on the iPhone, then pair again (`ghosthand forget --help`).
+
+2. **`fn` (Globe) key and combos**: `fn` is a modifier, `key fn` alone is a Globe tap. Keys in a combo go down in order, so Full Keyboard Access commands like `tab+h` work:
+
+   ```bash
+   ghosthand key -l 42 fn+h      # Home Screen
+   ghosthand key -l 42 fn+up     # App Switcher
+   ghosthand key -l 42 fn+c      # Control Center
+   ghosthand key -l 42 fn+n      # Notification Center
+   ghosthand key -l 42 dnd       # Do Not Disturb
+   ```
+
+   `key --help` now lists the iOS shortcuts that work on iPhone, e.g. `cmd+a` then `backspace` clears a field, `alt+backspace` deletes the previous word.
+
+3. **Horizontal scroll**: `scroll left|right` for carousels and wide tables. Also in the HTTP API and MCP:
+
+   ```bash
+   ghosthand scroll -l 42 right 3 --at 207,400 --screentext
+   ```
+
+4. **The daemon starts at login**: `ghosthand setup` adds it to Login Items as a LaunchAgent. launchd restarts it after a crash; `daemon stop` keeps it stopped. Turn it off in System Settings > General > Login Items; setup does not add it again. Skipped when `GHOSTHAND_SERVER` is set.
+
+5. **`app` and `setup` windows open in front**: they start as Ghosthand.app and take focus, also when a window is already open. Activity Monitor shows the daemon as `ghosthand-daemon`.
+
+6. **`daemon status` prints the log path**. When a command fails without a clear reason, read the log:
+
+   ```bash
+   tail -n 100 ~/.ghosthand/daemon.log
+   ```
+
+7. **Clearer remote MCP error when no Mac is connected**: it says to run `npx ghosthand setup` on the Mac with the iPhone and sign in with the same Google account.
+
 ## 0.5.0
 
 1. **Breaking: every lease needs a ghosthand.dev account.** Sign the Mac in once with Google; the setup window's first step does it, or run:
@@ -12,7 +46,7 @@
 
    New accounts get 7 days free, then $99/month. Only `acquire` and `wait` check the plan; a running lease is never stopped. Without a plan, `acquire` fails with `subscription-required` and prints the subscribe link.
 
-2. **Remote MCP for every Mac of your account**: add `https://ghosthand.dev/mcp` as a remote MCP server and sign in with Google. It reaches every signed-in Mac: for every Mac of your account**: add `https://ghosthand.dev/mcp` as a remote MCP server and sign in with Google. It reaches every signed-in Mac:
+2. **Remote MCP for every Mac of your account**: add `https://ghosthand.dev/mcp` as a remote MCP server and sign in with Google. It reaches every signed-in Mac:
 
    ```bash
    claude mcp add --transport http ghosthand https://ghosthand.dev/mcp

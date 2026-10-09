@@ -5,6 +5,7 @@
 //   /api/cli/*         the daemon's login and plan checks (cli-api.ts)
 //   /api/stripe/*      Stripe webhook
 //   /login /device /consent /dashboard /subscribe     account pages
+//   /pricing /privacy /terms /support   301 to their /docs/* pages
 //   /mcp               remote MCP, OAuth; routed to the user's Macs (tunnel.ts, before spiceflow)
 //   /tunnel/upstream   each signed-in daemon's WebSocket to its user's hub (tunnel.ts)
 //   everything else    holocron docs, plus /.well-known/agent-skills/* for `npx skills add`
@@ -104,6 +105,16 @@ export const app = new Spiceflow()
   })
   .get('/pricing', () => {
     throw redirect('/docs/pricing', { status: 301 })
+  })
+  // Standard legal paths, e.g. for plugin directory listings.
+  .get('/privacy', () => {
+    throw redirect('/docs/privacy', { status: 301 })
+  })
+  .get('/terms', () => {
+    throw redirect('/docs/terms', { status: 301 })
+  })
+  .get('/support', () => {
+    throw redirect('/docs/support', { status: 301 })
   })
 
   .page({

@@ -25,7 +25,10 @@ export type McpRoute =
   /** Answer here. `offline` marks errors that a reconnecting daemon could fix. */
   | { kind: 'reply'; status: number; body: object | null; offline?: boolean }
 
-export const NO_MAC_MESSAGE = 'No Mac is online for this account. On a Mac, open Ghosthand (`ghosthand setup`) and sign in.'
+export const NO_MAC_MESSAGE =
+  'No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. ' +
+  'On that Mac, run `npx ghosthand setup` and click Sign in with Google, with the same Google account you used for this MCP server. ' +
+  'Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.'
 
 const LEASE_PATTERN = /^([a-z0-9-]+):(.+)$/
 const CACHED_METHODS = new Set(['initialize', 'tools/list', 'server/discover'])
@@ -70,7 +73,8 @@ export function routeMcpCall({ message, online, cached }: {
     const target = leaseSlug ?? (typeof args.mac === 'string' ? args.mac : undefined)
     if (target !== undefined) {
       if (online.some((mac) => mac.slug === target)) return { kind: 'forward', slug: target }
-      return reply(id, -32602, `Mac ${target} is offline. Online: ${describe(online)}`, true)
+      const others = online.length ? `Online: ${describe(online)}` : NO_MAC_MESSAGE
+      return reply(id, -32602, `Mac ${target} is offline. ${others}`, true)
     }
     if (params.name === 'list' && online.length > 1) return { kind: 'fanout', slugs: online.map((mac) => mac.slug) }
     if (online.length === 1) return { kind: 'forward', slug: online[0]!.slug }

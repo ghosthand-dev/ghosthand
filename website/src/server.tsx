@@ -151,26 +151,36 @@ export const app = new Spiceflow()
       return <AuthShell title='Nothing to approve' description='Open this page from the sign-in window of your MCP client.' />
     }
     const client = await getDb().query.oauthClient.findFirst({ where: { clientId } })
+    const details = {
+      Client: clientId,
+      Scopes: searchParams.get('scope') || 'none',
+      Resource: searchParams.get('resource') || getMcpResource(),
+      Redirect: searchParams.get('redirect_uri') || '',
+    }
+    console.log('mcp consent', { name: client?.name, ...details })
     const { ConsentButtons } = await import('./components/account-client.tsx')
     return (
       <AuthShell
         title={`Allow ${client?.name || 'this MCP client'}?`}
         description='It can use the iPhones on every Mac signed in with this account: screenshots, taps and typing. Allow only clients you trust.'
       >
-        <dl className='w-full break-all text-left text-xs text-neutral-500'>
-          {[
-            ['Client', clientId],
-            ['Scopes', searchParams.get('scope') || 'none'],
-            ['Resource', searchParams.get('resource') || getMcpResource()],
-            ['Redirect', searchParams.get('redirect_uri') || ''],
-          ].filter(([, value]) => value).map(([label, value]) => (
-            <div key={label} className='border-b border-neutral-200 py-2 last:border-b-0 dark:border-neutral-800'>
-              <dt className='text-neutral-400'>{label}</dt>
-              <dd className='font-mono text-neutral-900 dark:text-neutral-100'>{value}</dd>
-            </div>
-          ))}
-        </dl>
         <ConsentButtons oauthQuery={search.slice(1)} consent={consentMcp} />
+        <details className='group w-full pt-2 text-xs'>
+          <summary className='mx-auto flex w-fit cursor-pointer list-none items-center gap-1 text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden'>
+            Technical details
+            <svg viewBox='0 0 16 16' className='size-3 transition-transform group-open:rotate-180' fill='none' stroke='currentColor' strokeWidth='1.5' aria-hidden>
+              <path d='M4 6l4 4 4-4' strokeLinecap='round' strokeLinejoin='round' />
+            </svg>
+          </summary>
+          <dl className='mt-3 w-full break-all text-left'>
+            {Object.entries(details).filter(([, value]) => value).map(([label, value]) => (
+              <div key={label} className='border-b border-border py-2 last:border-b-0'>
+                <dt className='text-muted-foreground'>{label}</dt>
+                <dd className='font-mono text-foreground'>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
       </AuthShell>
     )
   })

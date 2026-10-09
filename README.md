@@ -88,7 +88,7 @@ ghosthand setup  # open the app, then let the user click its permission buttons
 
 **Setup starts with sign-in, then permissions.** `ghosthand setup` shows Sign in with Google, then Camera and Bluetooth buttons, before the phone steps (plug in, trust, unlock, pair). Denied access shows an **Open Settings** button instead. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
 
-**Agents wait for readiness.** Open setup once and tell the user the window is open. Poll `ghosthand setup-status` every 2 seconds, then continue automatically when `ready` is `true`. Do not reopen setup, request permissions, or retry input while waiting. If still incomplete after 10 minutes, report the current status. Use `ghosthand setup --permissions` to review access that is already allowed.
+**Agents wait for the user.** Open setup once and tell the user to complete setup in the small Ghosthand window. All Ghosthand window actions are user-only; agents must not interact with the window or complete setup for the user. Poll `ghosthand setup-status` every 2 seconds, then continue automatically when `ready` is `true`. Do not reopen setup, request permissions, or retry input while waiting. If still incomplete after 10 minutes, report the current status. Use `ghosthand setup --permissions` to review access that is already allowed.
 
 ```bash
 ghosthand setup-status                     # JSON, works before permissions or USB trust

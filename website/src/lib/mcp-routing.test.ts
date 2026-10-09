@@ -53,7 +53,7 @@ describe('routeMcpCall', () => {
           "body": {
             "error": {
               "code": -32603,
-              "message": "No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. On that Mac, run \`npx ghosthand setup\` and click Sign in with Google, with the same Google account you used for this MCP server. Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.",
+              "message": "No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. On that Mac, run \`npx ghosthand setup\` and ask the user to complete setup in the small Ghosthand window, using the same Google account as this MCP server. Agents must not interact with the window or complete setup for the user. Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.",
             },
             "id": 7,
             "jsonrpc": "2.0",
@@ -79,7 +79,7 @@ describe('routeMcpCall', () => {
           "body": {
             "error": {
               "code": -32602,
-              "message": "Mac mini is offline. No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. On that Mac, run \`npx ghosthand setup\` and click Sign in with Google, with the same Google account you used for this MCP server. Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.",
+              "message": "Mac mini is offline. No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. On that Mac, run \`npx ghosthand setup\` and ask the user to complete setup in the small Ghosthand window, using the same Google account as this MCP server. Agents must not interact with the window or complete setup for the user. Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.",
             },
             "id": 7,
             "jsonrpc": "2.0",

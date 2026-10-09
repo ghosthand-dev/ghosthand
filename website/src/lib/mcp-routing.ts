@@ -27,7 +27,7 @@ export type McpRoute =
 
 export const NO_MAC_MESSAGE =
   'No Mac is connected to this ghosthand account. Ghosthand controls an iPhone plugged into a Mac over USB. ' +
-  'On that Mac, run `npx ghosthand setup` and click Sign in with Google, with the same Google account you used for this MCP server. ' +
+  'On that Mac, run `npx ghosthand setup` and ask the user to complete setup in the small Ghosthand window, using the same Google account as this MCP server. Agents must not interact with the window or complete setup for the user. ' +
   'Then, while the Mac is on with the iPhone plugged in, this MCP server can control the iPhone.'
 
 const LEASE_PATTERN = /^([a-z0-9-]+):(.+)$/

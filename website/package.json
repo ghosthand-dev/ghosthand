@@ -11,8 +11,8 @@
     "db:migrate:local": "CI=1 wrangler d1 migrations apply DB --local",
     "db:migrate:preview": "echo \"D1 pre-migration timestamp: $(date +%s)\" && CI=1 wrangler d1 migrations apply DB --remote --env preview",
     "db:migrate:prod": "echo \"D1 pre-migration timestamp: $(date +%s)\" && CI=1 wrangler d1 migrations apply DB --remote",
-    "secrets:preview": "sigillo run -c preview --mount .env.preview --mount-format env -- wrangler secret bulk --env preview .env.preview",
-    "secrets:prod": "sigillo run -c prod --mount .env.prod --mount-format env -- wrangler secret bulk .env.prod",
+    "secrets:preview": "sigillo secrets download -c preview --format env | wrangler secret bulk --env preview",
+    "secrets:prod": "sigillo secrets download -c prod --format env | wrangler secret bulk --env=\"\"",
     "deploy": "pnpm db:migrate:preview && tsc && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
     "deploy:prod": "pnpm db:migrate:prod && tsc && vite build && wrangler deploy"
   },

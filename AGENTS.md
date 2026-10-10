@@ -45,7 +45,7 @@ MCP is remote only: the daemon keeps a WebSocket to ghosthand.dev while the Mac 
 - **No Developer Mode features.** Only services a trusted Mac can start (pairing only). Launching apps, GPS simulation, pasteboard and DVT need Developer Mode plus a disk image: do not add them.
 - **Never shell out to pymobiledevice3** at run time. Read its source for protocols: https://github.com/doronz88/pymobiledevice3 (`services/afc.py`, `installation_proxy.py`, `springboard.py`, `diagnostics.py`).
 - **Never remove /DCIM files over AFC**: Photos keeps a broken entry (tested on iOS 18.6). Delete photos with `PhotoLibrary.delete` (ImageCaptureCore, like Image Capture.app). It needs the optional macOS removable volumes access (setup's Allow Photos); commands check it with `TCCAccessPreflight` and never trigger the dialog.
-- **AFC to /DCIM does not add a photo to Photos.** No USB path adds one without an app on the iPhone; see README "Add photos to the iPhone".
+- **AFC to /DCIM does not add a photo to Photos.** No USB path adds one without an app on the iPhone; see `docs/send-media.md` (served at https://ghosthand.dev/docs/send-media, linked from `file` help).
 
 # Relative pointer (iOS 15)
 

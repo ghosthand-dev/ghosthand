@@ -5,14 +5,85 @@ description: How to get a photo or video from the Mac into the iPhone's Photos l
 
 # Send photos and videos for upload in apps
 
-**Apps like TikTok and Instagram upload only from Photos.** So a file from the Mac must get into the Photos library first. Ghosthand does it with one USB copy and a few taps:
+**Apps like TikTok and Instagram upload only from Photos.** So a file from the Mac must get into the Photos library first. `ghosthand upload` does it for photos and videos:
 
 ```
-Mac file ──file push --app org.videolan.vlc-ios──> Files > On My iPhone > VLC
-                                                     │ Share > Save Video / Save Image
-                                                     ▼
-                                                   Photos ──Share > TikTok──> draft or post
+ghosthand upload clip.mp4 ──daemon──> ghosthand.dev (R2, 1 day) ──> https://ghosthand.dev/u/<id>
+iPhone Safari ──open link, tap Save──> iOS share sheet ──Save Video / Save Image──> Photos
+                                                                                     │
+                                                     Photos ──Share > TikTok──> draft or post
 ```
+
+| File | Way | Why |
+| --- | --- | --- |
+| Photo or video, up to 100 MB | `ghosthand upload`, Safari **Save** > **Save Video** | One command, no install, no server on the Mac |
+| Offline, or over 100 MB | USB copy into VLC, then Files **Save Video** | No network; needs VLC |
+
+## Upload, then save from Safari
+
+### 1. Upload the file
+
+```bash
+ghosthand upload clip.mp4
+# https://ghosthand.dev/u/3fK9xQ2mZr7T
+# clip.mp4 (5234112 bytes), expires 11 Oct 2026 at 16:34. ...
+```
+
+- **Needs this Mac signed in** to ghosthand.dev with a trial or plan, like `acquire`. No lease: the upload does not touch the iPhone.
+- **At most 100 MB.** The link expires after 1 day. Anyone with the link can download the file.
+- **Keep the extension** in the file name (`.mp4`, `.jpg`): it tells iOS the type.
+- MCP: the `upload` tool takes `path` (a file on the daemon's Mac), or `data` (base64) with `name`.
+
+### 2. Open the link in Safari and save
+
+```bash
+ghosthand key -l 42 cmd+space                       # Spotlight, from any app
+ghosthand type -l 42 Safari
+ghosthand key -l 42 enter
+ghosthand key -l 42 cmd+l                           # address bar
+ghosthand type -l 42 https://ghosthand.dev/u/3fK9xQ2mZr7T
+ghosthand key -l 42 enter
+ghosthand tap -l 42 --text Save --screentext        # wait until it says Save, not Loading...
+ghosthand tap -l 42 --text "Save Video"             # "Save Image" for photos
+ghosthand photo list -l 42 --limit 1
+```
+
+**Why a page with a button.** A direct video link only plays in Safari: the player and the Share sheet have no Save Video. The page downloads the file, wraps it in a `File`, and the **Save** tap calls `navigator.share({ files })`. The share sheet of a file has **Save Video**. `navigator.share` runs only from a tap, so the button is needed.
+
+## Offline: USB copy into VLC, then save from Files
+
+### 1. One-time setup: install VLC
+
+**VLC is a free USB drop folder.** It has no account and no ads. Its `Info.plist` has `UIFileSharingEnabled` (so `--app` can write to it) and `LSSupportsOpeningDocumentsInPlace` (so its folder shows in the Files app).
+
+```bash
+ghosthand app list -l 42 | grep vlc
+# org.videolan.vlc-ios  VLC <version>  [file sharing]  (page 2)
+```
+
+If it is missing, install it from the App Store with taps. Any other app with `[file sharing]` works too. System apps like Fitness refuse `--app`.
+
+### 2. Copy the file and save it
+
+The copy is byte for byte: no Wi-Fi, no quality loss, and large videos are fine.
+
+```bash
+ghosthand file push -l 42 clip.mp4 /Documents/clip.mp4 --app org.videolan.vlc-ios
+ghosthand key -l 42 cmd+space
+ghosthand type -l 42 Files
+ghosthand key -l 42 enter
+ghosthand tap -l 42 --text Browse
+ghosthand tap -l 42 --text "On My iPhone"
+ghosthand tap -l 42 --text VLC
+ghosthand hold -l 42 --text clip --duration 2000 --screentext
+ghosthand tap -l 42 --text Share
+ghosthand tap -l 42 --text "Save Video"         # "Save Image" for photos
+ghosthand photo list -l 42 --limit 1
+```
+
+## Upload from the app
+
+**Open the photo in Photos, tap Share, then pick the app.** Tested with TikTok: Share > TikTok > **Photo** > Next > **Drafts**. The draft shows under Profile, ready to post later. The app's own **+** > Upload picker also shows the new item first.
 
 ## Why not copy it straight into Photos
 
@@ -26,47 +97,7 @@ Mac file ──file push --app org.videolan.vlc-ios──> Files > On My iPhone 
 | Delete `PhotoData/Photos.sqlite` to force a rebuild | destroys albums and edits; never do it |
 | 3uTools, Tenorshare | they need their own app on the iPhone |
 
-## 1. One-time setup: install VLC
-
-**VLC is a free USB drop folder.** It has no account and no ads. Its `Info.plist` has `UIFileSharingEnabled` (so `--app` can write to it) and `LSSupportsOpeningDocumentsInPlace` (so its folder shows in the Files app).
-
-```bash
-ghosthand app list -l 42 | grep vlc
-# org.videolan.vlc-ios  VLC <version>  [file sharing]  (page 2)
-```
-
-If it is missing, install it from the App Store with taps. Any other app with `[file sharing]` works too. System apps like Fitness refuse `--app`.
-
-## 2. Copy the file over USB
-
-```bash
-ghosthand file push -l 42 clip.mp4 /Documents/clip.mp4 --app org.videolan.vlc-ios
-```
-
-The copy is byte for byte: no Wi-Fi, no quality loss, and large videos are fine.
-
-## 3. Save it to Photos
-
-The **Files app** saves any file to Photos, so the VLC app does not need to open:
-
-```bash
-ghosthand tap -l 42 --text Files --screentext            # open Files (or find its icon first)
-ghosthand tap -l 42 --text "On My iPhone" --screentext
-ghosthand tap -l 42 --text VLC --screentext
-ghosthand hold -l 42 --text clip --duration 2000 --screentext
-ghosthand tap -l 42 --text Share --screentext
-ghosthand tap -l 42 --text "Save Video" --screentext     # "Save Image" for photos
-ghosthand photo list -l 42 --limit 1                      # the new item is in /DCIM now
-```
-
-## 4. Upload from the app
-
-**Open the photo in Photos, tap Share, then pick the app.** Tested with TikTok: Share > TikTok > **Photo** > Next > **Drafts**. The draft shows under Profile, ready to post later. The app's own **+** > Upload picker also shows the new item first.
-
-## Other ways
-
-1. **Safari** (tested on an SE2, iOS 18.6): serve the file from the Mac (`python3 -m http.server`; if the iPhone cannot reach the Mac's LAN address, use a public tunnel). Open the URL on the iPhone, `hold` the image (1200 ms did not open the menu, 2000 ms did), then tap **Save to Photos**. For videos, download first, then Files > Share > **Save Video**.
-2. **AirDrop from the Mac**: the item lands in Photos, but it is hard to automate from the Mac side.
+**AirDrop from the Mac** lands the item in Photos, but it is hard to automate from the Mac side.
 
 ## Clean up
 
@@ -78,8 +109,9 @@ ghosthand photo delete -l 42 IMG_0042.MP4    # name from photo list
 <details>
 <summary>Test status</summary>
 
-- Safari "Save to Photos" and the TikTok draft were tested on an SE2, iOS 18.6.2.
-- The VLC flow was not tested end to end yet: the App Store install stopped at "You have not verified your Apple ID" on the test account.
+- Tested on an SE2, iOS 18.6.2, October 10: share page > Save > Save Video (mp4, over a kimaki HTTPS tunnel and over the LAN URL), uguu.se link > Safari > Save to Photos (jpg), and VLC push > Files > Save Video (mp4). Every item showed in `photo list`.
+- A direct mp4 link in Safari opened the video player. Neither the player nor the Share sheet offered Save Video.
+- The TikTok draft was tested on the same phone.
 - VLC's file sharing keys were read from https://github.com/videolan/vlc-ios/blob/master/Resources/iOS/Info.plist
 
 </details>

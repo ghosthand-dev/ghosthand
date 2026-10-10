@@ -4,6 +4,7 @@
 //   /.well-known/oauth-*, /.well-known/openid-configuration   OAuth discovery (better-auth)
 //   /api/cli/*         the daemon's login and plan checks (cli-api.ts)
 //   /api/stripe/*      Stripe webhook
+//   /u/:id, /u/:id/file   `ghosthand upload` share page and file (uploads.ts)
 //   /login /device /consent /dashboard /subscribe     account pages
 //   /pricing /privacy /terms /support   301 to their /docs/* pages
 //   /mcp               remote MCP, OAuth; routed to the user's Macs (tunnel.ts, before spiceflow)
@@ -16,6 +17,7 @@ import { app as holocronApp } from '@holocron.so/vite/app'
 import skillMd from '../../skills/ghosthand/SKILL.md?raw'
 import { getHub, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
+import { uploadsApp } from './uploads.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
 import { ensureOrg, getAuth, getBaseUrl, getDb, getMcpResource, getSession, getUserSubscriptions, listMacSessions } from './db.ts'
 import { entitlementFor, isProStatus } from './lib/billing.ts'
@@ -75,6 +77,7 @@ export const app = new Spiceflow()
     return next()
   })
   .use(cliApp)
+  .use(uploadsApp)
   .use(stripeWebhookApp)
   .layout('/login', accountLayout)
   .layout('/device', accountLayout)

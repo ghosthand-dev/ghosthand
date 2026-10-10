@@ -5,12 +5,14 @@
 //          ── POST /api/cli/login/token ──▶ pending | approved (+ token) | denied | expired
 //          ── GET  /api/cli/account ──────▶ plan, allowed, notice     (Bearer token)
 //          ── POST /api/cli/logout ───────▶ revokes the token          (Bearer token)
+//          ── POST /api/cli/upload ───────▶ R2 file + share page URL   (Bearer token, uploads.ts)
 
 import { Spiceflow, json } from 'spiceflow'
 import { APIError } from 'better-auth/api'
 import { z } from 'zod'
 import { getAuth, getBaseUrl, getSessionStrict, getUserSubscriptions } from './db.ts'
 import { entitlementFor } from './lib/billing.ts'
+import { createUpload } from './uploads.ts'
 
 const CLIENT_ID = 'ghosthand'
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
@@ -87,6 +89,23 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
         subscribeUrl,
         dashboardUrl: new URL('/dashboard', getBaseUrl()).toString(),
       }
+    },
+  })
+  .route({
+    method: 'POST',
+    path: '/upload',
+    detail: { hide: true },
+    query: z.object({ name: z.string().min(1).max(255) }),
+    async handler({ request, query }) {
+      const session = await getSessionStrict(request)
+      if (!session) throw json({ message: 'unauthorized' }, { status: 401 })
+      const subscriptions = await getUserSubscriptions(session.userId)
+      const entitlement = entitlementFor({ userCreatedAt: session.user.createdAt, subscriptions, now: new Date() })
+      if (!entitlement.allowed) {
+        const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
+        throw json({ message: `${entitlement.notice ?? 'This ghosthand account has no active plan.'} Subscribe: ${subscribeUrl}` }, { status: 402 })
+      }
+      return createUpload({ request, name: query.name, userId: session.userId })
     },
   })
   .route({

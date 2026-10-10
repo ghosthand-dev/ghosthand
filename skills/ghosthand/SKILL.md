@@ -26,6 +26,7 @@ Rules:
 - Always `acquire` a lease with `--reason "<task>"` first, pass `-l <id>` to every command, and `release` it when done.
 - Never retry a passcode or repeat input after a verification timeout. Take a screenshot first.
 - Screen dimmed but no dialog in the screenshot: run `screenshot -l <id> --native -o real.png` (a real iOS screenshot that shows hidden system dialogs, deleted from Photos after reading) and tap at the coordinates in it. A button that ignores `tap`: read the screen, then press it once more (`tap` or `hold x y --duration 400`); a just-opened alert can ignore the first press.
+- Open apps with `key cmd+space`, `type <app name>`, `key enter` (works from any app). Faster than swiping Home Screen pages.
 - Long press (context menus): `hold x y`. Move an item after a long press: `hold-drag` (read its `--help`).
 - Photos, files and apps go over USB without the screen: `photo pull`, `file pull`, `file push`, `app list`, `info`, `logs`. Read each `--help` first.
 - If a dialog does not respond or is invisible to capture, try `lock -l <id>`, then `unlock -l <id> --stdin --screenshot s.png --screentext` once to dismiss it, not accept an option. First obtain a user-confirmed passcode from the secret provider and pipe it to unlock. Without one, ask the user before locking. This may not dismiss every dialog; check the result and never retry a failed passcode.

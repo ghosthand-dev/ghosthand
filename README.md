@@ -149,7 +149,7 @@ The state is kept in `state.db` (`phone.assistive_touch_off_after_lease`).
 
 The check is a USB lockdown read of `com.apple.Accessibility` / `AssistiveTouchEnabledByiTunes`, about 35 ms (a write is about 40 ms).
 
-**Hide the floating button (recommended).** Open **Settings > Accessibility > Touch > AssistiveTouch** and turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots and [recordings](#record-the-screen). You do not need its Home action; the keyboard has one:
+**Hide the floating button (recommended).** Open **Settings > Accessibility > Touch > AssistiveTouch** and turn **Always Show Menu** OFF (Italian: "Mostra sempre menu"). AssistiveTouch stays on and the pointer still works, but the round menu button no longer covers the screen. With it on, it sits over buttons (it covered the Messages send arrow in tests) and fades in and out, which is noise in screenshots and [recordings](#record-the-screen). `key home` does not need the menu (see below):
 
 ```diagram
 Always Show Menu ON   ──> round button on screen ──> in screenshots and videos
@@ -159,8 +159,10 @@ Always Show Menu OFF  ──> hidden while the Mac mouse is connected; taps stil
 - **Set it on the iPhone, once.** USB lockdown has only the AssistiveTouch on/off key (`AssistiveTouchEnabledByiTunes`), no key for this switch, so ghosthand cannot change it over USB. An agent can flip it with taps in Settings (tested on an XR, iOS 18.7).
 - **It stays off** when `acquire` and `release` turn AssistiveTouch on and off.
 
+**Map mouse button 3 to Home, once.** `key home` clicks mouse button 3, which AssistiveTouch turns into its Home action (the same mapping TapKit uses). Open **Settings > Accessibility > Touch > AssistiveTouch > Devices > (this Mac) > Customise Additional Buttons**, run `ghosthand key home` while it says "Press a button", then pick **Home** (tested on an SE2, iOS 18.6.2). Unmapped, `key home` does nothing; `key fn+h` and `key menu` (HID consumer Menu, tested on iOS 15.8) are the keyboard Home keys.
+
 ```bash
-ghosthand key home  # Home Screen (HID consumer Menu key; tested on iOS 15.8)
+ghosthand key home  # Home Screen via AssistiveTouch button 3
 ```
 
 ### 4. Keep awake (automatic)
@@ -973,7 +975,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 - **AssistiveTouch must be on** for tap and swipe. ghosthand turns it on over USB; its floating button can be hidden (see [AssistiveTouch](#3-assistivetouch-automatic)).
 - **Keyboard without AssistiveTouch** is not tested.
-- **`cmd+space` and `cmd+h`** did nothing in tests.
+- **`cmd+h`** did nothing in tests. `cmd+space` opens Spotlight: `key cmd+space`, `type Safari`, `key enter` opens an app.
 - **No verified global Back command.** `key home` goes Home; `key esc` sends Escape. Neither is a promise of Back in Settings or Safari. AC Back (Consumer usage `0x0224`) is not exposed because reliable iOS behavior has not been verified. Descriptors are unchanged.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
 - **Several new iPhones with one name**, plugged in together, cannot be matched to their USB data. Plug them in one at a time once (see [More iPhones](#more-iphones)).

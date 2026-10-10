@@ -43,7 +43,7 @@ agent / CLI / curl                       Mac                                  iP
 ## Features
 
 - **Any iOS app**: input goes through AssistiveTouch, like a real mouse; no app or test runner on the iPhone
-- **Tap and swipe** with the mouse pointer, at screenshot coordinates or on OCR text (`tap --text`)
+- **Tap, double tap and swipe** with the mouse pointer, at screenshot coordinates or on OCR text (`tap --text`, `double-tap --text`)
 - **Scroll** with the mouse wheel: lists that a drag cannot scroll
 - **Fast keyboard input**: `type` sends text as key presses, plus Home, Enter, Esc, arrows and volume keys
 - **Screenshots** over USB, PNG or JPEG, about 0.3s each. The capture stops 1s after the last frame, so an idle daemon uses no CPU for it
@@ -53,6 +53,7 @@ agent / CLI / curl                       Mac                                  iP
 - **Unlock** a locked iPhone with its passcode, no touch; lock state in `list`
 - **Lock** over the Bluetooth keyboard, verified over USB
 - **Mute and unmute** all iPhone sound, confirmed from the iPhone log
+- **Files, photos and apps over USB**: pull screenshots and photos, push files, list and uninstall apps, read battery, storage and the system log. No Developer Mode
 - **Several iPhones at once**, each controlled on its own
 - **CLI, remote MCP server and skill** for agents, with the same help text
 - **Leases**: one agent per iPhone at a time; others wait or get a clear "leased by" error
@@ -207,6 +208,20 @@ ghosthand type "on my way" --enter --screentext
 
 See [Agent feedback loop](#agent-feedback-loop) for the rules the agent follows.
 
+**Double tap** selects words and zooms content in apps that support it. It sends two
+mouse clicks at one position, not a VoiceOver gesture or a side-button confirmation.
+Each press lasts 110...130 ms; the release-to-press gap is 100...150 ms. Single taps
+use the same press duration. [Apple's text-selection guide](https://support.apple.com/guide/iphone/select-cut-copy-and-paste-text-iph1a9cae52c/ios)
+describes double-tap word selection.
+
+```bash
+ghosthand double-tap -l 42 120 300 --screenshot after.png
+ghosthand double-tap -l 42 --text "example" --screentext
+```
+
+The same action is the MCP tool `double-tap` and HTTP route
+`POST /v1/leases/{lease}/double-tap`, with the same arguments as `tap`.
+
 ## Control plane: watch your agents
 
 **Many agents, many iPhones?** `ghosthand app` opens a window that shows what each one is doing:
@@ -277,12 +292,31 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 
 **Some iOS dialogs are invisible to USB capture and OCR** (tested on an XR, iOS 18.7: the App Store location prompt, the Install sheet, the cellular-data prompt). The page behind looks dimmed or unchanged, and `screentext` shows no dialog. Take a `screenshot`, read the image, and tap by position. Enter, Esc, Space, Tab and a center tap did not dismiss the location prompt: a person had to tap **Don't Allow**. Apple documents Tab and Space for [Full Keyboard Access](https://support.apple.com/en-euro/guide/iphone/ipha4375873f/ios), but that setting is off by default.
 
-**`lock`, then `unlock`, closes an invisible dialog** without picking any of its options (tested on an XR, iOS 18.7: the dim went away after a Maps prompt). Use it only with a passcode the user confirmed.
+**Screen dimmed but no dialog in the screenshot? Take a native screenshot.** USB capture leaves out some system dialogs (seen on an SE2, iOS 18.6: the Instagram location prompt). An iOS screenshot, taken with the Bluetooth keyboard shortcut, includes them. `screenshot --native` does it in one command, in about 2 s: it presses cmd+shift+3, reads the new PNG over USB, scales it to screen points (the numbers `tap` takes), then deletes it from Photos.
 
 ```bash
-ghosthand lock
-secret-provider | ghosthand unlock --stdin
-ghosthand screenshot   # the dim is gone
+ghosthand screenshot -l 42 --native -o real.png            # read real.png: the dialog is there
+ghosthand tap -l 42 120 401 --screenshot s.png              # tap the button you read
+ghosthand swipe -l 42 120 401 120 401 --duration 400        # button ignored the tap? a 400 ms press
+```
+
+The same steps by hand, for when you want the file:
+
+```bash
+ghosthand key -l 42 cmd+shift+3                             # iOS saves a real screenshot
+ghosthand photo-pull -l 42 -o .                             # newest Camera Roll file, e.g. ./IMG_0004.PNG
+ghosthand photo-delete -l 42 IMG_0004.PNG                   # remove it from Photos again
+```
+
+- The native PNG is in native pixels (750x1334 on an SE2). `screenshot --native` scales it for you. With the manual steps, pass its numbers with `tap --scale 1` (native pixels). See [Coordinates](#coordinates-screen-points).
+- **Deleting needs the optional Photos access** on the Mac: run `ghosthand setup --permissions` once and click **Allow Photos** with the iPhone plugged in and unlocked (macOS asks about removable volumes). Without it the screenshot stays in Photos and the output says which file to delete.
+- **Some buttons ignore a normal tap and accept a 400 ms press** (seen on an SE2: the location prompt's Don't Allow, the Photos Delete Photo sheet). Use `swipe x y x y --duration 400` at the same point.
+
+**Dialog does not respond, or is invisible to capture? Try `lock`, then `unlock`** to dismiss it without accepting an option. This cleared a Maps prompt on an XR, iOS 18.7; it is not guaranteed for every dialog. First obtain a user-confirmed passcode from the secret provider. Without one, ask the user before locking. Try once, then check the screen; never retry a failed passcode.
+
+```bash
+ghosthand lock -l 42
+secret-provider | ghosthand unlock -l 42 --stdin --screenshot s.png --screentext
 ```
 
 **Secure password fields freeze frames** for 10 to 30 seconds. Wait; do not type again.
@@ -463,6 +497,101 @@ Verification failure stops the command before optional screenshot/OCR output. Re
 | `GHOSTHAND_SCALE`    | `--scale` (image and coordinate size)                            | `1` for native pixels                              |
 | `GHOSTHAND_PASSCODE` | passcode for `unlock`                                            | user-confirmed secret; prefer `unlock --stdin`     |
 | `GHOSTHAND_LEASE`    | `-l, --lease` (every device command)                             | supported, but agents must pass `-l 42` explicitly |
+
+## Files, photos and apps over USB
+
+**No screen needed.** These commands use iOS services a trusted Mac can reach over the cable (the ones Finder uses). No Developer Mode, no app on the iPhone. They work while the iPhone is locked, except photo deletes and native screenshots.
+
+```bash
+ghosthand photo-pull -l 42 --last 3 -o ./photos      # newest Camera Roll files to this Mac
+ghosthand file-push -l 42 report.pdf /Downloads/report.pdf
+ghosthand app-list -l 42                             # bundle ids, versions, Home Screen page
+ghosthand info -l 42                                 # battery, storage, iOS build, time zone
+ghosthand logs -l 42 --process appstored --seconds 10
+```
+
+```
+                         ┌── com.apple.afc ─────────────> /var/mobile/Media (DCIM, Downloads)
+ghosthand ──USB lockdown─┼── house_arrest ──────────────> an app's Documents (file sharing apps)
+ (MobileDevice.framework)├── installation_proxy ────────> app list, install, uninstall
+                         ├── springboardservices ───────> Home Screen page of each app
+                         ├── diagnostics_relay ─────────> restart, shutdown
+                         └── syslog_relay ──────────────> system log
+ImageCaptureCore (like Image Capture.app) ──────────────> delete photos so Photos forgets them
+```
+
+### Get photos and files from the iPhone
+
+**Photos, videos and screenshots are files under `/DCIM`.** `photo-list` shows the newest first; `photo-pull` copies them; `file-pull` copies any path, and a folder comes as a folder.
+
+```bash
+ghosthand photo-list -l 42 --limit 5
+# 845 KB    2026-10-10 10:52  /DCIM/100APPLE/IMG_0008.PNG
+ghosthand file-pull -l 42 /DCIM/100APPLE/IMG_0008.PNG shot.png
+ghosthand file-pull -l 42 /DCIM/100APPLE ./camera-roll   # whole folder
+```
+
+| Path | What is there |
+| --- | --- |
+| `/DCIM/100APPLE/IMG_0001.PNG` | Camera Roll. Screenshots are PNG, camera photos HEIC or JPG, videos MOV |
+| `/Downloads` | iOS download databases. Not the Files app's Downloads |
+| `/Books`, `/PublicStaging`, `/iTunes_Control` | Books, app install staging, media sync |
+| `--app <bundle id>` + `/Documents/...` | an app's Documents, only for apps with **file sharing** (`[file sharing]` in `app-list`) |
+
+**The Files app ("On My iPhone") and other app data are not reachable** over USB without Developer Mode. With iCloud Photos and "Optimize iPhone Storage", older originals may not be on the iPhone.
+
+### Send files to the iPhone
+
+```bash
+ghosthand file-push -l 42 report.pdf /Downloads/report.pdf
+ghosthand file-push -l 42 movie.mp4 /Documents/movie.mp4 --app org.videolan.vlc-ios
+ghosthand file-remove -l 42 /Downloads/report.pdf
+```
+
+**A pushed file is not in any app** unless it goes to an app with file sharing (`--app`). Then it shows in that app, and in Files > On My iPhone > that app when the app supports it.
+
+### Add photos to the iPhone
+
+**There is no USB way to add a photo to Photos without an app on the iPhone.** A file copied to `/DCIM` is not imported: Photos indexes only what it took or received itself. Finder photo sync makes read-only "From My Mac" albums, and needs iCloud Photos off. Ways that work (from Apple's docs and user reports; not automated by ghosthand):
+
+1. **AirDrop from the Mac**: the photo lands in Photos. The Mac's share sheet picks the iPhone; accept on the iPhone if it uses another Apple ID.
+2. **Safari**: serve the file from the Mac on the same Wi-Fi (`python3 -m http.server`), open the URL on the iPhone, long-press the image, tap **Save to Photos**. Videos: download, then Files > Share > **Save Video**.
+3. **An app with file sharing**: `file-push --app`, then save it to Photos from that app.
+
+### Delete photos
+
+```bash
+ghosthand photo-delete -l 42 IMG_0008.PNG
+```
+
+**Never remove `/DCIM` files with `file-remove`**: Photos keeps a broken entry (tested on an SE2, iOS 18.6), so `file-remove` refuses `/DCIM`. `photo-delete` uses ImageCaptureCore, like Image Capture.app, and Photos forgets the photo too. It is permanent: it skips Recently Deleted, and with iCloud Photos the delete syncs. It needs the iPhone unlocked and the optional **Allow Photos** access from `ghosthand setup --permissions`.
+
+### Apps
+
+```bash
+ghosthand app-list -l 42
+# com.burbn.instagram  Instagram 450.1.0  (page 2)
+# com.example.beta  Beta 1.2  [installing]  (App Library only)
+ghosthand app-install -l 42 MyApp.ipa         # signed for this iPhone: ad hoc, enterprise, development
+ghosthand app-uninstall -l 42 com.example.app
+```
+
+- **Home Screen place**: `dock`, `page N`, or `page N, folder <name>`. Swipe to that page, then tap the icon.
+- **`[installing]`** is an App Store download that is not done. Trust it over the App Store button label, which can show Resume while it downloads.
+- **Opening an app over USB needs Developer Mode**, so ghosthand taps its icon instead.
+- **App Store apps install from the App Store app.** `app-install` takes only IPAs signed for this iPhone.
+
+### Device info, logs, restart
+
+```bash
+ghosthand info -l 42
+# battery: 100%, on power
+# storage: 51.0 GB free of 57.4 GB
+ghosthand logs -l 42 --process SpringBoard --grep fullyMuted --seconds 5
+ghosthand restart -l 42      # ask the user first
+```
+
+**The system log has no history over USB**: lines start when `logs` starts, so run it while the thing you watch happens. **After `restart` a person must type the passcode once**: until then iOS ignores the Bluetooth keyboard. `shutdown` needs a person to press the side button.
 
 ## Leases: one agent per iPhone
 

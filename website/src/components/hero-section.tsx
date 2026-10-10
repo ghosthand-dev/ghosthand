@@ -29,7 +29,7 @@ const SETUP_PROMPT = dedent`
 
   1. While I follow the window, install the skill: \`npx -y skills add https://ghosthand.dev -g -y\`.
   2. Read the skill to learn the CLI, and the [Ghosthand docs](https://ghosthand.dev/index.md).
-  3. Poll \`npx -y ghosthand@latest setup-status\` every 2 seconds until \`ready\` is true.
+  3. Poll \`npx -y ghosthand@latest setup status\` every 2 seconds until \`ready\` is true.
   4. When ready, run \`npx -y ghosthand@latest list\` and take a screenshot of my iPhone to confirm that it works.
 `
 

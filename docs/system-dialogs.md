@@ -107,6 +107,11 @@ action sheet. The Photos notification prompt ignored both a tap and a 400 ms pre
 Allow, and stayed after lock and unlock. After `key esc` and a tap at Allow's position it was
 gone; which of the two closed it was not checked.
 
+**A half-written PNG decodes as all black, without an error.** With the Apple Account
+verification code alert open, `--native` returned black 3 times while the file left on the
+iPhone showed the alert. A PNG cut after the start of its first IDAT gives a black image.
+`--native` now accepts only files that end with the IEND chunk; the next try showed the alert.
+
 **The cmd+shift+3 shortcut can be dropped**: once, right after `key home`, no screenshot
 was saved. `--native` presses it once more after 4 s.
 

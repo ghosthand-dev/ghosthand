@@ -43,7 +43,7 @@ agent / CLI / curl                       Mac                                  iP
 ## Features
 
 - **Any iOS app**: input goes through AssistiveTouch, like a real mouse; no app or test runner on the iPhone
-- **Tap, double tap and swipe** with the mouse pointer, at screenshot coordinates or on OCR text (`tap --text`, `double-tap --text`)
+- **Tap, double and triple tap, hold, swipe and hold-drag** with the mouse pointer, at screenshot coordinates or on OCR text (`tap --text`, `hold --text`)
 - **Scroll** with the mouse wheel: lists that a drag cannot scroll
 - **Fast keyboard input**: `type` sends text as key presses, plus Home, Enter, Esc, arrows and volume keys
 - **Screenshots** over USB, PNG or JPEG, about 0.3s each. The capture stops 1s after the last frame, so an idle daemon uses no CPU for it
@@ -220,7 +220,34 @@ ghosthand double-tap -l 42 --text "example" --screentext
 ```
 
 The same action is the MCP tool `double-tap` and HTTP route
-`POST /v1/leases/{lease}/double-tap`, with the same arguments as `tap`.
+`POST /v1/leases/{lease}/double-tap`, with the same arguments as `tap`. `triple-tap`
+sends three clicks with the same timing, to select a paragraph.
+
+**Hold** is a long press: the button goes down, stays still for `--duration` (default
+1000 ms), then goes up. It opens context menus, Home Screen icon menus and previews.
+No reports are sent while held: iOS reads repeated reports as movement, and a Home
+Screen long press then turns into edit mode.
+
+```bash
+ghosthand hold -l 42 144 324 --screentext          # Notes icon: its menu with Remove App
+ghosthand hold -l 42 --text "Safari" --duration 1500
+ghosthand key -l 42 esc                             # close the menu
+```
+
+**Hold-drag** presses, stays still for `--hold` (default 1000 ms), then drags to the
+target over `--duration` (default 1000 ms) and releases. A plain `swipe` moves at once,
+so items that need a long press first stay in place.
+
+```bash
+ghosthand hold-drag -l 42 144 324 57 412 --hold 2500   # move a Home Screen icon
+ghosthand key -l 42 home                                # leave edit mode
+```
+
+> [!IMPORTANT]
+> **Home Screen icons move only with Perform Touch Gestures off** (Settings > Accessibility > Touch > AssistiveTouch). With it on, the icon stays in place: iOS shows its menu or enters edit mode. From the normal Home Screen, use `--hold 2500`; in edit mode the default works. Tested on an SE2, iOS 18.6.
+
+The MCP tools are `triple-tap`, `hold` (`durationMs`) and `hold-drag` (`holdMs`,
+`durationMs`); the HTTP routes are `POST /v1/leases/{lease}/triple-tap`, `/hold` and `/hold-drag`.
 
 ## Control plane: watch your agents
 
@@ -297,7 +324,7 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 ```bash
 ghosthand screenshot -l 42 --native -o real.png            # read real.png: the dialog is there
 ghosthand tap -l 42 120 401 --screenshot s.png              # tap the button you read
-ghosthand swipe -l 42 120 401 120 401 --duration 400        # button ignored the tap? a 400 ms press
+ghosthand hold -l 42 120 401 --duration 400                 # button ignored the tap? press it once more
 ```
 
 The same steps by hand, for when you want the file:
@@ -310,7 +337,7 @@ ghosthand photo-delete -l 42 IMG_0004.PNG                   # remove it from Pho
 
 - The native PNG is in native pixels (750x1334 on an SE2). `screenshot --native` scales it for you. With the manual steps, pass its numbers with `tap --scale 1` (native pixels). See [Coordinates](#coordinates-screen-points).
 - **Deleting needs the optional Photos access** on the Mac: run `ghosthand setup --permissions` once and click **Allow Photos** with the iPhone plugged in and unlocked (macOS asks about removable volumes). Without it the screenshot stays in Photos and the output says which file to delete.
-- **Some buttons ignore a normal tap and accept a 400 ms press** (seen on an SE2: the location prompt's Don't Allow, the Photos Delete Photo sheet). Use `swipe x y x y --duration 400` at the same point.
+- **A just-opened alert can ignore the first press.** On an SE2 (iOS 18.6, Perform Touch Gestures on), the Remove "Notes"? alert ignored the first press on Cancel in 8 of 8 trials and took the second, with tap, `hold --duration 400` or a stationary swipe alike. Earlier reports that a 400 ms press works where a tap fails (location prompt, Photos Delete Photo sheet) were second presses too. Read the screen, then press once more.
 
 **Dialog does not respond, or is invisible to capture? Try `lock`, then `unlock`** to dismiss it without accepting an option. This cleared a Maps prompt on an XR, iOS 18.7; it is not guaranteed for every dialog. First obtain a user-confirmed passcode from the secret provider. Without one, ask the user before locking. Try once, then check the screen; never retry a failed passcode.
 
@@ -339,7 +366,10 @@ secret-provider | ghosthand unlock -l 42 --stdin --screenshot s.png --screentext
 | `screentext [--language it-IT] [--json]`                            | OCR of the screen: `x,y wxh text` per line. English is always included                                             |
 | `tap <x> <y>`                                                       | tap at screenshot coordinates                                                                                      |
 | `tap --text <text> [--index n]`                                     | tap the center of an OCR text line (exact line wins, else contains)                                                |
+| `double-tap <x> <y>`, `triple-tap <x> <y>`                          | two or three clicks at one point: select a word or a paragraph                                                     |
+| `hold <x> <y> [--duration ms]`                                      | long press (context menus, Home Screen icon menu); also `--text`                                                   |
 | `swipe <x1> <y1> <x2> <y2> [--duration ms]`                         | drag with the button held (on a list row it taps the row)                                                          |
+| `hold-drag <x1> <y1> <x2> <y2> [--hold ms] [--duration ms]`         | long press, then drag while held: move Home Screen icons                                                           |
 | `scroll <up\|down> <ticks> [--at x,y]`                              | mouse wheel scroll, \~100 points per tick; scrolls lists that `swipe` cannot. See [docs/scroll.md](docs/scroll.md) |
 | `key <combo>`                                                       | `home`, `enter`, `esc`, `backspace`, arrows, `pageup`, `pagedown`, `end`, `volumeup`                               |
 | `mute` / `unmute`                                                   | silence all iPhone sound, or turn it back on; confirmed from the iPhone log                                        |

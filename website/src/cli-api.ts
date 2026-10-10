@@ -10,7 +10,7 @@
 import { Spiceflow, json } from 'spiceflow'
 import { APIError } from 'better-auth/api'
 import { z } from 'zod'
-import { getAuth, getBaseUrl, getSessionStrict, getUserSubscriptions } from './db.ts'
+import { getAuth, getBaseUrl, getPersonalOrg, getSessionStrict } from './db.ts'
 import { entitlementFor } from './lib/billing.ts'
 import { createUpload } from './uploads.ts'
 
@@ -76,8 +76,8 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       const session = await getSessionStrict(request)
       if (!session) throw json({ error: 'unauthorized' }, { status: 401 })
       const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
-      const subscriptions = await getUserSubscriptions(session.userId)
-      const entitlement = entitlementFor({ userCreatedAt: session.user.createdAt, subscriptions, now: new Date() })
+      const org = await getPersonalOrg(session.userId)
+      const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
       return {
         userId: session.userId,
         email: session.user.email,
@@ -99,8 +99,8 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     async handler({ request, query }) {
       const session = await getSessionStrict(request)
       if (!session) throw json({ message: 'unauthorized' }, { status: 401 })
-      const subscriptions = await getUserSubscriptions(session.userId)
-      const entitlement = entitlementFor({ userCreatedAt: session.user.createdAt, subscriptions, now: new Date() })
+      const org = await getPersonalOrg(session.userId)
+      const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
       if (!entitlement.allowed) {
         const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
         throw json({ message: `${entitlement.notice ?? 'This ghosthand account has no active plan.'} Subscribe: ${subscribeUrl}` }, { status: 402 })

@@ -3,7 +3,7 @@
 //
 //   signup ──── 7 days: trial ────▶ expired (every lease fails) ──▶ subscribe ──▶ pro
 //
-// The trial end is derived from user.createdAt, never stored, so it cannot drift.
+// The trial end is derived from org.createdAt, never stored, so it cannot drift.
 // No Stripe trial: Checkout charges at once, because the trial already happened.
 
 export const TRIAL_DAYS = 7
@@ -35,20 +35,20 @@ export type Entitlement = {
   notice: string | null
 }
 
-export function trialEndsAt(userCreatedAt: Date): Date {
-  return new Date(userCreatedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
+export function trialEndsAt(orgCreatedAt: Date): Date {
+  return new Date(orgCreatedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
 }
 
 export function entitlementFor({
-  userCreatedAt,
+  orgCreatedAt,
   subscriptions,
   now,
 }: {
-  userCreatedAt: Date
+  orgCreatedAt: Date
   subscriptions: { status: string; cancelAtPeriodEnd: boolean; currentPeriodEnd: Date | null }[]
   now: Date
 }): Entitlement {
-  const ends = trialEndsAt(userCreatedAt)
+  const ends = trialEndsAt(orgCreatedAt)
   const pro = subscriptions.find((s) => isProStatus(s.status))
   if (pro) {
     const notice = pro.status === 'past_due'

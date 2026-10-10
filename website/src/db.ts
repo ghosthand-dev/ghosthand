@@ -6,6 +6,7 @@
 // gets from the device flow (deviceAuthorization plugin, see cli-api.ts).
 // Remote MCP clients get OAuth access tokens instead: mcp() is the OAuth provider,
 // jwt() signs resource-bound tokens, cimd() loads clients from their metadata URL.
+// A signup hook creates the user's personal org: it owns the plan, trial and Mac hub.
 
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/d1'
@@ -16,7 +17,6 @@ import { mcp } from '@better-auth/mcp'
 import { cimd } from '@better-auth/cimd'
 import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 import { json } from 'spiceflow'
-import { ulid } from 'ulid'
 import { fetchCimdOnWorkers } from './cimd-fetch.ts'
 
 export function getDb() {
@@ -48,6 +48,9 @@ export function getAuth() {
         clientSecret: env.GOOGLE_CLIENT_SECRET,
         prompt: 'select_account',
       },
+    },
+    databaseHooks: {
+      user: { create: { after: (user) => createPersonalOrg(user) } },
     },
     // The jwt plugin's /token would hand out session JWTs; MCP uses /oauth2/token.
     disabledPaths: ['/token'],
@@ -100,34 +103,30 @@ export async function requireSession(request: Pick<Request, 'headers'>): Promise
 
 export type Org = typeof schema.org.$inferSelect
 
-/** The user's org, created on first need. Race-safe through the unique user_id index. */
-export async function ensureOrg(session: Session): Promise<Org> {
+/** Signup hook: the personal org has org_id = user.id, so a retry is a no-op. */
+async function createPersonalOrg(user: { id: string; name: string; email: string; createdAt: Date }): Promise<void> {
   const db = getDb()
-  const existing = await db.query.orgMember.findFirst({ where: { userId: session.userId }, with: { org: true } })
-  if (existing?.org) return existing.org
-  const orgId = ulid()
-  try {
-    await db.batch([
-      db.insert(schema.org).values({ orgId, name: session.user.name || session.user.email }),
-      db.insert(schema.orgMember).values({ orgId, userId: session.userId, role: 'admin' }),
-    ])
-  } catch (cause) {
-    const winner = await db.query.orgMember.findFirst({ where: { userId: session.userId }, with: { org: true } })
-    if (winner?.org) return winner.org
-    throw cause
-  }
-  const org = await db.query.org.findFirst({ where: { orgId } })
-  if (!org) throw new Error(`org ${orgId} missing after insert`)
-  return org
+  await db.batch([
+    db.insert(schema.org)
+      .values({ orgId: user.id, name: user.name || user.email, kind: 'personal', createdAt: user.createdAt })
+      .onConflictDoNothing({ target: schema.org.orgId }),
+    db.insert(schema.orgMember)
+      .values({ orgId: user.id, userId: user.id, role: 'admin' })
+      .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] }),
+  ])
 }
 
-/** Subscriptions of the user's org, from every Stripe account. Empty without an org. */
-export async function getUserSubscriptions(userId: string) {
+/**
+ * The user's personal org with its subscriptions (every Stripe account, newest first).
+ * Looked up through org_member, not by assuming org_id = user.id.
+ */
+export async function getPersonalOrg(userId: string) {
   const member = await getDb().query.orgMember.findFirst({
-    where: { userId },
+    where: { userId, org: { kind: 'personal' } },
     with: { org: { with: { subscriptions: { orderBy: { createdAt: 'desc' } } } } },
   })
-  return member?.org?.subscriptions ?? []
+  if (!member?.org) throw new Error(`user ${userId} has no personal org`)
+  return member.org
 }
 
 export type MacSession = { sessionId: string; name: string; version: string | null; signedInAt: Date; lastUsedAt: Date }

@@ -7,7 +7,7 @@ import { router } from 'spiceflow/react'
 import { z } from 'zod'
 import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
-import { getAuth, getDb, requireSession } from './db.ts'
+import { getAuth, getDb, getPersonalOrg, requireSession } from './db.ts'
 import { getHub } from './tunnel.ts'
 
 const deviceForm = z.object({ userCode: z.string().min(1) })
@@ -56,6 +56,7 @@ export async function signOutMac(formData: FormData) {
   await getDb().delete(schema.session)
     .where(orm.and(orm.eq(schema.session.id, sessionId), orm.eq(schema.session.userId, session.userId)))
     .limit(1)
-  await getHub(session.userId).revoke(sessionId)
+  const org = await getPersonalOrg(session.userId)
+  await getHub(org.orgId).revoke(sessionId)
   throw redirect('/dashboard')
 }

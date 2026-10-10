@@ -110,6 +110,42 @@ gone; which of the two closed it was not checked.
 **The cmd+shift+3 shortcut can be dropped**: once, right after `key home`, no screenshot
 was saved. `--native` presses it once more after 4 s.
 
+### First press ignored, hold and hold-drag, October 10
+
+**A just-opened alert ignored the first press, whatever its kind.** SE2, iOS 18.6.2,
+AssistiveTouch > Perform Touch Gestures on. The Remove "Notes"? alert (opened from the
+icon's context menu) ignored the first press on Cancel and took the second:
+
+| First and second press | Trials | First press | Second press |
+| --- | --- | --- | --- |
+| `tap` | 2 | ignored | dismissed |
+| `hold --duration 400` | 2 | ignored | dismissed |
+| `hold` with a report every 16 ms while held | 2 | ignored | dismissed |
+| `swipe x y x y --duration 400` | 2 | ignored | dismissed |
+
+The Settings "Verification Email Sent" alert did the same: `hold` ignored, then `tap`
+dismissed it. So the earlier "400 ms press works where tap fails" findings above were
+likely second presses. Not isolated: with Perform Touch Gestures off, the first `hold`
+on Cancel dismissed the alert, but that alert was opened by a tap, not a hold.
+
+**Hold sends no reports while held.** With a report every 16 ms at the same point, a
+1000 ms hold on a Home Screen icon opened the menu, then iOS entered edit mode as if the
+finger moved. Without reports the menu stays open.
+
+**Hold-drag moves Home Screen icons only with Perform Touch Gestures off.**
+
+| Perform Touch Gestures | Start | `--hold` | Result |
+| --- | --- | --- | --- |
+| on | normal Home Screen | 1000 | menu opens, icon stays |
+| on | normal Home Screen | 2500 | edit mode, icon stays |
+| on | edit mode | 600, 800, 1000 | icon does not lift; the pointer moves alone |
+| off | normal Home Screen | 1000 | edit mode, icon stays |
+| off | normal Home Screen | 2500 | icon moved |
+| off | edit mode | 1000 | icon moved (2 of 2) |
+
+Sending the button in both mouse reports on every drag step, or reports during the hold,
+did not change the result with the setting on. The setting was turned back on after the test.
+
 ### Other input paths
 
 | Method | Scope | Limit |

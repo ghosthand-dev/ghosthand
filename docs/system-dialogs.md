@@ -138,6 +138,8 @@ on Cancel dismissed the alert, but that alert was opened by a tap, not a hold.
 finger moved. Without reports the menu stays open.
 
 **Hold-drag moves Home Screen icons only with Perform Touch Gestures off.**
+Outdated: these drags used absolute reports, which the finger ignores. With relative
+drags, `hold-drag --hold 2500` moves icons with the setting on ([relative-pointer.md](relative-pointer.md#drags-on-ios-17-and-later)).
 
 | Perform Touch Gestures | Start | `--hold` | Result |
 | --- | --- | --- | --- |

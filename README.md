@@ -246,7 +246,7 @@ ghosthand key -l 42 home                                # leave edit mode
 ```
 
 > [!IMPORTANT]
-> **Home Screen icons move only with Perform Touch Gestures off** (Settings > Accessibility > Touch > AssistiveTouch). With it on, the icon stays in place: iOS shows its menu or enters edit mode. From the normal Home Screen, use `--hold 2500`; in edit mode the default works. Tested on an SE2, iOS 18.6.
+> **Home Screen icons need `--hold 2500`** from the normal Home Screen: iOS enters edit mode while held, then the icon follows. Start on the icon, not on the AssistiveTouch button. Tested on an SE2, iOS 18.6, Perform Touch Gestures on.
 
 The MCP tools are `triple-tap`, `hold` (`durationMs`) and `hold-drag` (`holdMs`,
 `durationMs`); the HTTP routes are `POST /v1/leases/{lease}/triple-tap`, `/hold` and `/hold-drag`.
@@ -372,7 +372,7 @@ secret-provider | ghosthand unlock -l 42 --stdin --screenshot s.png --screentext
 | `tap --text <text> [--index n]`                                     | tap the center of an OCR text line (exact line wins, else contains)                                                |
 | `double-tap <x> <y>`, `triple-tap <x> <y>`                          | two or three clicks at one point: select a word or a paragraph                                                     |
 | `hold <x> <y> [--duration ms]`                                      | long press (context menus, Home Screen icon menu); also `--text`                                                   |
-| `swipe <x1> <y1> <x2> <y2> [--duration ms]`                         | drag with the button held (on a list row it taps the row)                                                          |
+| `swipe <x1> <y1> <x2> <y2> [--duration ms]`                         | drag with the button held; content moves by the drag length (no momentum)                                          |
 | `hold-drag <x1> <y1> <x2> <y2> [--hold ms] [--duration ms]`         | long press, then drag while held: move Home Screen icons                                                           |
 | `scroll <up\|down> <ticks> [--at x,y]`                              | mouse wheel scroll, \~100 points per tick; scrolls lists that `swipe` cannot. See [docs/scroll.md](docs/scroll.md) |
 | `key <combo>`                                                       | `home`, `enter`, `esc`, `backspace`, arrows, `pageup`, `pagedown`, `end`, `volumeup`                               |

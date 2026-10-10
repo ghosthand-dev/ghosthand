@@ -1,6 +1,6 @@
 ---
 title: Relative pointer on iOS 15
-description: How iOS 15 moves the AssistiveTouch pointer for relative HID mouse reports, the measurements that prove it, and the timing rules ghosthand follows.
+description: How iOS 15 moves the AssistiveTouch pointer for relative HID mouse reports, the measurements that prove it, the timing rules ghosthand follows, and how drags work on iOS 17+.
 ---
 
 # Relative pointer on iOS 15
@@ -71,6 +71,41 @@ Also measured:
 
 - Tracking Speed other than the default. Matching fits a `gain` that scales the table. If another speed changes the table shape, taps miss by a few points and the match log shows different x and y gains.
 - iOS 16, and iPhones other than the 6s.
+
+## Drags on iOS 17 and later
+
+**The AssistiveTouch finger follows only relative motion.** SE2, iOS 18.6.2, absolute pointer, Perform Touch Gestures on. With the button down, absolute reports (report 1) move the pointer but not the finger: every swipe was a long tap at its start point (Home Screen opened Music, a widget or the AssistiveTouch menu; held longer, edit mode). Report 1 buttons are ignored; report 7 carries them.
+
+```
+report 7 button down ──▶ report 7 (dx, dy) ...  ──▶ finger follows   ──▶ report 7 button up
+report 1 (x, y) while down                      ──▶ pointer jumps, finger stays
+```
+
+So both pointer modes drag with report 7. ghosthand puts the pointer on the start point with report 1, drags with report 7, then sends report 1 at the end point (the pointer is exact again).
+
+**The curve is not the iOS 15 table.** Points per report of (d, 0), hover, any gap from 0 to 50 ms:
+
+| d | 3 | 4 | 6 | 8 | 10 | 12 | 14 | 16 | 32 |
+|---|---|---|---|---|---|---|---|---|---|
+| pt | 1.09 | 1.63 | 3.01 | 4.72 | 6.83 | 9.27 | 12.12 | 15.35 | 54.67 |
+
+`distance = len · (a + b · len)` fits within 2% (a 0.226, b 0.0458 here; Tracking Sensitivity was below default). A diagonal (6, 6) moved 5.0 pt, ~4% under the model. Since `a` and `b` follow Tracking Sensitivity, `Controller.dragCurve` fits them on the first swipe of each Bluetooth connection: 12 reports of (6, 0) and 5 of (14, 0), each spot found in a frame diff on one row (3 rows tried).
+
+**iOS ignores an absolute report equal to the last one.** After relative moves, sending the same (x, y) again does not move the pointer back.
+
+**Drag rules found on the phone:**
+
+| Change | Result |
+|---|---|
+| Reports up to length 16 (~15 pt each) | Safari read the drag as a long press (link preview); Settings did not scroll |
+| Reports up to length 8 (~4.7 pt each) | Settings and Safari: 136-141 pt for a 150 pt drag, 200 to 1000 ms |
+| Bell-shaped speed (slow start), 300-1000 ms | Home Screen entered edit mode |
+| Steady 225 pt/s / 112 pt/s | page changed / edit mode |
+| Fast start, slow end (`1 - (1 - t)^2.5`), 250 to 2000 ms | page changed |
+| Start on a widget, 400-1000 ms / 200 ms | widget opened / page changed |
+| No 80 ms pause before release | no clear momentum in Safari; swipes move by the drag length |
+
+`hold-drag --hold 2500` now moves Home Screen icons with Perform Touch Gestures on (it did not with absolute drags).
 
 ## Findings log
 

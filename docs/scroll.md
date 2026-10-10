@@ -18,7 +18,7 @@ scroll down 5
 
 ## Why not swipe
 
-**A drag on a list row is a tap.** In Settings lists and pickers (UITableView), `swipe` taps the row where it starts. In the Clock city picker a swipe added a city. The wheel scrolls these lists.
+**A swipe has no momentum.** It moves content by the drag length minus ~10 pt touch slop, so a long scroll needs many swipes. The wheel moves ~100 pt per tick. (Before October 10, absolute-pointer swipes never moved the finger and acted as taps on list rows; see [relative-pointer.md](relative-pointer.md#drags-on-ios-17-and-later).)
 
 ## The report
 

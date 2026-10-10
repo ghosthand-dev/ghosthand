@@ -55,6 +55,11 @@
             "pages": ["index"]
           },
           {
+            "group": "Guides",
+            "icon": "lucide:map",
+            "pages": ["docs/send-media"]
+          },
+          {
             "group": "Internals",
             "icon": "lucide:cpu",
             "pages": ["docs/scroll", "docs/relative-pointer"]

@@ -593,13 +593,16 @@ ghosthand file remove -l 42 /Downloads/report.pdf
 
 **A pushed file is not in any app** unless it goes to an app with file sharing (`--app`). Then it shows in that app, and in Files > On My iPhone > that app when the app supports it.
 
-### Add photos to the iPhone
+### Send media for uploads in apps
 
-**There is no USB way to add a photo to Photos without an app on the iPhone.** A file copied to `/DCIM` is not imported: Photos indexes only what it took or received itself. Finder photo sync makes read-only "From My Mac" albums, and needs iCloud Photos off. Ways that work (from Apple's docs and user reports; not automated by ghosthand):
+**Apps like TikTok and Instagram upload only from Photos**, and a file copied to `/DCIM` is not imported. Copy it into VLC over USB, then save it to Photos from the Files app:
 
-1. **AirDrop from the Mac**: the photo lands in Photos. The Mac's share sheet picks the iPhone; accept on the iPhone if it uses another Apple ID.
-2. **Safari**: serve the file from the Mac on the same Wi-Fi (`python3 -m http.server`), open the URL on the iPhone, long-press the image, tap **Save to Photos**. Videos: download, then Files > Share > **Save Video**.
-3. **An app with file sharing**: `file push --app`, then save it to Photos from that app.
+```bash
+ghosthand file push -l 42 clip.mp4 /Documents/clip.mp4 --app org.videolan.vlc-ios
+# Files > On My iPhone > VLC > hold clip > Share > Save Video, then Share > TikTok from Photos
+```
+
+Full steps, other ways (Safari, AirDrop) and why there is no USB-only path: [docs/send-media.md](docs/send-media.md), also at https://ghosthand.dev/docs/send-media.
 
 ### Delete photos
 

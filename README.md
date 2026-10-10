@@ -595,14 +595,20 @@ ghosthand file remove -l 42 /Downloads/report.pdf
 
 ### Send media for uploads in apps
 
-**Apps like TikTok and Instagram upload only from Photos**, and a file copied to `/DCIM` is not imported. Copy it into VLC over USB, then save it to Photos from the Files app:
+**Apps like TikTok and Instagram upload only from Photos**, and a file copied to `/DCIM` is not imported. **`ghosthand upload`** puts the file on ghosthand.dev and prints a short link to a page with a **Save** button. Safari's share sheet then offers **Save Video** (or **Save Image**):
 
 ```bash
-ghosthand file push -l 42 clip.mp4 /Documents/clip.mp4 --app org.videolan.vlc-ios
-# Files > On My iPhone > VLC > hold clip > Share > Save Video, then Share > TikTok from Photos
+ghosthand upload clip.mp4          # https://ghosthand.dev/u/3fK9xQ2mZr7T, expires in 1 day
+ghosthand key -l 42 cmd+space      # open Safari, then cmd+l, type the link, enter
+ghosthand tap -l 42 --text Save    # wait until the button says Save, not Loading...
+ghosthand tap -l 42 --text "Save Video"
 ```
 
-Full steps, other ways (Safari, AirDrop) and why there is no USB-only path: [docs/send-media.md](docs/send-media.md), also at https://ghosthand.dev/docs/send-media.
+- **Needs the account** (signed in, trial or plan). No lease: the upload does not touch the iPhone.
+- **At most 100 MB.** Anyone with the link can download the file for 1 day.
+- **Offline or bigger:** `file push` into VLC, then Files > Share > Save Video.
+
+Full steps and why there is no USB-only path: [docs/send-media.md](docs/send-media.md), also at https://ghosthand.dev/docs/send-media.
 
 ### Delete photos
 

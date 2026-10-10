@@ -19,6 +19,9 @@
       "migrations_pattern": "../db/drizzle/*/migration.sql"
     }
   ],
+  // `ghosthand upload` files. Bucket lifecycle rule deletes objects after 1 day:
+  // wrangler r2 bucket lifecycle add <bucket> expire-1-day --expire-days 1
+  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" }],
   "durable_objects": {
     "bindings": [{ "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" }]
   },
@@ -53,6 +56,7 @@
           "migrations_pattern": "../db/drizzle/*/migration.sql"
         }
       ],
+      "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads-preview" }],
       "durable_objects": {
         "bindings": [{ "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" }]
       },

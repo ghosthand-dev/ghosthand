@@ -109,7 +109,7 @@ ghosthand photo delete -l 42 IMG_0042.MP4    # name from photo list
 <details>
 <summary>Test status</summary>
 
-- Tested on an SE2, iOS 18.6.2, October 10: share page > Save > Save Video (mp4, over a kimaki HTTPS tunnel and over the LAN URL), uguu.se link > Safari > Save to Photos (jpg), and VLC push > Files > Save Video (mp4). Every item showed in `photo list`.
+- Tested on an SE2, iOS 18.6.2, October 10: `ghosthand upload` (mp4, ghosthand.dev) > Safari > Save > Save Video, the item showed in `photo list`. Earlier the same day: Mac share page > Save > Save Video (mp4, over a kimaki HTTPS tunnel and over the LAN URL), uguu.se link > Safari > Save to Photos (jpg), and VLC push > Files > Save Video (mp4). Every item showed in `photo list`.
 - A direct mp4 link in Safari opened the video player. Neither the player nor the Share sheet offered Save Video.
 - The TikTok draft was tested on the same phone.
 - VLC's file sharing keys were read from https://github.com/videolan/vlc-ios/blob/master/Resources/iOS/Info.plist

@@ -26,8 +26,8 @@ secret-provider | npx ghosthand type --stdin  # secrets stay out of argv
 npx ghosthand key home                        # Home Screen, not Back
 npx ghosthand tap 207 448 --screenshot s.png --screentext
 npx ghosthand screentext --language it-IT
-npx ghosthand record-start demo.mov           # screen + sound; keep acting meanwhile
-npx ghosthand record-stop
+npx ghosthand record start demo.mov           # screen + sound; keep acting meanwhile
+npx ghosthand record stop
 ```
 
 ```diagram
@@ -47,7 +47,7 @@ agent / CLI / curl                       Mac                                  iP
 - **Scroll** with the mouse wheel: lists that a drag cannot scroll
 - **Fast keyboard input**: `type` sends text as key presses, plus Home, Enter, Esc, arrows and volume keys
 - **Screenshots** over USB, PNG or JPEG, about 0.3s each. The capture stops 1s after the last frame, so an idle daemon uses no CPU for it
-- **Screen recording with sound**: `record-start` / `record-stop` write H.264 + AAC; actions and screenshots keep working while it records
+- **Screen recording with sound**: `record start` / `record stop` write H.264 + AAC; actions and screenshots keep working while it records
 - **Screen points by default**: screenshots, OCR boxes and taps share one small coordinate space, sized for LLM vision
 - **Screen text** with on-device OCR (Vision), boxes in screenshot coordinates
 - **Unlock** a locked iPhone with its passcode, no touch; lock state in `list`
@@ -82,8 +82,8 @@ ghosthand list / screenshot / tap / type <────────────�
 
 ```bash
 ghosthand account   # who is signed in, the plan, the subscribe link
-ghosthand login     # for people without the setup window; agents use setup
-ghosthand logout
+ghosthand account login     # for people without the setup window; agents use setup
+ghosthand account logout
 ```
 
 **Permissions are user-controlled.** Run `ghosthand setup`, then click **Allow Camera** and **Allow Bluetooth**. macOS asks for access for Ghosthand, not your terminal or editor. Normal commands never show permission dialogs or open System Settings.
@@ -98,11 +98,11 @@ ghosthand setup  # open the app, then let the user click its permission buttons
 
 **Setup starts with sign-in, then permissions.** `ghosthand setup` shows Sign in with Google, then Camera and Bluetooth buttons, before the phone steps (plug in, trust, unlock, pair). Denied access shows an **Open Settings** button instead. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
 
-**Agents wait for the user.** Open setup once and tell the user to complete setup in the small Ghosthand window. All Ghosthand window actions are user-only; agents must not interact with the window or complete setup for the user. Poll `ghosthand setup-status` every 2 seconds, then continue automatically when `ready` is `true`. Do not reopen setup, request permissions, or retry input while waiting. If still incomplete after 10 minutes, report the current status. Use `ghosthand setup --permissions` to review access that is already allowed.
+**Agents wait for the user.** Open setup once and tell the user to complete setup in the small Ghosthand window. All Ghosthand window actions are user-only; agents must not interact with the window or complete setup for the user. Poll `ghosthand setup status` every 2 seconds, then continue automatically when `ready` is `true`. Do not reopen setup, request permissions, or retry input while waiting. If still incomplete after 10 minutes, report the current status. Use `ghosthand setup --permissions` to review access that is already allowed.
 
 ```bash
-ghosthand setup-status                     # JSON, works before permissions or USB trust
-ghosthand setup-status --device "iPhone XR" # select the intended phone when several exist
+ghosthand setup status                     # JSON, works before permissions or USB trust
+ghosthand setup status --device "iPhone XR" # select the intended phone when several exist
 ```
 
 **Readiness is per phone.** It requires a signed-in Mac, Camera access, USB capture, an unlocked phone and connected Bluetooth. Once a poll selects a phone, use its returned `device` id on later polls. When ready, acquire that phone with its `captureId` from `overview` (the id shown by `list`). The MCP tools are `setup` and `setup-status`; neither status check needs a lease.
@@ -251,7 +251,7 @@ The MCP tools are `triple-tap`, `hold` (`durationMs`) and `hold-drag` (`holdMs`,
 
 ## Control plane: watch your agents
 
-**Many agents, many iPhones?** `ghosthand app` opens a window that shows what each one is doing:
+**Many agents, many iPhones?** `ghosthand dashboard` opens a window that shows what each one is doing:
 
 ```diagram
 ┌ iPhones on USB ──────┐┌ Morse’s iPhone   iPhone XR · iOS 18.7                     ● In use ┐
@@ -268,7 +268,7 @@ The MCP tools are `triple-tap`, `hold` (`durationMs`) and `hold-drag` (`holdMs`,
 - **Screen:** small and read-only, refreshed every 2 s. It needs no lease and does not reset the agent's idle timer.
 - **Connection and ids:** USB, Bluetooth, pointer mode, AssistiveTouch, and the device id to copy for `acquire -d`.
 
-`app` and `setup` share one process; running either again brings its window to the front. Both read `GET /v1/phones` (see [HTTP API](#http-api)).
+`dashboard` and `setup` share one process; running either again brings its window to the front. Both read `GET /v1/phones` (see [HTTP API](#http-api)).
 
 ## Agent feedback loop
 
@@ -331,8 +331,8 @@ The same steps by hand, for when you want the file:
 
 ```bash
 ghosthand key -l 42 cmd+shift+3                             # iOS saves a real screenshot
-ghosthand photo-pull -l 42 -o .                             # newest Camera Roll file, e.g. ./IMG_0004.PNG
-ghosthand photo-delete -l 42 IMG_0004.PNG                   # remove it from Photos again
+ghosthand photo pull -l 42 -o .                             # newest Camera Roll file, e.g. ./IMG_0004.PNG
+ghosthand photo delete -l 42 IMG_0004.PNG                   # remove it from Photos again
 ```
 
 - The native PNG is in native pixels (750x1334 on an SE2). `screenshot --native` scales it for you. With the manual steps, pass its numbers with `tap --scale 1` (native pixels). See [Coordinates](#coordinates-screen-points).
@@ -356,13 +356,15 @@ secret-provider | ghosthand unlock -l 42 --stdin --screenshot s.png --screentext
 > [!NOTE]
 > **Every command except `list` needs a lease**, so two agents never use the same iPhone at once. `ghosthand acquire --reason "<task>"` prints an id like `42`; pass `-l 42` to every command and run `ghosthand release -l 42` at the end. The examples in this README leave out `-l` to stay short. See [Leases](#leases-one-agent-per-iphone).
 
+**Grouped commands use a subcommand**: `file`, `photo`, `app`, `record`, `setup`, `account`, `daemon` (`ghosthand file push`, `ghosthand record stop`). `setup` and `account` also run alone. MCP tool names join the words with `-` (`file-push`).
+
 | Command                                                             | Does                                                                                                               |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `list`                                                              | iPhones on USB, `[locked]`, their Bluetooth link state, and who leases them                                        |
 | `acquire --reason task [--force] [--idle-timeout s] [--label text]` | take the iPhone for a task; prints the lease id                                                                    |
 | `wait --reason task [--timeout s]`                                  | wait until another lease ends, then acquire; prints the lease id                                                   |
 | `release`                                                           | end the lease; turns AssistiveTouch off if `acquire` turned it on                                                  |
-| `screenshot [-o file.png\|.jpg] [--settle]`                         | save the screen; `--settle` waits until it stops changing                                                          |
+| `screenshot [-o file.png\|.jpg] [--settle] [--native]`              | save the screen; `--settle` waits until it stops changing; `--native` shows dialogs USB capture hides              |
 | `screentext [--language it-IT] [--json]`                            | OCR of the screen: `x,y wxh text` per line. English is always included                                             |
 | `tap <x> <y>`                                                       | tap at screenshot coordinates                                                                                      |
 | `tap --text <text> [--index n]`                                     | tap the center of an OCR text line (exact line wins, else contains)                                                |
@@ -374,18 +376,29 @@ secret-provider | ghosthand unlock -l 42 --stdin --screenshot s.png --screentext
 | `key <combo>`                                                       | `home`, `enter`, `esc`, `backspace`, arrows, `pageup`, `pagedown`, `end`, `volumeup`                               |
 | `mute` / `unmute`                                                   | silence all iPhone sound, or turn it back on; confirmed from the iPhone log                                        |
 | `type <text> \| type --stdin [--enter]`                             | validated US-ASCII text; stdin keeps secrets out of arguments                                                      |
+| `wake`                                                              | turn the display on and check that USB frames arrive                                                               |
 | `unlock --stdin`                                                    | wake and unlock (or `GHOSTHAND_PASSCODE`); no screenshot while locked                                              |
-| `record-start <file.mov\|.mp4> [--fps n] [--max-duration s]`        | record screen and sound to a file; stops by itself after 5 min. See [Record the screen](#record-the-screen)      |
-| `record-stop`                                                       | stop the recording; prints duration, size and fps                                                                  |
+| `record start <file.mov\|.mp4> [--fps n] [--max-duration s]`        | record screen and sound to a file; stops by itself after 5 min. See [Record the screen](#record-the-screen)      |
+| `record stop`                                                       | stop the recording; prints duration, size and fps                                                                  |
 | `assistivetouch [on\|off]`                                          | show or set AssistiveTouch over USB; `acquire` turns it on by itself                                               |
 | `lock`                                                              | lock over Bluetooth with Control-Command-Q                                                                         |
 | `rename <name>`                                                     | set the iPhone's name over USB; the id does not change                                                             |
 | `forget`                                                            | remove the Mac's Bluetooth bond with the iPhone, to pair again                                                     |
 | `random <name\|lastname\|username\|birthdate\|password>`            | random account detail, saved in state.db with the lease's task and iPhone; `random list` shows them all            |
+| `file list <path> [--app id]`                                       | list a folder over USB: `/DCIM`, `/Downloads`, or an app's `/Documents`. See [Files](#files-photos-and-apps-over-usb) |
+| `file pull <iphone path> [local]` / `file push <local> <iphone path>` | copy a file or folder from or to the iPhone over USB; `--app id` for an app's Documents                           |
+| `file remove <iphone path>`                                         | remove a file or folder over USB; refuses `/DCIM`                                                                  |
+| `photo list` / `photo pull [--last n]`                              | newest Camera Roll files, or copy them to this Mac                                                                 |
+| `photo delete <name...>`                                            | delete photos so Photos forgets them too (ImageCaptureCore); needs Allow Photos                                   |
+| `app list` / `app install <file.ipa>` / `app uninstall <id>`        | installed apps with their Home Screen page; install a signed IPA; uninstall                                        |
+| `info`                                                              | battery, storage, iOS build, serial, language, time zone; works while locked                                       |
+| `logs [--process p] [--grep text] [--seconds n]`                    | iPhone system log over USB, from now on                                                                            |
+| `restart` / `shutdown`                                              | restart or turn off over USB; ask the user first                                                                   |
 | `setup`                                                             | window for people: connect a new iPhone step by step                                                               |
-| `app`                                                               | window for people: every iPhone, its agent, task, last command and live screen                                     |
+| `setup status`                                                      | setup readiness as JSON: missing permissions, disconnected phones                                                  |
+| `dashboard`                                                         | window for people: every iPhone, its agent, task, last command and live screen                                     |
+| `account` / `account login` / `account logout`                      | this Mac's ghosthand.dev account and plan                                                                          |
 | `daemon start\|stop\|restart\|status\|run`                          | manage the background daemon                                                                                       |
-| `mcp`                                                               | MCP server on stdio for agents; see [MCP server](#mcp-server)                                                      |
 
 The daemon starts by itself on the first command. After a rebuild, the CLI restarts it.
 
@@ -487,9 +500,9 @@ If the phone was already in the asked state, the first press toggles it away and
 **Record while an agent works.** The recording uses the same USB capture as screenshots, so input and screenshots keep working while it runs.
 
 ```bash
-ghosthand record-start demo.mov --fps 30   # returns at once
+ghosthand record start demo.mov --fps 30   # returns at once
 ghosthand tap --text "Settings"
-ghosthand record-stop
+ghosthand record stop
 # /Users/me/demo.mov  12.4s  2.1 MB  828x1792  30 fps  sound  stopped by request
 ```
 
@@ -533,9 +546,9 @@ Verification failure stops the command before optional screenshot/OCR output. Re
 **No screen needed.** These commands use iOS services a trusted Mac can reach over the cable (the ones Finder uses). No Developer Mode, no app on the iPhone. They work while the iPhone is locked, except photo deletes and native screenshots.
 
 ```bash
-ghosthand photo-pull -l 42 --last 3 -o ./photos      # newest Camera Roll files to this Mac
-ghosthand file-push -l 42 report.pdf /Downloads/report.pdf
-ghosthand app-list -l 42                             # bundle ids, versions, Home Screen page
+ghosthand photo pull -l 42 --last 3 -o ./photos      # newest Camera Roll files to this Mac
+ghosthand file push -l 42 report.pdf /Downloads/report.pdf
+ghosthand app list -l 42                             # bundle ids, versions, Home Screen page
 ghosthand info -l 42                                 # battery, storage, iOS build, time zone
 ghosthand logs -l 42 --process appstored --seconds 10
 ```
@@ -552,13 +565,13 @@ ImageCaptureCore (like Image Capture.app) ────────────�
 
 ### Get photos and files from the iPhone
 
-**Photos, videos and screenshots are files under `/DCIM`.** `photo-list` shows the newest first; `photo-pull` copies them; `file-pull` copies any path, and a folder comes as a folder.
+**Photos, videos and screenshots are files under `/DCIM`.** `photo list` shows the newest first; `photo pull` copies them; `file pull` copies any path, and a folder comes as a folder.
 
 ```bash
-ghosthand photo-list -l 42 --limit 5
+ghosthand photo list -l 42 --limit 5
 # 845 KB    2026-10-10 10:52  /DCIM/100APPLE/IMG_0008.PNG
-ghosthand file-pull -l 42 /DCIM/100APPLE/IMG_0008.PNG shot.png
-ghosthand file-pull -l 42 /DCIM/100APPLE ./camera-roll   # whole folder
+ghosthand file pull -l 42 /DCIM/100APPLE/IMG_0008.PNG shot.png
+ghosthand file pull -l 42 /DCIM/100APPLE ./camera-roll   # whole folder
 ```
 
 | Path | What is there |
@@ -566,16 +579,16 @@ ghosthand file-pull -l 42 /DCIM/100APPLE ./camera-roll   # whole folder
 | `/DCIM/100APPLE/IMG_0001.PNG` | Camera Roll. Screenshots are PNG, camera photos HEIC or JPG, videos MOV |
 | `/Downloads` | iOS download databases. Not the Files app's Downloads |
 | `/Books`, `/PublicStaging`, `/iTunes_Control` | Books, app install staging, media sync |
-| `--app <bundle id>` + `/Documents/...` | an app's Documents, only for apps with **file sharing** (`[file sharing]` in `app-list`) |
+| `--app <bundle id>` + `/Documents/...` | an app's Documents, only for apps with **file sharing** (`[file sharing]` in `app list`) |
 
 **The Files app ("On My iPhone") and other app data are not reachable** over USB without Developer Mode. With iCloud Photos and "Optimize iPhone Storage", older originals may not be on the iPhone.
 
 ### Send files to the iPhone
 
 ```bash
-ghosthand file-push -l 42 report.pdf /Downloads/report.pdf
-ghosthand file-push -l 42 movie.mp4 /Documents/movie.mp4 --app org.videolan.vlc-ios
-ghosthand file-remove -l 42 /Downloads/report.pdf
+ghosthand file push -l 42 report.pdf /Downloads/report.pdf
+ghosthand file push -l 42 movie.mp4 /Documents/movie.mp4 --app org.videolan.vlc-ios
+ghosthand file remove -l 42 /Downloads/report.pdf
 ```
 
 **A pushed file is not in any app** unless it goes to an app with file sharing (`--app`). Then it shows in that app, and in Files > On My iPhone > that app when the app supports it.
@@ -586,30 +599,30 @@ ghosthand file-remove -l 42 /Downloads/report.pdf
 
 1. **AirDrop from the Mac**: the photo lands in Photos. The Mac's share sheet picks the iPhone; accept on the iPhone if it uses another Apple ID.
 2. **Safari**: serve the file from the Mac on the same Wi-Fi (`python3 -m http.server`), open the URL on the iPhone, long-press the image, tap **Save to Photos**. Videos: download, then Files > Share > **Save Video**.
-3. **An app with file sharing**: `file-push --app`, then save it to Photos from that app.
+3. **An app with file sharing**: `file push --app`, then save it to Photos from that app.
 
 ### Delete photos
 
 ```bash
-ghosthand photo-delete -l 42 IMG_0008.PNG
+ghosthand photo delete -l 42 IMG_0008.PNG
 ```
 
-**Never remove `/DCIM` files with `file-remove`**: Photos keeps a broken entry (tested on an SE2, iOS 18.6), so `file-remove` refuses `/DCIM`. `photo-delete` uses ImageCaptureCore, like Image Capture.app, and Photos forgets the photo too. It is permanent: it skips Recently Deleted, and with iCloud Photos the delete syncs. It needs the iPhone unlocked and the optional **Allow Photos** access from `ghosthand setup --permissions`.
+**Never remove `/DCIM` files with `file remove`**: Photos keeps a broken entry (tested on an SE2, iOS 18.6), so `file remove` refuses `/DCIM`. `photo delete` uses ImageCaptureCore, like Image Capture.app, and Photos forgets the photo too. It is permanent: it skips Recently Deleted, and with iCloud Photos the delete syncs. It needs the iPhone unlocked and the optional **Allow Photos** access from `ghosthand setup --permissions`.
 
 ### Apps
 
 ```bash
-ghosthand app-list -l 42
+ghosthand app list -l 42
 # com.burbn.instagram  Instagram 450.1.0  (page 2)
 # com.example.beta  Beta 1.2  [installing]  (App Library only)
-ghosthand app-install -l 42 MyApp.ipa         # signed for this iPhone: ad hoc, enterprise, development
-ghosthand app-uninstall -l 42 com.example.app
+ghosthand app install -l 42 MyApp.ipa         # signed for this iPhone: ad hoc, enterprise, development
+ghosthand app uninstall -l 42 com.example.app
 ```
 
 - **Home Screen place**: `dock`, `page N`, or `page N, folder <name>`. Swipe to that page, then tap the icon.
 - **`[installing]`** is an App Store download that is not done. Trust it over the App Store button label, which can show Resume while it downloads.
 - **Opening an app over USB needs Developer Mode**, so ghosthand taps its icon instead.
-- **App Store apps install from the App Store app.** `app-install` takes only IPAs signed for this iPhone.
+- **App Store apps install from the App Store app.** `app install` takes only IPAs signed for this iPhone.
 
 ### Device info, logs, restart
 
@@ -790,7 +803,7 @@ sudo scutil --set LocalHostName "lab-mac-1"   # optional: network name, no space
 
 ## Devices in `list`
 
-**Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone. Missing permissions tell the agent to open `ghosthand setup` and poll `setup-status` until ready, without showing a system dialog.
+**Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone. Missing permissions tell the agent to open `ghosthand setup` and poll `setup status` until ready, without showing a system dialog.
 
 ```text
 7EF219AD-69B4-423E-B8C4-4F4A6140822F  Morse’s iPhone (2)  iPhone XR (iPhone11,8) iOS 18.7.10  (bluetooth connected, absolute pointer)
@@ -909,7 +922,7 @@ MCP client ──POST /mcp, OAuth──> ghosthand.dev hub (one per account)
 ```
 
 - **Leases name their Mac:** `acquire` returns `studio:42`. Pass it as is; it picks the Mac.
-- **Several Macs:** `list` shows each iPhone under its Mac. Pass `mac` to `acquire`, `wait`, `setup` and `setup-status`. With one Mac online, `mac` is optional.
+- **Several Macs:** `list` shows each iPhone under its Mac. Pass `mac` to `acquire`, `wait`, `setup` and `setup status`. With one Mac online, `mac` is optional.
 - **Flags are arguments:** `lease`, `text` and `index` on `tap`, `waitText`, `timeoutMs`, `screenshot: true`, `screentext: true`. Screenshots come back as image content, not files.
 - **Stateless HTTP:** modern clients (MCP 2026-07-28) and legacy ones (`initialize`) both work. A closed request stops the tool.
 - **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift) run in the daemon; the hub in [website/src/tunnel.ts](website/src/tunnel.ts) only routes.
@@ -978,7 +991,7 @@ grep -iE 'error|fail' ~/.ghosthand/daemon.log | tail  # recent errors only
 | File                       | What writes it                                                       |
 | -------------------------- | -------------------------------------------------------------------- |
 | `~/.ghosthand/daemon.log`  | the daemon (`ghosthand daemon start`, or any command that starts it) |
-| `~/.ghosthand/app.log`     | the `setup` and `app` windows, and their app install step            |
+| `~/.ghosthand/app.log`     | the `setup` and `dashboard` windows, and their app install step            |
 | your terminal (stderr)     | `ghosthand daemon run`: the daemon in the foreground, for debugging  |
 
 - **`ghosthand daemon status`** prints the log path, the pid, and the Bluetooth state.

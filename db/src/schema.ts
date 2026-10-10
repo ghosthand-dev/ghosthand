@@ -2,9 +2,12 @@
 //
 //   user ──< session, account, device_code          (better-auth: Google login, CLI device flow)
 //   user ──< oauth_consent, oauth_*_token >── oauth_client   (remote MCP OAuth; jwks signs tokens)
-//   user ──< org_member >── org
-//                           org ──< stripe_customer  one per (org, Stripe account)
-//                           org ──< subscription     mirrored from Stripe webhooks
+//   user ──< org_member >── org ──< stripe_customer  one per (org, Stripe account)
+//                               ──< subscription     mirrored from Stripe webhooks
+//
+// Identity (sessions, OAuth tokens) belongs to the user; plans, the trial and the Macs'
+// hub belong to the org. Every user gets a personal org at signup with org_id = user.id.
+// Code must still resolve the org through org_member, never use a user id as an org id.
 //
 // Every Stripe row stores its Stripe account id, so a later move to another Stripe
 // account keeps old subscriptions working next to new ones.
@@ -254,10 +257,11 @@ export const oauthClientAssertion = s.sqliteTable('oauth_client_assertion', {
 
 // ── orgs ────────────────────────────────────────────────────────────
 
-/** Billing owner. Each user gets one org on first need; teams can join it later. */
+/** Owns the plan, the trial (from createdAt) and the hub of Macs. Personal: org_id = user.id. */
 export const org = s.sqliteTable('org', {
   orgId: s.text('org_id').primaryKey().$defaultFn(() => ulid()),
   name: s.text('name').notNull(),
+  kind: s.text('kind', { enum: ['personal', 'team'] }).notNull().default('personal'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 })
@@ -270,8 +274,8 @@ export const orgMember = s.sqliteTable('org_member', {
   createdAt: createdAt(),
 }, (table) => [
   s.index('org_member_org_id_idx').on(table.orgId),
-  // One org per user for now; also makes concurrent ensureOrg calls race-safe.
-  s.uniqueIndex('org_member_user_id_unique').on(table.userId),
+  s.index('org_member_user_id_idx').on(table.userId),
+  s.uniqueIndex('org_member_org_id_user_id_unique').on(table.orgId, table.userId),
 ])
 
 // ── Stripe ──────────────────────────────────────────────────────────

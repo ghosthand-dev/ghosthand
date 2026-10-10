@@ -1,7 +1,8 @@
-// Per-user hub: every signed-in Mac keeps a WebSocket here, and the remote MCP at
-// https://ghosthand.dev/mcp reaches the Macs through it. One Durable Object per user.
+// Per-org hub: every signed-in Mac keeps a WebSocket here, and the remote MCP at
+// https://ghosthand.dev/mcp reaches the Macs through it. One Durable Object per org;
+// today each user's Macs and MCP tokens go to the user's personal org.
 //
-//   MCP client ── POST /mcp (OAuth JWT) ──▶ requireMcpAuth ──▶ GhosthandHub(user) ◀── WSS /tunnel/upstream ── daemon (Mac A)
+//   MCP client ── POST /mcp (OAuth JWT) ──▶ requireMcpAuth ──▶ GhosthandHub(org)  ◀── WSS /tunnel/upstream ── daemon (Mac A)
 //              ◀── JSON or SSE stream ─────                    (this file)        ◀── WSS /tunnel/upstream ── daemon (Mac B)
 //                                                                   │  request / cancel ──────────────────▶
 //                                                                   │  ◀── response, chunk, end, error ────
@@ -15,7 +16,7 @@
 
 import { DurableObject, env } from 'cloudflare:workers'
 import { requireMcpAuth } from '@better-auth/mcp'
-import { getAuth, getDb, getMcpResource, getSessionStrict, parseDaemonUserAgent } from './db.ts'
+import { getAuth, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent } from './db.ts'
 import {
   macSlug,
   mcpCacheKey,
@@ -56,8 +57,8 @@ const RECENTLY_ONLINE_MS = 60_000
 // Hop-by-hop and Cloudflare headers, credentials, and our trusted headers.
 const DROPPED_HEADERS = /^(host|connection|upgrade|content-length|transfer-encoding|keep-alive|authorization|cookie|cf-.*|x-forwarded-.*|x-real-ip|cdn-loop|x-ghosthand-.*)$/i
 
-export function getHub(userId: string) {
-  return env.GHOSTHAND_HUB.get(env.GHOSTHAND_HUB.idFromName(userId))
+export function getHub(orgId: string) {
+  return env.GHOSTHAND_HUB.get(env.GHOSTHAND_HUB.idFromName(orgId))
 }
 
 /** Handles /mcp, /tunnel/upstream and old /tunnel/* URLs; null for every other path. */
@@ -82,9 +83,10 @@ async function handleMcpRequest(request: Request): Promise<Response> {
   if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } })
   return requireMcpAuth(
     getAuth(),
-    (authenticated, claims) => {
+    async (authenticated, claims) => {
       if (typeof claims.sub !== 'string' || !claims.sub) return new Response(null, { status: 401 })
-      return getHub(claims.sub).fetch(new Request(authenticated, { headers: withoutTrustedHeaders(authenticated.headers) }))
+      const org = await getPersonalOrg(claims.sub)
+      return getHub(org.orgId).fetch(new Request(authenticated, { headers: withoutTrustedHeaders(authenticated.headers) }))
     },
     { resource: getMcpResource() },
   )(request)
@@ -103,7 +105,8 @@ async function connectUpstream(request: Request): Promise<Response> {
   headers.set(SESSION_HEADER, session.sessionId)
   // Header values must be Latin-1; Mac names often have curly quotes.
   headers.set(MAC_NAME_HEADER, encodeURIComponent(parseDaemonUserAgent(request.headers.get('user-agent')).name))
-  return getHub(session.userId).fetch(new Request(request, { headers }))
+  const org = await getPersonalOrg(session.userId)
+  return getHub(org.orgId).fetch(new Request(request, { headers }))
 }
 
 function withoutTrustedHeaders(source: Headers): Headers {

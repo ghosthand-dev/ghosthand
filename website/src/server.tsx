@@ -19,7 +19,7 @@ import { getHub, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
 import { uploadsApp } from './uploads.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
-import { ensureOrg, getAuth, getBaseUrl, getDb, getMcpResource, getSession, getUserSubscriptions, listMacSessions } from './db.ts'
+import { getAuth, getBaseUrl, getDb, getMcpResource, getPersonalOrg, getSession, listMacSessions } from './db.ts'
 import { entitlementFor, isProStatus } from './lib/billing.ts'
 import { subscribeRedirectUrl } from './lib/stripe.ts'
 import { approveDevice, consentMcp, denyDevice, signOutMac } from './actions.tsx'
@@ -202,14 +202,12 @@ export const app = new Spiceflow()
   .page('/dashboard', async ({ request }) => {
     const session = await getSession(request)
     if (!session) throw redirect(router.href('/login', { callbackURL: '/dashboard' }))
-    const [subscriptions, sessions, hubMacs] = await Promise.all([
-      getUserSubscriptions(session.userId),
-      listMacSessions(session.userId),
-      getHub(session.userId).macs(),
-    ])
+    const org = await getPersonalOrg(session.userId)
+    const [sessions, hubMacs] = await Promise.all([listMacSessions(session.userId), getHub(org.orgId).macs()])
+    const { subscriptions } = org
     const hubBySession = new Map(hubMacs.map((mac) => [mac.sessionId, mac]))
     const macs = sessions.map((mac) => ({ ...mac, slug: hubBySession.get(mac.sessionId)?.slug ?? null, online: hubBySession.get(mac.sessionId)?.online ?? false }))
-    const entitlement = entitlementFor({ userCreatedAt: session.user.createdAt, subscriptions, now: new Date() })
+    const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions, now: new Date() })
     // The Pro one, else the newest, so a canceled or failed plan still shows.
     const subscription = subscriptions.find((s) => isProStatus(s.status)) ?? subscriptions[0] ?? null
     const { DashboardPage } = await import('./components/account-pages.tsx')
@@ -230,7 +228,7 @@ export const app = new Spiceflow()
   .get('/subscribe', async ({ request }) => {
     const session = await getSession(request)
     if (!session) throw redirect(router.href('/login', { callbackURL: '/subscribe' }))
-    const org = await ensureOrg(session)
+    const org = await getPersonalOrg(session.userId)
     const url = await subscribeRedirectUrl({ org, email: session.user.email, returnUrl: new URL('/dashboard', getBaseUrl()).toString() })
     throw redirect(url)
   })

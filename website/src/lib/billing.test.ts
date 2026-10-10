@@ -5,7 +5,7 @@ const signup = new Date('2026-10-01T10:00:00Z')
 const day = 24 * 60 * 60 * 1000
 
 function at(ms: number, subscriptions: Parameters<typeof entitlementFor>[0]['subscriptions'] = []) {
-  const e = entitlementFor({ userCreatedAt: signup, subscriptions, now: new Date(signup.getTime() + ms) })
+  const e = entitlementFor({ orgCreatedAt: signup, subscriptions, now: new Date(signup.getTime() + ms) })
   return `${e.plan} allowed=${e.allowed} | ${e.notice}`
 }
 

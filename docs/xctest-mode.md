@@ -21,7 +21,7 @@ adds; switch back at any time.
 |                              | Bluetooth (default)              | XCTest                                                 |
 | ---------------------------- | -------------------------------- | ------------------------------------------------------ |
 | **Taps**                     | AssistiveTouch mouse pointer     | XCTest touch events, like a finger                     |
-| **Screenshots**              | USB screen capture               | XCTest screenshots, also of dialogs that capture hides |
+| **Screenshots**              | USB screen capture               | XCTest screenshots; hidden-dialog support is not verified |
 | **Text**                     | US-ASCII, as a hardware keyboard | Any text (accents, emoji), as the on-screen keyboard   |
 | **Lock, passcode unlock**    | Yes                              | No: keep the iPhone unlocked                           |
 | **Mute, keyboard shortcuts** | Yes                              | No                                                     |
@@ -32,8 +32,8 @@ adds; switch back at any time.
 
 **Why XCTest:**
 
-- **Hidden dialogs show up.** Some system dialogs (location permission, Apple Account
-  prompts) are left out of USB screen capture. XCTest screenshots come from iOS itself.
+- **Another screenshot path.** Some system dialogs are left out of USB screen capture.
+  XCTest screenshots come from iOS itself, but hidden-dialog support is not verified.
 - **System alerts take the tap.** A few alerts ignore the first AssistiveTouch click. XCTest
   sends touch events the way Apple's own UI tests do.
 - **No AssistiveTouch.** No pointer dot or floating button in screenshots and recordings.
@@ -152,6 +152,8 @@ CLI / MCP ──> daemon ──> Controller (leases, OCR, waitText, settle) ─�
   itself, through the same USB connection Finder uses (MobileDevice `USBMuxConnectByPort`).
 - **One state per iPhone.** The mode lives in `~/.ghosthand/state.db`; leases, OCR and
   waits do not change.
+- **Runner ownership.** A supervisor watches a pipe held by the daemon. If the daemon exits
+  or crashes, it stops the subprocess group. Builds stop when the request is cancelled.
 - **Coordinates.** Screenshot points become fractions of a USB capture frame, as in Bluetooth
   mode, then screen points for WebDriverAgent.
 - **Developer Mode switch.** Shown with the AMFI lockdown service (action 0), the same call

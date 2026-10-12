@@ -57,7 +57,7 @@
           {
             "group": "Guides",
             "icon": "lucide:map",
-            "pages": ["docs/send-media"]
+            "pages": ["docs/send-media", "docs/xctest-mode"]
           },
           {
             "group": "Internals",

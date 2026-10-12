@@ -42,10 +42,23 @@ MCP is remote only: the daemon keeps a WebSocket to ghosthand.dev while the Mac 
 
 `lockdown.swift` talks to iOS lockdown services through the private MobileDevice.framework: AFC (files), house_arrest (app Documents), installation_proxy (apps), springboardservices (Home Screen layout), diagnostics_relay (restart), syslog_relay. `device-management.swift` has the `Controller` methods.
 
-- **No Developer Mode features.** Only services a trusted Mac can start (pairing only). Launching apps, GPS simulation, pasteboard and DVT need Developer Mode plus a disk image: do not add them.
+- **No Developer Mode features over lockdown.** Only services a trusted Mac can start (pairing only). Launching apps, GPS simulation, pasteboard and DVT need Developer Mode plus a disk image: do not add them. The one exception is the opt-in XCTest mode below, which goes through Xcode.
 - **Never shell out to pymobiledevice3** at run time. Read its source for protocols: https://github.com/doronz88/pymobiledevice3 (`services/afc.py`, `installation_proxy.py`, `springboard.py`, `diagnostics.py`).
 - **Never remove /DCIM files over AFC**: Photos keeps a broken entry (tested on iOS 18.6). Delete photos with `PhotoLibrary.delete` (ImageCaptureCore, like Image Capture.app). It needs the optional macOS removable volumes access (setup's Allow Photos); commands check it with `TCCAccessPreflight` and never trigger the dialog.
 - **AFC to /DCIM does not add a photo to Photos.** No USB path adds one without an app on the iPhone; see `docs/send-media.md` (served at https://ghosthand.dev/docs/send-media, linked from `file` help).
+
+# Control modes: Bluetooth and XCTest
+
+Input goes through a `PhoneDriver` (controller.swift). Each iPhone has one mode in state.db (an `xctest_phone` row means XCTest):
+
+```
+Controller ──▶ PhoneDriver ─┬─▶ BluetoothDriver (bluetooth-driver.swift)  default: HID mouse + keyboard, AssistiveTouch
+                            └─▶ XCTestDriver (xctest-driver.swift)        WebDriverAgent over usbmux :8100, also screenshots
+```
+
+- **Same commands in both modes.** A command a mode cannot do throws `unsupported-in-mode` from its driver. Never add a separate command namespace for a mode.
+- **Drivers only send input.** Lock-state checks, OCR, settle, waitText and coordinate conversion stay in the Controller. Positions reach drivers as 0...1 fractions of a USB capture frame.
+- **XCTest mode is opt-in and hidden**: `ghosthand control -l <id> xctest`, or the setup window with `ghosthand setup --xctest`. WDA is built from a pinned source tag with the user's Xcode team and kept alive by `xcodebuild test-without-building`. Read `docs/xctest-mode.md` before changing it.
 
 # Relative pointer (iOS 15)
 

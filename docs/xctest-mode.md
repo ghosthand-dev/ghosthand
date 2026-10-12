@@ -24,7 +24,7 @@ adds; switch back at any time.
 | **Screenshots**              | USB screen capture               | XCTest screenshots; hidden-dialog support is not verified |
 | **Text**                     | US-ASCII, as a hardware keyboard | Any text (accents, emoji), as the on-screen keyboard   |
 | **Lock, passcode unlock**    | Yes                              | No: keep the iPhone unlocked                           |
-| **Mute, keyboard shortcuts** | Yes                              | No                                                     |
+| **Mute**                     | Yes                              | No                                                     |
 | **On the Mac**               | Nothing to install               | Xcode, signed in to an Apple account                   |
 | **On the iPhone**            | Trust + Bluetooth pairing        | Trust + Developer Mode + UI Automation                 |
 | **Renewal**                  | None                             | Free Apple account: rebuild every 7 days               |
@@ -110,7 +110,7 @@ All commands work the same, with these differences:
 | `tap`, `double-tap`, `hold`, `swipe`, `hold-drag` | Touch events                                                                 |
 | `scroll`                                          | Slow drags of about 100 points per tick                                      |
 | `type`                                            | Any text, into the field that has focus                                      |
-| `key`                                             | Only `home`, `volumeup`, `volumedown`, `enter`, `backspace`, `tab`, `space`  |
+| `key`                                             | `home`, `volumeup`, `volumedown`, `enter`, `backspace`, `tab`, `space`, and shortcuts like `cmd+space`, `cmd+c` |
 | `screenshot`, `screentext`                        | XCTest screenshots; `--native` is not needed                                 |
 | `lock`, `unlock`, `mute`, `unmute`                | Error `unsupported-in-mode`: a locked iPhone cannot be unlocked in this mode |
 
@@ -170,6 +170,7 @@ CLI / MCP ──> daemon ──> Controller (leases, OCR, waitText, settle) ─�
 | ----------------------------------------------- | ----------------------------------------------- |
 | tap, double-tap, hold, swipe, hold-drag, scroll | `POST /session/:id/actions` (one touch pointer) |
 | key home                                        | `POST /wda/homescreen`                          |
+| key cmd+space, cmd+c, ...                       | `POST /session/:id/wda/element/0/keyboardInput` |
 | key volumeup, volumedown                        | `POST /session/:id/wda/pressButton`             |
 | type, key enter / backspace / tab / space       | `POST /session/:id/wda/keys`                    |
 | lock / wake                                     | `POST /wda/lock` / `POST /wda/unlock`           |
@@ -187,10 +188,20 @@ Projects read while building this (October 2026):
 - [appium/appium-xcuitest-driver](https://github.com/appium/appium-xcuitest-driver): `devicectl` launch breaks on iOS 27 ([appium#22636](https://github.com/appium/appium/issues/22636)), so ghosthand keeps xcodebuild.
 - [doronz88/pymobiledevice3](https://github.com/doronz88/pymobiledevice3) `services/amfi.py`: the Developer Mode reveal call.
 
+Seen on an iPhone SE2 (iOS 18.6.2):
+
+- The runner sometimes exits (`Testing failed ... connection was invalidated`) about 100 s
+  after start, with no crash report; not tied to one gesture. The next command restarts it
+  (5-18 s). The failed command says so (`xctest-unavailable`).
+- A screenshot taken right after a gesture can show the status bar clock as 9:41 (iOS
+  overrides it while a UI test runs; USB capture shows it too) and, rarely, a screen
+  from many minutes earlier.
+- `type` with no focused field still succeeds; WebDriverAgent does not check focus.
+
 Not verified on a device yet:
 
 - Which hidden dialogs the XCTest screenshot shows. The Apple 2FA alert was black even in
-  a native iOS screenshot.
+  a native iOS screenshot. The Instagram prompt test did not show a system dialog.
 - Whether a running XCTest session keeps the screen from auto-locking.
 - The scroll distance per tick.
 

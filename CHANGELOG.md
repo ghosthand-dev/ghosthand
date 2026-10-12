@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.7.0
+
+1. **Breaking: commands are grouped under subcommands.** Update scripts. MCP tool names stay dash-joined (`file-push`):
+
+   | before                        | after                           |
+   | ----------------------------- | ------------------------------- |
+   | `record-start`, `record-stop` | `record start`, `record stop`   |
+   | `setup-status`                | `setup status`                  |
+   | `login`, `logout`             | `account login`, `account logout` |
+   | `app` (control plane window)  | `dashboard`                     |
+
+2. **Files, photos, apps and device info over USB**, no Developer Mode. Also MCP tools and HTTP routes:
+
+   ```bash
+   ghosthand file list -l 42 /Documents --app org.videolan.vlc-ios
+   ghosthand file push -l 42 clip.mp4 /Documents/clip.mp4 --app org.videolan.vlc-ios
+   ghosthand photo pull -l 42           # newest Camera Roll files
+   ghosthand photo delete -l 42 IMG_0001.PNG
+   ghosthand app list -l 42             # with Home Screen positions
+   ghosthand app install -l 42 app.ipa
+   ghosthand info -l 42                 # battery, storage, iOS build, works while locked
+   ghosthand logs -l 42
+   ghosthand restart -l 42
+   ```
+
+   `photo delete` needs the optional Allow Photos step in `ghosthand setup`.
+
+3. **`ghosthand upload` puts a photo or video into Photos**: it prints a 1-day link. Open it in Safari on the iPhone, tap Save, then Save Video or Save Image. Then apps like TikTok and Instagram can upload it. At most 100 MB. Guide: https://ghosthand.dev/docs/send-media
+
+   ```bash
+   ghosthand upload clip.mp4
+   ```
+
+4. **New gestures**: `hold` (long press), `hold-drag` (long press, then drag, e.g. to move Home Screen icons), `double-tap` and `triple-tap`:
+
+   ```bash
+   ghosthand hold -l 42 --text "Photos" --duration 1500
+   ghosthand hold-drag -l 42 60 200 300 200 --hold 2500
+   ghosthand double-tap -l 42 --text "example"
+   ```
+
+5. **Opt-in XCTest control mode**: input and screenshots go through WebDriverAgent, built with your Xcode and Apple team, instead of the Bluetooth mouse and keyboard. Use it for system alerts that ignore the Bluetooth pointer. Needs Developer Mode. Same commands; a command the mode cannot do fails with `unsupported-in-mode`. Guide: https://ghosthand.dev/docs/xctest-mode
+
+   ```bash
+   ghosthand control -l 42 xctest
+   ghosthand control -l 42 bluetooth
+   ```
+
+6. **`screenshot --native`** takes a real iOS screenshot (cmd+shift+3) and reads it over USB. It shows dialogs that USB capture hides.
+
+7. **`key home` clicks AssistiveTouch mouse button 3.** Map it to Home once: Settings > Accessibility > Touch > AssistiveTouch > Devices > this Mac > Customize Additional Buttons. The old keyboard Home key is now `key menu`. `key cmd+space` opens Spotlight, the fast way to open any app:
+
+   ```bash
+   ghosthand key -l 42 cmd+space
+   ghosthand type -l 42 Files
+   ghosthand key -l 42 enter
+   ```
+
+8. **Swipes scroll lists on iOS 17 and later.** Before, a swipe with Perform Touch Gestures on acted as a long press at its start point.
+
+9. **Faster typing and smoother pointer moves.** About 43 ms per character, down from 60. Taps still land on the exact target.
+
+10. **Photos permission survives updates**: Ghosthand.app keeps its macOS permission grants after a rebuild or npm upgrade.
+
+11. **`screenshot --native` no longer returns black images** when iOS is still writing the file.
+
 ## 0.6.0
 
 1. **Breaking: new Bluetooth report map. Every iPhone must forget the Mac and pair again.** The old map dropped key and button values above 127, so the Globe key never reached the iPhone. Forget the Mac on the iPhone, then pair again (`ghosthand forget --help`).

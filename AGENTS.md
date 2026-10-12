@@ -59,6 +59,8 @@ Controller ──▶ PhoneDriver ─┬─▶ BluetoothDriver (bluetooth-driver.
 - **Same commands in both modes.** A command a mode cannot do throws `unsupported-in-mode` from its driver. Never add a separate command namespace for a mode.
 - **Drivers only send input.** Lock-state checks, OCR, settle, waitText and coordinate conversion stay in the Controller. Positions reach drivers as 0...1 fractions of a USB capture frame.
 - **XCTest mode is opt-in and hidden**: `ghosthand control -l <id> xctest`, or the setup window with `ghosthand setup --xctest`. WDA is built from a pinned source tag with the user's Xcode team and kept alive by `xcodebuild test-without-building`. Read `docs/xctest-mode.md` before changing it.
+- **Shared WDA source installs atomically**, under one lock across phones. HTTP reads and writes use the remaining request deadline, including fractions of a second.
+- **XCTest subprocesses have a pipe-owned supervisor.** Closing the daemon's pipe stops the whole process group, including after a crash. Shutdown cancels builds before waiting for lifecycle locks.
 
 # Relative pointer (iOS 15)
 

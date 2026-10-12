@@ -841,7 +841,7 @@ error: No iPhone in macOS screen capture. USB check:
 - iPhone di Carla (2): on USB but not trusted (AMDeviceStartSession 0xe8000025). Unlock it and tap Trust on the iPhone; ...
 ```
 
-**Bluetooth link state** comes from the iPhone's Bluetooth address (read over USB) and the Mac's open HID channels. `list` starts Bluetooth and reconnects paired phones:
+**Bluetooth link state** comes from the iPhone's Bluetooth address (read over USB) and the Mac's open HID channels. `list` starts Bluetooth when an iPhone uses Bluetooth mode, and reconnects paired phones:
 
 | State          | Meaning                                                                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |

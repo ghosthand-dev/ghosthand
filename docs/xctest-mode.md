@@ -150,12 +150,18 @@ CLI / MCP ──> daemon ──> Controller (leases, OCR, waitText, settle) ─�
 
 - **No Appium server, no client library.** The daemon calls WebDriverAgent's HTTP routes
   itself, through the same USB connection Finder uses (MobileDevice `USBMuxConnectByPort`).
-- **One state per iPhone.** The mode lives in `~/.ghosthand/state.db`; leases, OCR and
-  waits do not change.
+- **One state per iPhone.** The mode lives in `~/.ghosthand/state.db`, keyed by the USB
+  UDID only: a new or deleted screen capture match keeps it, and setup can choose XCTest
+  before screen capture lists the iPhone. Leases, OCR and waits do not change.
 - **Runner ownership.** A supervisor watches a pipe held by the daemon. If the daemon exits
   or crashes, it stops the subprocess group. Builds stop when the request is cancelled.
-- **Coordinates.** Screenshot points become fractions of a USB capture frame, as in Bluetooth
-  mode, then screen points for WebDriverAgent.
+- **Coordinates.** Screenshot points become fractions of the last XCTest screenshot (its
+  native pixels), then screen points for WebDriverAgent (pixels / `scale` from
+  `GET /wda/screen`, read once). No USB frame is needed, so input works while capture is
+  dark or frozen. Every screenshot refreshes the size, so it follows a rotation the agent saw.
+- **No Bluetooth.** The Mac's Bluetooth service starts only when a USB iPhone uses
+  Bluetooth mode, and setup does not ask for the Bluetooth permission while every iPhone
+  uses XCTest.
 - **Developer Mode switch.** Shown with the AMFI lockdown service (action 0), the same call
   Apple's `devmodectl` makes. Only pairing is needed. Turning it on stays with you: iOS
   allows that only without a passcode.
@@ -168,6 +174,7 @@ CLI / MCP ──> daemon ──> Controller (leases, OCR, waitText, settle) ─�
 | type, key enter / backspace / tab / space       | `POST /session/:id/wda/keys`                    |
 | lock / wake                                     | `POST /wda/lock` / `POST /wda/unlock`           |
 | screenshot                                      | `GET /screenshot`                               |
+| screen scale (once, for coordinates)            | `GET /session/:id/wda/screen`                   |
 
 <details>
 <summary>Reference projects and open questions</summary>

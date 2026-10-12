@@ -734,6 +734,17 @@ Nothing to install on the iPhone. No Xcode, Developer Mode, developer account, s
 
 **Closer to a real mouse-and-keyboard user.** The iPhone receives Bluetooth HID input through AssistiveTouch, the same input path a person can use with physical peripherals, rather than an XCTest runner. This avoids runner-specific signals and may make automation harder to distinguish from that legitimate use, but we have not measured detection rates. Pointer input, screen capture, and automated behavior can still provide signals. Neither approach is proven to prevent bot detection or account restrictions.
 
+### Optional: XCTest mode
+
+**One iPhone can use WebDriverAgent instead of Bluetooth**, for system alerts that ignore the pointer and dialogs that USB capture hides. Same commands; it needs Xcode signed in to an Apple account, Developer Mode and UI Automation on the iPhone. No lock, passcode unlock, mute or shortcuts.
+
+```bash
+ghosthand control -l 42 xctest      # builds WebDriverAgent once (1-3 min), then starts it
+ghosthand control -l 42 bluetooth   # back to the default
+```
+
+The setup window shows the choice only with `ghosthand setup --xctest`. Details: [docs/xctest-mode.md](docs/xctest-mode.md).
+
 ## Alternatives
 
 |                       | ghosthand                                                | Appium (XCUITest)       |

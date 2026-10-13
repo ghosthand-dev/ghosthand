@@ -48,75 +48,68 @@ const sine = (freq: number, t: number) => Math.sin(2 * Math.PI * freq * t)
 const env = (t: number, attack: number, decay: number) =>
   t < attack ? t / attack : Math.exp(-(t - attack) / decay)
 
-// Mechanical keyboard click: filtered noise transient plus a short low thump.
-function keyClick(seed: number, pitch: number): Float32Array {
+// Soft keyboard tick: a short high-passed noise burst, no low thump.
+function keyClick(seed: number, tone: number): Float32Array {
   const rand = noise(seed)
   let low = 0
-  return render(0.06, (t) => {
+  return render(0.035, (t) => {
     const n = rand()
-    low += 0.35 * (n - low) // one-pole low-pass softens the hiss
-    const click = (n - low) * env(t, 0.0005, 0.004) * 0.55
-    const thump = sine(pitch, t) * env(t, 0.001, 0.012) * 0.35
-    return click + thump
+    low += 0.2 * (n - low) // subtracting the low-passed part keeps only the high "tick"
+    const tick = (n - low) * env(t, 0.0008, 0.0035) * 0.22
+    const body = sine(tone, t) * env(t, 0.001, 0.006) * 0.05
+    return tick + body
   })
 }
 
-// Glass-like blip with a pitch glide, for tool calls.
+// Soft sine with a gentle attack and a short glide, for tool calls and results.
 function blip(from: number, to: number, seconds: number, gain: number): Float32Array {
   let phase = 0
   return render(seconds, (t) => {
-    const freq = from + (to - from) * Math.min(1, t / (seconds * 0.4))
+    const freq = from + (to - from) * Math.min(1, t / (seconds * 0.5))
     phase += (2 * Math.PI * freq) / RATE
-    const tone = Math.sin(phase) + 0.25 * Math.sin(phase * 2)
-    return tone * env(t, 0.002, seconds / 4) * gain
+    return Math.sin(phase) * env(t, 0.008, seconds / 5) * gain
   })
 }
 
 // Bell chord with staggered notes, for the final success.
 function chime(): Float32Array {
-  const notes = [1046.5, 1318.5, 1568, 2093]
-  return render(1.6, (t) =>
+  const notes = [1046.5, 1318.5, 1568]
+  return render(1.4, (t) =>
     notes.reduce((sum, freq, i) => {
-      const start = i * 0.07
+      const start = i * 0.09
       if (t < start) return sum
       const local = t - start
-      const bell = sine(freq, local) + 0.3 * sine(freq * 2.01, local)
-      return sum + bell * env(local, 0.004, 0.35) * 0.16
+      return sum + sine(freq, local) * env(local, 0.01, 0.3) * 0.07
     }, 0),
   )
 }
 
-// Soft swoosh: band-limited noise with a rising then falling envelope, for sending the prompt.
+// Airy swoosh: high band noise with a smooth envelope, for sending the prompt.
 function swoosh(): Float32Array {
   const rand = noise(7)
-  let a = 0
-  let b = 0
-  const seconds = 0.35
+  let low = 0
+  let smooth = 0
+  const seconds = 0.4
   return render(seconds, (t) => {
-    const cutoff = 0.04 + 0.25 * Math.sin((Math.PI * t) / seconds)
-    a += cutoff * (rand() - a)
-    b += cutoff * (a - b)
-    return b * Math.sin((Math.PI * t) / seconds) ** 2 * 1.4
+    const n = rand()
+    low += 0.08 * (n - low)
+    smooth += 0.5 * (n - low - smooth)
+    return smooth * Math.sin((Math.PI * t) / seconds) ** 2 * 0.22
   })
 }
 
-// Muted pop for finger taps on the phone.
+// Light glassy tick for finger taps on the phone.
 function tapPop(): Float32Array {
-  let phase = 0
-  return render(0.09, (t) => {
-    const freq = 420 * Math.exp(-t * 30) + 140
-    phase += (2 * Math.PI * freq) / RATE
-    return Math.sin(phase) * env(t, 0.001, 0.02) * 0.45
-  })
+  return render(0.08, (t) => (sine(1750, t) + 0.4 * sine(2620, t)) * env(t, 0.002, 0.012) * 0.12)
 }
 
 const sounds: Record<string, Float32Array> = {
-  'key-1': keyClick(1, 190),
-  'key-2': keyClick(2, 210),
-  'key-3': keyClick(3, 175),
-  'key-4': keyClick(4, 230),
-  tool: blip(880, 1320, 0.16, 0.22),
-  result: blip(990, 740, 0.14, 0.14),
+  'key-1': keyClick(1, 2400),
+  'key-2': keyClick(2, 2600),
+  'key-3': keyClick(3, 2250),
+  'key-4': keyClick(4, 2800),
+  tool: blip(1320, 1560, 0.12, 0.08),
+  result: blip(1480, 1320, 0.1, 0.05),
   send: swoosh(),
   tap: tapPop(),
   success: chime(),

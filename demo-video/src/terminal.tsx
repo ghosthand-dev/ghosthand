@@ -4,7 +4,7 @@
 // monospace, so text wraps at a known column count and every row has a known height:
 // the scroll offset is pure math on the current time.
 import type { CSSProperties, ReactNode } from 'react'
-import { interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion'
+import { Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion'
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono'
 import { loadFont as loadSans } from '@remotion/google-fonts/Inter'
 
@@ -27,7 +27,10 @@ export const colors = {
 export type ChatItem =
   | { kind: 'user'; at: number; text: string }
   | { kind: 'text'; at: number; text: string }
-  | { kind: 'tool'; at: number; done?: number; name: string; input: string; result?: string; error?: boolean }
+  | { kind: 'tool'; at: number; done?: number; name: string; input?: string; result?: string; error?: boolean; fullResult?: boolean }
+
+/** A plan item. Pending before `start`, in progress until `done`, then checked. Scene seconds. */
+export type Todo = { text: string; start: number; done: number }
 
 export type TerminalMetrics = { fontSize: number; lineHeight: number; charWidth: number }
 
@@ -60,8 +63,6 @@ export function wrapText(text: string, cols: number): string[] {
   }
   return lines
 }
-
-type Span = { text: string; style?: CSSProperties }
 
 /** One rendered row. It grows from 0 to full height at `at`, so the transcript scrolls smoothly. */
 type Row = { key: string; at: number; gapBefore: number; render: (t: number) => ReactNode }
@@ -116,7 +117,7 @@ function buildRows(items: ChatItem[], cols: number, m: TerminalMetrics, maxResul
       return
     }
     // Tool call: `⏺ Name(input)` then `  ⎿  result` once done.
-    const head = wrapText(`${item.name}(${item.input})`, cols - 2)
+    const head = wrapText(item.input === undefined ? item.name : `${item.name}(${item.input})`, cols - 2)
     head.forEach((line, j) => {
       const nameEnd = j === 0 ? item.name.length : 0
       rows.push({
@@ -140,7 +141,7 @@ function buildRows(items: ChatItem[], cols: number, m: TerminalMetrics, maxResul
     if (item.result === undefined || item.done === undefined) return
     // One row per result line, cut with an ellipsis, like a collapsed Claude Code tool result.
     let result = item.result.split('\n').map((line) => (line.length > cols - 5 ? `${line.slice(0, cols - 6)}…` : line))
-    if (result.length > maxResultRows) {
+    if (!item.fullResult && result.length > maxResultRows) {
       const hidden = result.length - (maxResultRows - 1)
       result = [...result.slice(0, maxResultRows - 1), `… +${hidden} lines (ctrl+r to expand)`]
     }
@@ -187,8 +188,78 @@ function Spinner({ t, from, index, m }: { t: number; from: number; index: number
   )
 }
 
+export function todoState(todo: Todo, t: number): 'pending' | 'active' | 'done' {
+  return t >= todo.done ? 'done' : t >= todo.start ? 'active' : 'pending'
+}
+
+export const todoGlyph = { pending: '☐', active: '◼', done: '☒' }
+
+/** Pinned plan above the input box, like Claude Code's todo list: the active item is bold. */
+function TodoPanel({ todos, t, m }: { todos: Todo[]; t: number; m: TerminalMetrics }) {
+  const doneCount = todos.filter((todo) => todoState(todo, t) === 'done').length
+  return (
+    <div style={{ whiteSpace: 'pre', paddingBottom: m.lineHeight * 0.4 }}>
+      <div style={{ color: colors.dim, height: m.lineHeight }}>
+        <span style={{ color: colors.claude }}>✻ </span>Plan <span style={{ color: colors.faint }}>· {doneCount}/{todos.length} done</span>
+      </div>
+      {todos.map((todo) => {
+        const state = todoState(todo, t)
+        // The check pops in with a short overshoot when an item finishes.
+        const pop = state === 'done' ? interpolate(t - todo.done, [0, 0.12, 0.3], [1.5, 0.9, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.quad) }) : 1
+        const color = state === 'active' ? colors.text : state === 'done' ? colors.faint : colors.dim
+        return (
+          <div key={todo.text} style={{ height: m.lineHeight, color }}>
+            {'  '}
+            <span style={{ display: 'inline-block', transform: `scale(${pop})`, color: state === 'done' ? colors.green : state === 'active' ? colors.claude : colors.dim }}>
+              {todoGlyph[state]}
+            </span>{' '}
+            <span style={{ fontWeight: state === 'active' ? 700 : 400, textDecoration: state === 'done' ? 'line-through' : 'none' }}>{todo.text}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export const windowStyle: CSSProperties = {
+  borderRadius: 18,
+  background: colors.window,
+  border: `1px solid ${colors.border}`,
+  boxShadow: '0 30px 80px rgba(0, 20, 60, 0.45), 0 8px 24px rgba(0, 0, 0, 0.3)',
+  overflow: 'hidden',
+}
+
+/** macOS title bar with traffic lights. */
+export function WindowChrome({ title, height = 58 }: { title: string; height?: number }) {
+  return (
+    <div
+      style={{
+        height,
+        flexShrink: 0,
+        background: colors.chrome,
+        borderBottom: `1px solid ${colors.border}`,
+        display: 'flex',
+        alignItems: 'center',
+        position: 'relative',
+        paddingLeft: 22,
+        gap: 11,
+      }}
+    >
+      {['#ff5f57', '#febc2e', '#28c840'].map((c) => (
+        <div key={c} style={{ width: 18, height: 18, borderRadius: 9, background: c, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.25)' }} />
+      ))}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: sansFont, fontSize: 20, fontWeight: 600, color: colors.dim }}>
+        {title}
+      </div>
+    </div>
+  )
+}
+
 export type AgentTerminalProps = {
   items: ChatItem[]
+  /** Pinned plan, shown from `todosFrom`. */
+  todos?: Todo[]
+  todosFrom?: number
   /** Time ranges where the agent is working: a spinner shows below the last item. */
   thinking: { from: number; to: number }[]
   /** Text typed into the input box between `start` and `end`, then sent. */
@@ -205,7 +276,7 @@ export type AgentTerminalProps = {
   style?: CSSProperties
 }
 
-export function AgentTerminal({ items, thinking, draft, cwd, title, width, height, fontSize = 24, maxResultRows = 3, footerRight, style }: AgentTerminalProps) {
+export function AgentTerminal({ items, todos = [], todosFrom = Infinity, thinking, draft, cwd, title, width, height, fontSize = 24, maxResultRows = 3, footerRight, style }: AgentTerminalProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const t = frame / fps
@@ -214,11 +285,11 @@ export function AgentTerminal({ items, thinking, draft, cwd, title, width, heigh
   const chromeH = 58
   const inputH = m.lineHeight * 3.3
   const cols = Math.floor((width - padX * 2) / m.charWidth)
-  const viewportH = height - chromeH - inputH - 28
-
   const rows = buildRows(items, cols, m, maxResultRows)
   const grow = (at: number) =>
     at > t ? 0 : spring({ frame: frame - Math.round(at * fps), fps, config: { damping: 22, stiffness: 220, mass: 0.6 } })
+  const todoH = todos.length ? (todos.length + 1.4) * m.lineHeight * grow(todosFrom) : 0
+  const viewportH = height - chromeH - inputH - 28 - todoH
 
   const welcomeH = m.lineHeight * 3.4
   const spinnerIndex = thinking.findIndex((r) => t >= r.from && t < r.to)
@@ -235,13 +306,9 @@ export function AgentTerminal({ items, thinking, draft, cwd, title, width, heigh
   return (
     <div
       style={{
+        ...windowStyle,
         width,
         height,
-        borderRadius: 18,
-        background: colors.window,
-        border: `1px solid ${colors.border}`,
-        boxShadow: '0 30px 80px rgba(0, 20, 60, 0.45), 0 8px 24px rgba(0, 0, 0, 0.3)',
-        overflow: 'hidden',
         fontFamily: monoFont,
         fontSize: m.fontSize,
         lineHeight: `${m.lineHeight}px`,
@@ -251,26 +318,7 @@ export function AgentTerminal({ items, thinking, draft, cwd, title, width, heigh
         ...style,
       }}
     >
-      <div
-        style={{
-          height: chromeH,
-          flexShrink: 0,
-          background: colors.chrome,
-          borderBottom: `1px solid ${colors.border}`,
-          display: 'flex',
-          alignItems: 'center',
-          position: 'relative',
-          paddingLeft: 22,
-          gap: 11,
-        }}
-      >
-        {['#ff5f57', '#febc2e', '#28c840'].map((c) => (
-          <div key={c} style={{ width: 18, height: 18, borderRadius: 9, background: c, boxShadow: 'inset 0 0 0 0.5px rgba(0,0,0,0.25)' }} />
-        ))}
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: sansFont, fontSize: 20, fontWeight: 600, color: colors.dim }}>
-          {title}
-        </div>
-      </div>
+      <WindowChrome title={title} height={chromeH} />
 
       <div
         style={{
@@ -310,6 +358,11 @@ export function AgentTerminal({ items, thinking, draft, cwd, title, width, heigh
         </div>
       </div>
 
+      {todoH > 0 && (
+        <div style={{ height: todoH, overflow: 'hidden', padding: `0 ${padX}px`, flexShrink: 0, opacity: grow(todosFrom) }}>
+          <TodoPanel todos={todos} t={t} m={m} />
+        </div>
+      )}
       <div style={{ padding: `0 ${padX - 8}px`, flexShrink: 0 }}>
         <div style={{ border: `1px solid ${colors.faint}`, borderRadius: 10, padding: `${m.lineHeight * 0.3}px ${m.charWidth}px`, whiteSpace: 'pre', color: colors.text }}>
           <span style={{ color: colors.dim }}>{'> '}</span>

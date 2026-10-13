@@ -61,14 +61,14 @@ export type SpeedRules = {
 }
 
 export const defaultSpeedRules: SpeedRules = {
-  head: 0.6,
-  execSpeed: 2,
-  execMin: 0.4,
-  execMax: 1.4,
-  gapSpeed: 8,
-  gapMin: 0.7,
-  gapMax: 1.2,
-  tail: 2.5,
+  head: 0.4,
+  execSpeed: 2.5,
+  execMin: 0.35,
+  execMax: 1.1,
+  gapSpeed: 10,
+  gapMin: 0.45,
+  gapMax: 0.8,
+  tail: 2,
 }
 
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))

@@ -1,0 +1,472 @@
+{
+  "phoneVideo": "tiktok/phone.mp4",
+  "phoneWidth": 750,
+  "phoneHeight": 1334,
+  "duration": 35.33037602883478,
+  "prompt": "upload this video to tiktok",
+  "final": "Done. The video is live on @naomi.collins90 with the caption \"made by an AI agent controlling a real iPhone #ghosthand\".",
+  "steps": [
+    {
+      "at": 0.03624892234802246,
+      "done": 1.1431413888931274,
+      "thought": "Opening TikTok with Spotlight.",
+      "cmd": "ghosthand key cmd+space --screenshot step.png --screentext",
+      "result": "pressed cmd+space\nTop Hit · TikTok · Suggestions · TikTok · Search in App Q"
+    },
+    {
+      "at": 1.1667615175247192,
+      "done": 1.86204993724823,
+      "thought": "Selecting the app search text.",
+      "cmd": "ghosthand key cmd+a --screenshot step.png",
+      "result": "pressed cmd+a"
+    },
+    {
+      "at": 1.8858181238174438,
+      "done": 2.9444714784622192,
+      "thought": "Searching for TikTok.",
+      "cmd": "ghosthand type TikTok --screenshot step.png --screentext",
+      "result": "typed 6 chars\nTop Hit · TikTok · Suggestions · TikTok"
+    },
+    {
+      "at": 2.968877673149109,
+      "done": 3.578735113143921,
+      "thought": "Launching TikTok.",
+      "cmd": "ghosthand key enter --screenshot step.png --screentext",
+      "result": "pressed enter\nTikTok"
+    },
+    {
+      "at": 4.278735113143921,
+      "done": 4.678735113143921,
+      "thought": "Checking TikTok is ready.",
+      "cmd": "ghosthand screentext",
+      "result": "Genoa Following Shop For You\n\"do you wanna marry m-\""
+    },
+    {
+      "at": 5.378735113143922,
+      "done": 6.778735113143922,
+      "thought": "Creating a new TikTok post.",
+      "cmd": "ghosthand tap 187 641 --screenshot step.png --screentext",
+      "result": "tapped 187,641\nCAMERA · CREATE",
+      "tap": {
+        "x": 0.49866666666666665,
+        "y": 0.9610194902548725,
+        "at": 5.912927573970244
+      }
+    },
+    {
+      "at": 7.590507966279985,
+      "done": 8.831883054971696,
+      "thought": "Opening the video gallery.",
+      "cmd": "ghosthand tap 32 634 --screenshot step.png --screentext",
+      "result": "tapped 32,634\n& Add sound · PHOTO · TEXT",
+      "tap": {
+        "x": 0.08533333333333333,
+        "y": 0.9505247376311844,
+        "at": 8.190507966279984
+      }
+    },
+    {
+      "at": 10.031883054971695,
+      "done": 10.603219705820083,
+      "thought": "Choosing the saved clip from Photos.",
+      "cmd": "ghosthand tap 32 634 --screenshot step.png --screentext",
+      "result": "tapped 32,634\nRecents v · Videos · Photos · Live Photos · All",
+      "tap": {
+        "x": 0.08533333333333333,
+        "y": 0.9505247376311844,
+        "at": 10.56969981789589
+      }
+    },
+    {
+      "at": 11.118775352295412,
+      "done": 12.518775352295412,
+      "thought": "Selecting the cosmic video.",
+      "cmd": "ghosthand tap 60 265 --screenshot step.png --screentext",
+      "result": "tapped 60,265\nSelect · AutoCut · Next",
+      "tap": {
+        "x": 0.16,
+        "y": 0.39730134932533734,
+        "at": 11.47282119777666
+      }
+    },
+    {
+      "at": 13.218775352295411,
+      "done": 14.618775352295412,
+      "thought": "Continuing to the video editor.",
+      "cmd": "ghosthand tap --text Next --screenshot step.png --screentext",
+      "result": "tapped 278,629\n& Add sound · *+ AutoCut · Your Story · Next",
+      "tap": {
+        "x": 0.7413333333333333,
+        "y": 0.9430284857571214,
+        "at": 13.560188102250134
+      }
+    },
+    {
+      "at": 15.318775352295411,
+      "done": 16.528846319969666,
+      "thought": "Opening the caption editor.",
+      "cmd": "ghosthand tap --text Next --screenshot step.png --screentext",
+      "result": "tapped 278,629\nAdd description... · Preview · Edit cover · # Hashtags · @ Mention",
+      "tap": {
+        "x": 0.7413333333333333,
+        "y": 0.9430284857571214,
+        "at": 15.918775352295413
+      }
+    },
+    {
+      "at": 17.312369462307466,
+      "done": 18.431660887058747,
+      "thought": "Focusing the caption field.",
+      "cmd": "ghosthand tap 100 105 --screenshot step.png --screentext",
+      "result": "tapped 100,105\nAdd description... · Preview · Edit cover · # Hashtags · @ Mention",
+      "tap": {
+        "x": 0.26666666666666666,
+        "y": 0.15742128935532235,
+        "at": 17.872015174683106
+      }
+    },
+    {
+      "at": 19.556710895355714,
+      "done": 20.956710895355712,
+      "thought": "Writing the demo caption.",
+      "cmd": "ghosthand type 'made by an AI agent controlling a real iPhone #ghosthand' --screenshot step.png --screentext",
+      "result": "typed 56 chars\nMade by an Al agent · Preview · controlling a real iPhone · #ghosthand · Edit cover · # Hashtags"
+    },
+    {
+      "at": 20.980423053558837,
+      "done": 22.338309963997375,
+      "thought": "Publishing the video publicly.",
+      "cmd": "ghosthand tap --text Post --screenshot step.png --screentext",
+      "result": "tapped 289,627\nMade by an Al agent · Preview · controlling a real iPhone · #ghosthand · Edit cover",
+      "tap": {
+        "x": 0.7706666666666667,
+        "y": 0.9400299850074962,
+        "at": 21.58042305355884
+      }
+    },
+    {
+      "at": 23.038309963997374,
+      "done": 24.128037127312194,
+      "thought": "Checking the uploaded video on my profile.",
+      "cmd": "ghosthand tap --text Profile --screenshot step.png --screentext",
+      "result": "tapped 337,656\nNaomi Collins - · @naomi.collins90 · Likes · Followers · Following",
+      "tap": {
+        "x": 0.8986666666666666,
+        "y": 0.9835082458770614,
+        "at": 23.583173545654784
+      }
+    },
+    {
+      "at": 25.156364353950988,
+      "done": 25.364476355370055,
+      "thought": "Checking that the new upload has appeared.",
+      "cmd": "ghosthand screenshot -o step.png",
+      "result": "step.png 375x667"
+    },
+    {
+      "at": 26.564476355370054,
+      "done": 27.7801147544942,
+      "thought": "Refreshing my profile to show the latest post.",
+      "cmd": "ghosthand scroll up 3 --screenshot step.png --screentext",
+      "result": "scrolled up 3 ticks\nNaomi Collins - · @naomi.collins90 · Following · Likes · Followers"
+    },
+    {
+      "at": 28.61732463484622,
+      "done": 29.682045146282682,
+      "thought": "Opening the new cosmic post.",
+      "cmd": "ghosthand tap 61 408 --screenshot step.png --screentext",
+      "result": "tapped 61,408\nNaomi Collins - · @naomi.collins90 · Likes · Followers · Following",
+      "tap": {
+        "x": 0.16266666666666665,
+        "y": 0.6116941529235382,
+        "at": 29.14968489056445
+      }
+    },
+    {
+      "at": 30.38204514628268,
+      "done": 30.78204514628268,
+      "thought": "Waiting for the upload to finish.",
+      "cmd": "ghosthand screentext",
+      "result": "Naomi Collins -\n@naomi.collins90 · Likes · Followers · Following · + Add bio • C"
+    },
+    {
+      "at": 31.70161651616908,
+      "done": 32.10161651616908,
+      "thought": "Checking upload completion.",
+      "cmd": "ghosthand screentext",
+      "result": "Naomi Collins -\n@naomi.collins90 · Likes · Following · Followers · + Add bio • D I create content about..."
+    },
+    {
+      "at": 32.801616516169084,
+      "done": 34.20161651616908,
+      "thought": "Showing the newly published video.",
+      "cmd": "ghosthand tap 61 402 --screenshot step.png --screentext",
+      "result": "tapped 61,402\nFind related content · Search · Add 1st · Naomi Collins • 11s ago · Made by an Al agent controlling a real",
+      "tap": {
+        "x": 0.16266666666666665,
+        "y": 0.6026986506746627,
+        "at": 33.12565339175793
+      }
+    }
+  ],
+  "segments": [
+    {
+      "srcStart": 0,
+      "srcEnd": 0.03624892234802246,
+      "speed": 1,
+      "outStart": 0
+    },
+    {
+      "srcStart": 0.03624892234802246,
+      "srcEnd": 2.2500338554382324,
+      "speed": 2,
+      "outStart": 0.03624892234802246
+    },
+    {
+      "srcStart": 2.2500338554382324,
+      "srcEnd": 2.273653984069824,
+      "speed": 1,
+      "outStart": 1.1431413888931274
+    },
+    {
+      "srcStart": 2.273653984069824,
+      "srcEnd": 3.6642308235168457,
+      "speed": 2,
+      "outStart": 1.1667615175247192
+    },
+    {
+      "srcStart": 3.6642308235168457,
+      "srcEnd": 3.6879990100860596,
+      "speed": 1,
+      "outStart": 1.86204993724823
+    },
+    {
+      "srcStart": 3.6879990100860596,
+      "srcEnd": 5.80530571937561,
+      "speed": 2,
+      "outStart": 1.8858181238174438
+    },
+    {
+      "srcStart": 5.80530571937561,
+      "srcEnd": 5.8297119140625,
+      "speed": 1,
+      "outStart": 2.9444714784622192
+    },
+    {
+      "srcStart": 5.8297119140625,
+      "srcEnd": 7.049426794052124,
+      "speed": 2,
+      "outStart": 2.968877673149109
+    },
+    {
+      "srcStart": 7.049426794052124,
+      "srcEnd": 11.970211029052734,
+      "speed": 7.029691764286587,
+      "outStart": 3.578735113143921
+    },
+    {
+      "srcStart": 11.970211029052734,
+      "srcEnd": 12.418607711791992,
+      "speed": 1.1209917068481445,
+      "outStart": 4.278735113143921
+    },
+    {
+      "srcStart": 12.418607711791992,
+      "srcEnd": 16.138967990875244,
+      "speed": 5.314800398690361,
+      "outStart": 4.678735113143921
+    },
+    {
+      "srcStart": 16.138967990875244,
+      "srcEnd": 19.283901929855347,
+      "speed": 2.2463813849857877,
+      "outStart": 5.378735113143922
+    },
+    {
+      "srcStart": 19.283901929855347,
+      "srcEnd": 25.778084754943848,
+      "speed": 8,
+      "outStart": 6.778735113143922
+    },
+    {
+      "srcStart": 25.778084754943848,
+      "srcEnd": 28.26083493232727,
+      "speed": 2,
+      "outStart": 7.590507966279985
+    },
+    {
+      "srcStart": 28.26083493232727,
+      "srcEnd": 38.15732669830322,
+      "speed": 8.247076471646627,
+      "outStart": 8.831883054971696
+    },
+    {
+      "srcStart": 38.15732669830322,
+      "srcEnd": 39.3,
+      "speed": 2,
+      "outStart": 10.031883054971695
+    },
+    {
+      "srcStart": 47.9,
+      "srcEnd": 53.61820387840271,
+      "speed": 11.091341773668926,
+      "outStart": 10.603219705820083
+    },
+    {
+      "srcStart": 53.61820387840271,
+      "srcEnd": 58.36335206031799,
+      "speed": 3.389391558510917,
+      "outStart": 11.118775352295412
+    },
+    {
+      "srcStart": 58.36335206031799,
+      "srcEnd": 62.309733867645264,
+      "speed": 5.637688296181816,
+      "outStart": 12.518775352295412
+    },
+    {
+      "srcStart": 62.309733867645264,
+      "srcEnd": 67.23046398162842,
+      "speed": 3.514807224273682,
+      "outStart": 13.218775352295411
+    },
+    {
+      "srcStart": 67.23046398162842,
+      "srcEnd": 71.5780439376831,
+      "speed": 6.210828508649554,
+      "outStart": 14.618775352295412
+    },
+    {
+      "srcStart": 71.5780439376831,
+      "srcEnd": 73.99818587303162,
+      "speed": 2,
+      "outStart": 15.318775352295411
+    },
+    {
+      "srcStart": 73.99818587303162,
+      "srcEnd": 80.26637101173401,
+      "speed": 8,
+      "outStart": 16.528846319969666
+    },
+    {
+      "srcStart": 80.26637101173401,
+      "srcEnd": 82.50495386123657,
+      "speed": 2,
+      "outStart": 17.312369462307466
+    },
+    {
+      "srcStart": 82.50495386123657,
+      "srcEnd": 91.5053539276123,
+      "speed": 8,
+      "outStart": 18.431660887058747
+    },
+    {
+      "srcStart": 91.5053539276123,
+      "srcEnd": 101.85591387748718,
+      "speed": 7.3932571070534845,
+      "outStart": 19.556710895355714
+    },
+    {
+      "srcStart": 101.85591387748718,
+      "srcEnd": 101.87962603569031,
+      "speed": 1,
+      "outStart": 20.956710895355712
+    },
+    {
+      "srcStart": 101.87962603569031,
+      "srcEnd": 104.59539985656738,
+      "speed": 2,
+      "outStart": 20.980423053558837
+    },
+    {
+      "srcStart": 104.59539985656738,
+      "srcEnd": 108.74887871742249,
+      "speed": 5.933541229793004,
+      "outStart": 22.338309963997375
+    },
+    {
+      "srcStart": 108.74887871742249,
+      "srcEnd": 110.92833304405212,
+      "speed": 2,
+      "outStart": 23.038309963997374
+    },
+    {
+      "srcStart": 110.92833304405212,
+      "srcEnd": 119.15495085716248,
+      "speed": 8,
+      "outStart": 24.128037127312194
+    },
+    {
+      "srcStart": 119.15495085716248,
+      "srcEnd": 119.36306285858154,
+      "speed": 1,
+      "outStart": 25.156364353950988
+    },
+    {
+      "srcStart": 119.36306285858154,
+      "srcEnd": 131.79712295532227,
+      "speed": 10.361716747283936,
+      "outStart": 25.364476355370055
+    },
+    {
+      "srcStart": 131.79712295532227,
+      "srcEnd": 134.22839975357056,
+      "speed": 2,
+      "outStart": 26.564476355370054
+    },
+    {
+      "srcStart": 134.22839975357056,
+      "srcEnd": 140.92607879638672,
+      "speed": 8,
+      "outStart": 27.7801147544942
+    },
+    {
+      "srcStart": 140.92607879638672,
+      "srcEnd": 143.05551981925964,
+      "speed": 2,
+      "outStart": 28.61732463484622
+    },
+    {
+      "srcStart": 143.05551981925964,
+      "srcEnd": 147.78069877624512,
+      "speed": 6.750255652836391,
+      "outStart": 29.682045146282682
+    },
+    {
+      "srcStart": 147.78069877624512,
+      "srcEnd": 148.27144384384155,
+      "speed": 1.2268626689910889,
+      "outStart": 30.38204514628268
+    },
+    {
+      "srcStart": 148.27144384384155,
+      "srcEnd": 155.62801480293274,
+      "speed": 8,
+      "outStart": 30.78204514628268
+    },
+    {
+      "srcStart": 155.62801480293274,
+      "srcEnd": 156.0924198627472,
+      "speed": 1.1610126495361328,
+      "outStart": 31.70161651616908
+    },
+    {
+      "srcStart": 156.0924198627472,
+      "srcEnd": 160.31770586967468,
+      "speed": 6.036122867039272,
+      "outStart": 32.10161651616908
+    },
+    {
+      "srcStart": 160.31770586967468,
+      "srcEnd": 165.5023009777069,
+      "speed": 3.703282220023019,
+      "outStart": 32.801616516169084
+    },
+    {
+      "srcStart": 165.5023009777069,
+      "srcEnd": 168.5,
+      "speed": 2.655746408917241,
+      "outStart": 34.20161651616908
+    }
+  ]
+}

@@ -11,6 +11,14 @@ Control real iPhones from a Mac. **Screenshots over USB, taps over Bluetooth.** 
 
 **The Mac becomes a Bluetooth mouse and keyboard for the iPhone.** An agent sees the screen, points, clicks, scrolls and types like a person with a desk setup, so it can use **any iOS app**: App Store apps, system apps, Settings, the lock screen.
 
+**"upload this video to tiktok"**: the agent opens TikTok, picks the clip from Photos, writes the caption and posts it.
+
+<video src='/assets/demo-tiktok-upload.mp4' poster='/assets/demo-tiktok-upload.jpg' controls muted playsInline width='100%'></video>
+
+**"scroll tiktok and interact with funny videos"**: the agent watches the feed, skips what is not funny, likes and comments on the rest.
+
+<video src='/assets/demo-tiktok-warmup.mp4' poster='/assets/demo-tiktok-warmup.jpg' controls muted playsInline width='100%'></video>
+
 > [!IMPORTANT]
 > **Requires a Mac and a real iPhone.** The CLI runs only on macOS, and the iPhone must be connected over USB and paired over Bluetooth. Linux, Windows and the iOS Simulator are not supported.
 
@@ -95,6 +103,8 @@ ghosthand setup  # open the app, then let the user click its permission buttons
 ## Setup (once per iPhone)
 
 **Two manual connection steps: USB trust and Bluetooth pairing.** AssistiveTouch and keep-awake are automatic. Screenshots work after you plug in, trust, and unlock the iPhone.
+
+<video src='/assets/setup.mp4' poster='/assets/setup-poster.jpg' controls muted playsInline width='100%'></video>
 
 **Setup starts with sign-in, then permissions.** `ghosthand setup` shows Sign in with Google, then Camera and Bluetooth buttons, before the phone steps (plug in, trust, unlock, pair). Denied access shows an **Open Settings** button instead. It updates by itself and ends with a "Copy prompt for agent" button. It detaches at once, so the terminal stays free.
 

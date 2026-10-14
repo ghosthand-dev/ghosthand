@@ -1,0 +1,452 @@
+{
+  "phoneVideo": "tiktok-warmup/phone.mp4",
+  "phoneWidth": 750,
+  "phoneHeight": 1334,
+  "duration": 28.36590301293836,
+  "prompt": "scroll tiktok and interact with funny videos",
+  "final": "Done. I skipped the clips that were not funny, liked the 2 funny ones and left a comment on each: \"haha not the biscuits\" and \"the future has some moves lol\".",
+  "steps": [
+    {
+      "at": 0.11369895935058594,
+      "done": 0.9226593017578125,
+      "thought": "Opening TikTok with Spotlight.",
+      "cmd": "ghosthand key cmd+space --screenshot step.png --screentext",
+      "result": "pressed cmd+space\nTop Hit · About · General · Suggestions · About"
+    },
+    {
+      "at": 1.3726593017578126,
+      "done": 2.4726593017578127,
+      "thought": "Searching for TikTok.",
+      "cmd": "ghosthand type TikTok --screenshot step.png --screentext",
+      "result": "typed 6 chars\nTop Hit · TikTok · Suggestions · TikTok · TikTok"
+    },
+    {
+      "at": 2.5842852115631105,
+      "done": 3.2171292781829837,
+      "thought": "Opening the app.",
+      "cmd": "ghosthand key enter --screenshot step.png --screentext",
+      "result": "pressed enter\nNaomi Collins - · @naomi.collins90 · Likes · Following · Followers"
+    },
+    {
+      "at": 3.667129278182984,
+      "done": 4.767129278182984,
+      "thought": "Switching to the For You feed.",
+      "cmd": "ghosthand tap 37 633 --screenshot step.png --screentext",
+      "result": "tapped 37,633\nGenoa Followin SAlA 5481S · LIVE · «Ecco, potranno fare · alleanze, ma senza di me. · Chiunque farà alleanza · contro di te, cadrà davanti.",
+      "tap": {
+        "x": 0.09866666666666667,
+        "y": 0.9490254872563718,
+        "at": 4.089217523094255
+      }
+    },
+    {
+      "at": 4.940579452022868,
+      "done": 6.040579452022868,
+      "thought": "Skipping this motivational clip.",
+      "cmd": "ghosthand swipe 180 510 180 160 --duration 350 --screenshot step.png --screentext",
+      "result": "swiped 180,510 -> 180,160\nallS · Live ly Genga Following Shop For You"
+    },
+    {
+      "at": 6.195545007311718,
+      "done": 7.295545007311718,
+      "thought": "Dance clip, leaving it unliked.",
+      "cmd": "ghosthand swipe 180 510 180 160 --duration 350 --screenshot step.png --screentext",
+      "result": "swiped 180,510 -> 180,160\nGenoa Following Shop For You · LIVE · ROIBLE"
+    },
+    {
+      "at": 8.095545007311719,
+      "done": 9.195545007311718,
+      "thought": "This biscuit reaction is funny, liking it.",
+      "cmd": "ghosthand tap 344 311 --screenshot step.png --screentext",
+      "result": "tapped 344,311\nallS · Genoa Following Shop For You",
+      "tap": {
+        "x": 0.9173333333333333,
+        "y": 0.4662668665667166,
+        "at": 8.36712563693747
+      }
+    },
+    {
+      "at": 9.86206269415559,
+      "done": 10.96206269415559,
+      "thought": "Leaving a friendly comment on this reaction.",
+      "cmd": "ghosthand tap 344 377 --screenshot step.png --screentext",
+      "result": "tapped 344,377\n210 comments = · ianis · a rega non sono I unico a pensarlo · eind · Reply",
+      "tap": {
+        "x": 0.9173333333333333,
+        "y": 0.5652173913043478,
+        "at": 10.157044982904077
+      }
+    },
+    {
+      "at": 11.412062694155589,
+      "done": 12.512062694155588,
+      "thought": "Adding a comment about the biscuits.",
+      "cmd": "ghosthand tap 139 639 --screenshot step.png --screentext",
+      "result": "tapped 139,639\nbl g · 210 comments = · ianis · a rega non sono I unico a pensarlo · Bind",
+      "tap": {
+        "x": 0.37066666666666664,
+        "y": 0.9580209895052474,
+        "at": 11.668404378287947
+      }
+    },
+    {
+      "at": 13.305718709551707,
+      "done": 14.405718709551707,
+      "thought": "The biscuit reaction made me laugh.",
+      "cmd": "ghosthand type 'haha not the biscuits' --screenshot step.png --screentext",
+      "result": "typed 21 chars\nbl g · 210 comments = · ianis · a rega non sono I unico a pensarlo"
+    },
+    {
+      "at": 15.054995395266427,
+      "done": 16.15499539526643,
+      "thought": "Posting my biscuit comment.",
+      "cmd": "ghosthand tap 325 638 --screenshot step.png --screentext",
+      "result": "tapped 325,638\nbl g · 210 comments = · Naomi Collins · Haha not the biscuits",
+      "tap": {
+        "x": 0.8666666666666667,
+        "y": 0.9565217391304348,
+        "at": 15.320581794894213
+      }
+    },
+    {
+      "at": 16.735231901728525,
+      "done": 17.835231901728527,
+      "thought": "Comment posted, back to the feed.",
+      "cmd": "ghosthand tap 349 233 --screenshot step.png --screentext",
+      "result": "tapped 349,233\nGenoa Following Shop For You",
+      "tap": {
+        "x": 0.9306666666666666,
+        "y": 0.3493253373313343,
+        "at": 16.976702950161286
+      }
+    },
+    {
+      "at": 17.945515038096325,
+      "done": 19.045515038096326,
+      "thought": "Looking for another funny clip.",
+      "cmd": "ghosthand swipe 180 510 180 160 --duration 350 --screenshot step.png --screentext",
+      "result": "swiped 180,510 -> 180,160\n•ll S · Genoa Following Shop For You · you're · the"
+    },
+    {
+      "at": 19.1369261587971,
+      "done": 20.2369261587971,
+      "thought": "This dancing robot meme is funny.",
+      "cmd": "ghosthand tap 344 311 --screenshot step.png --screentext",
+      "result": "tapped 344,311\nGenoa Following Shop For You · Flying cars they said.",
+      "tap": {
+        "x": 0.9173333333333333,
+        "y": 0.4662668665667166,
+        "at": 19.384870652361872
+      }
+    },
+    {
+      "at": 20.346655925642803,
+      "done": 21.446655925642805,
+      "thought": "Commenting on the robot dance.",
+      "cmd": "ghosthand tap 344 377 --screenshot step.png --screentext",
+      "result": "tapped 344,377\nFlying cars they said... · Search: westcool robot? · 29,344 comments =",
+      "tap": {
+        "x": 0.9173333333333333,
+        "y": 0.5652173913043478,
+        "at": 20.643016604204796
+      }
+    },
+    {
+      "at": 21.896655925642804,
+      "done": 22.996655925642806,
+      "thought": "Writing a friendly robot joke.",
+      "cmd": "ghosthand tap 141 638 --screenshot step.png --screentext",
+      "result": "tapped 141,638\n\"Flying cars they said... · Search: westcool robot? · 29,344 comments = · @KuyaJhayden · flying cars they said...",
+      "tap": {
+        "x": 0.376,
+        "y": 0.9565217391304348,
+        "at": 22.19594958049856
+      }
+    },
+    {
+      "at": 23.603251012694198,
+      "done": 24.7032510126942,
+      "thought": "The future has some moves lol.",
+      "cmd": "ghosthand type 'the future has some moves lol' --screenshot step.png --screentext",
+      "result": "typed 29 chars\nFlying cars they said.. · Search: westcool robot? · 29,344 comments = · @KuyaJhayden · flying cars they said..."
+    },
+    {
+      "at": 25.20617853058513,
+      "done": 26.306178530585132,
+      "thought": "Posting my robot dance comment.",
+      "cmd": "ghosthand tap 325 639 --screenshot step.png --screentext",
+      "result": "tapped 325,639\nFlying cars they said. · Search: westcool robota · 29,345 comments = · Naomi Collins · The future has some moves lol",
+      "tap": {
+        "x": 0.8666666666666667,
+        "y": 0.9580209895052474,
+        "at": 25.51275907199939
+      }
+    },
+    {
+      "at": 27.03366673840221,
+      "done": 28.133666738402212,
+      "thought": "Both comments are posted, closing the sheet.",
+      "cmd": "ghosthand tap 349 276 --screenshot step.png --screentext",
+      "result": "tapped 349,276\n•ill · Genoa Following Shop For You · LIVE · Flying cars they said.",
+      "tap": {
+        "x": 0.9306666666666666,
+        "y": 0.41379310344827586,
+        "at": 27.31243000512903
+      }
+    }
+  ],
+  "segments": [
+    {
+      "srcStart": 0,
+      "srcEnd": 0.11369895935058594,
+      "speed": 1,
+      "outStart": 0
+    },
+    {
+      "srcStart": 0.11369895935058594,
+      "srcEnd": 2.1360998153686523,
+      "speed": 2.5,
+      "outStart": 0.11369895935058594
+    },
+    {
+      "srcStart": 2.1360998153686523,
+      "srcEnd": 5.840015888214111,
+      "speed": 8.230924606323242,
+      "outStart": 0.9226593017578125
+    },
+    {
+      "srcStart": 5.840015888214111,
+      "srcEnd": 8.912078857421875,
+      "speed": 2.792784517461603,
+      "outStart": 1.3726593017578126
+    },
+    {
+      "srcStart": 8.912078857421875,
+      "srcEnd": 9.023704767227173,
+      "speed": 1,
+      "outStart": 2.4726593017578127
+    },
+    {
+      "srcStart": 9.023704767227173,
+      "srcEnd": 10.605814933776855,
+      "speed": 2.5,
+      "outStart": 2.5842852115631105
+    },
+    {
+      "srcStart": 10.605814933776855,
+      "srcEnd": 14.070175886154175,
+      "speed": 7.698579894171821,
+      "outStart": 3.2171292781829837
+    },
+    {
+      "srcStart": 14.070175886154175,
+      "srcEnd": 17.197484016418457,
+      "speed": 2.843007391149347,
+      "outStart": 3.667129278182984
+    },
+    {
+      "srcStart": 17.197484016418457,
+      "srcEnd": 23.5,
+      "speed": 37.34738886356354,
+      "outStart": 4.767129278182984
+    },
+    {
+      "srcStart": 46.9,
+      "srcEnd": 47.07539510726929,
+      "speed": 37.34738886356354,
+      "outStart": 4.935883136895991
+    },
+    {
+      "srcStart": 47.07539510726929,
+      "srcEnd": 54.81751990318298,
+      "speed": 7.03829526901245,
+      "outStart": 4.940579452022868
+    },
+    {
+      "srcStart": 54.81751990318298,
+      "srcEnd": 70,
+      "speed": 99.99466001987457,
+      "outStart": 6.040579452022868
+    },
+    {
+      "srcStart": 134.5,
+      "srcEnd": 134.81324791908264,
+      "speed": 99.99466001987457,
+      "outStart": 6.192412360838193
+    },
+    {
+      "srcStart": 134.81324791908264,
+      "srcEnd": 142.68266892433167,
+      "speed": 7.15401909568093,
+      "outStart": 6.195545007311718
+    },
+    {
+      "srcStart": 142.68266892433167,
+      "srcEnd": 154.1414279937744,
+      "speed": 14.323448836803436,
+      "outStart": 7.295545007311718
+    },
+    {
+      "srcStart": 154.1414279937744,
+      "srcEnd": 159.0018630027771,
+      "speed": 4.418577280911532,
+      "outStart": 8.095545007311719
+    },
+    {
+      "srcStart": 159.0018630027771,
+      "srcEnd": 165.66703987121582,
+      "speed": 10,
+      "outStart": 9.195545007311718
+    },
+    {
+      "srcStart": 165.66703987121582,
+      "srcEnd": 170.14188480377197,
+      "speed": 4.06804084777832,
+      "outStart": 9.86206269415559
+    },
+    {
+      "srcStart": 170.14188480377197,
+      "srcEnd": 174.3440797328949,
+      "speed": 9.338210953606499,
+      "outStart": 10.96206269415559
+    },
+    {
+      "srcStart": 174.3440797328949,
+      "srcEnd": 179.49345684051514,
+      "speed": 4.6812519160183985,
+      "outStart": 11.412062694155589
+    },
+    {
+      "srcStart": 179.49345684051514,
+      "srcEnd": 187.43001699447632,
+      "speed": 10,
+      "outStart": 12.512062694155588
+    },
+    {
+      "srcStart": 187.43001699447632,
+      "srcEnd": 196.4438509941101,
+      "speed": 8.194394545121625,
+      "outStart": 13.305718709551707
+    },
+    {
+      "srcStart": 196.4438509941101,
+      "srcEnd": 202.93661785125732,
+      "speed": 10,
+      "outStart": 14.405718709551707
+    },
+    {
+      "srcStart": 202.93661785125732,
+      "srcEnd": 207.906751871109,
+      "speed": 4.518303654410622,
+      "outStart": 15.054995395266427
+    },
+    {
+      "srcStart": 207.906751871109,
+      "srcEnd": 213.70911693572998,
+      "speed": 10,
+      "outStart": 16.15499539526643
+    },
+    {
+      "srcStart": 213.70911693572998,
+      "srcEnd": 219.17561078071594,
+      "speed": 4.9695398590781465,
+      "outStart": 16.735231901728525
+    },
+    {
+      "srcStart": 219.17561078071594,
+      "srcEnd": 219.28589391708374,
+      "speed": 1,
+      "outStart": 17.835231901728527
+    },
+    {
+      "srcStart": 219.28589391708374,
+      "srcEnd": 226.46100401878357,
+      "speed": 6.522827365181662,
+      "outStart": 17.945515038096325
+    },
+    {
+      "srcStart": 226.46100401878357,
+      "srcEnd": 233.3,
+      "speed": 76.34892612695694,
+      "outStart": 19.045515038096326
+    },
+    {
+      "srcStart": 287.4,
+      "srcEnd": 287.5401449203491,
+      "speed": 76.34892612695694,
+      "outStart": 19.13509057410117
+    },
+    {
+      "srcStart": 287.5401449203491,
+      "srcEnd": 292.86391711235046,
+      "speed": 4.839792901819402,
+      "outStart": 19.1369261587971
+    },
+    {
+      "srcStart": 292.86391711235046,
+      "srcEnd": 292.97364687919617,
+      "speed": 1,
+      "outStart": 20.2369261587971
+    },
+    {
+      "srcStart": 292.97364687919617,
+      "srcEnd": 297.42767906188965,
+      "speed": 4.0491201660849825,
+      "outStart": 20.346655925642803
+    },
+    {
+      "srcStart": 297.42767906188965,
+      "srcEnd": 301.2069089412689,
+      "speed": 8.398288620842827,
+      "outStart": 21.446655925642805
+    },
+    {
+      "srcStart": 301.2069089412689,
+      "srcEnd": 305.61729311943054,
+      "speed": 4.009440161965109,
+      "outStart": 21.896655925642804
+    },
+    {
+      "srcStart": 305.61729311943054,
+      "srcEnd": 311.68324398994446,
+      "speed": 10,
+      "outStart": 22.996655925642806
+    },
+    {
+      "srcStart": 311.68324398994446,
+      "srcEnd": 319.4061818122864,
+      "speed": 7.02085256576538,
+      "outStart": 23.603251012694198
+    },
+    {
+      "srcStart": 319.4061818122864,
+      "srcEnd": 324.4354569911957,
+      "speed": 10,
+      "outStart": 24.7032510126942
+    },
+    {
+      "srcStart": 324.4354569911957,
+      "srcEnd": 328.74101400375366,
+      "speed": 3.9141427386890757,
+      "outStart": 25.20617853058513
+    },
+    {
+      "srcStart": 328.74101400375366,
+      "srcEnd": 336.01589608192444,
+      "speed": 10,
+      "outStart": 26.306178530585132
+    },
+    {
+      "srcStart": 336.01589608192444,
+      "srcEnd": 340.75109672546387,
+      "speed": 4.304727857763116,
+      "outStart": 27.03366673840221
+    },
+    {
+      "srcStart": 340.75109672546387,
+      "srcEnd": 340.983333,
+      "speed": 1,
+      "outStart": 28.133666738402212
+    }
+  ]
+}

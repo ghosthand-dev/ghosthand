@@ -264,7 +264,6 @@ export type AgentTerminalProps = {
   thinking: { from: number; to: number }[]
   /** Text typed into the input box between `start` and `end`, then sent. */
   draft?: { text: string; start: number; end: number }
-  cwd: string
   title: string
   width: number
   height: number
@@ -276,7 +275,7 @@ export type AgentTerminalProps = {
   style?: CSSProperties
 }
 
-export function AgentTerminal({ items, todos = [], todosFrom = Infinity, thinking, draft, cwd, title, width, height, fontSize = 24, maxResultRows = 3, footerRight, style }: AgentTerminalProps) {
+export function AgentTerminal({ items, todos = [], todosFrom = Infinity, thinking, draft, title, width, height, fontSize = 24, maxResultRows = 3, footerRight, style }: AgentTerminalProps) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const t = frame / fps
@@ -291,12 +290,11 @@ export function AgentTerminal({ items, todos = [], todosFrom = Infinity, thinkin
   const todoH = todos.length ? (todos.length + 1.4) * m.lineHeight * grow(todosFrom) : 0
   const viewportH = height - chromeH - inputH - 28 - todoH
 
-  const welcomeH = m.lineHeight * 3.4
   const spinnerIndex = thinking.findIndex((r) => t >= r.from && t < r.to)
   const spinner = spinnerIndex === -1 ? undefined : thinking[spinnerIndex]
   const spinnerH = spinner ? (m.lineHeight + m.lineHeight * 0.55) * grow(spinner.from) : 0
   const contentH =
-    welcomeH + rows.reduce((sum, row) => sum + (row.gapBefore + m.lineHeight) * grow(row.at), 0) + spinnerH + m.lineHeight * 0.5
+    rows.reduce((sum, row) => sum + (row.gapBefore + m.lineHeight) * grow(row.at), 0) + spinnerH + m.lineHeight * 0.5
   const scroll = Math.max(0, contentH - viewportH)
 
   const typed = draft ? draft.text.slice(0, Math.round(interpolate(t, [draft.start, draft.end], [0, draft.text.length], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }))) : ''
@@ -332,14 +330,6 @@ export function AgentTerminal({ items, todos = [], todosFrom = Infinity, thinkin
         }}
       >
         <div style={{ transform: `translateY(${-scroll}px)`, whiteSpace: 'pre' }}>
-          <div style={{ height: welcomeH, paddingTop: 2 }}>
-            <div style={{ border: `1.5px solid ${colors.claude}`, borderRadius: 10, padding: `${m.lineHeight * 0.3}px ${m.charWidth * 1.5}px`, width: 'fit-content', minWidth: m.charWidth * 46 }}>
-              <div>
-                <span style={{ color: colors.claude }}>✻ </span>Welcome to <span style={{ fontWeight: 700 }}>Claude Code</span>!
-              </div>
-              <div style={{ color: colors.dim }}>  cwd: {cwd}</div>
-            </div>
-          </div>
           {rows.map((row) => {
             const g = grow(row.at)
             if (g <= 0) return null

@@ -20,13 +20,16 @@ export type AgentDemoProps = {
   /** The agent's todo list, shown as a TodoWrite call and a pinned panel. */
   plan: PlanItem[]
   title: string
-  cwd: string
   /** Tool name shown in tool calls, e.g. Bash. */
   toolName: string
   /** Image in public/, shown full bleed behind everything. */
   background: string
+  /** Assistant message above the prompt, before the user types. */
+  greeting: string
   tagline: string
   url: string
+  /** Small caption above the phone. */
+  phoneLabel: string
 }
 
 const TYPE_START = 1.0
@@ -66,11 +69,12 @@ function planTodos(timeline: Timeline, plan: PlanItem[]): Todo[] {
 }
 
 /** Chat items, spinner ranges, todos and tap ripples, in scene seconds. */
-function demoEvents(timeline: Timeline, plan: PlanItem[], toolName: string) {
+function demoEvents({ timeline, plan, toolName, greeting }: { timeline: Timeline; plan: PlanItem[]; toolName: string; greeting: string }) {
   const s = demoSchedule(timeline)
   const todos = planTodos(timeline, plan)
   const planDone = s.plan + 0.45
   const items: ChatItem[] = [
+    { kind: 'text', at: 0, text: greeting },
     { kind: 'user', at: s.sent, text: timeline.prompt },
     { kind: 'tool', at: s.plan, done: planDone, name: 'Update Todos', result: todos.map((todo) => `${todoGlyph.pending} ${todo.text}`).join('\n'), fullResult: true },
   ]
@@ -137,7 +141,7 @@ const lerpRect = (a: Rect, b: Rect, p: number): Rect => ({
 })
 
 /** Full screen Claude Code window where the prompt is typed. On enter it morphs into the terminal rect. */
-function IntroPrompt({ prompt, cwd, title, from, to, t, s }: { prompt: string; cwd: string; title: string; from: Rect; to: Rect; t: number; s: ReturnType<typeof demoSchedule> }) {
+function IntroPrompt({ prompt, greeting, title, from, to, t, s }: { prompt: string; greeting: string; title: string; from: Rect; to: Rect; t: number; s: ReturnType<typeof demoSchedule> }) {
   if (t >= s.morphEnd) return null
   const appear = progress(t, 0, 0.9)
   const morph = progress(t, s.enter, MORPH, easeInOut)
@@ -182,16 +186,20 @@ function IntroPrompt({ prompt, cwd, title, from, to, t, s }: { prompt: string; c
           color: colors.text,
         }}
       >
-        <div style={{ fontSize: 32, lineHeight: 1.5, border: `2px solid ${colors.claude}`, borderRadius: 14, padding: '16px 30px', width: 'fit-content' }}>
-          <div>
-            <span style={{ color: colors.claude }}>✻ </span>Welcome to <span style={{ fontWeight: 700 }}>Claude Code</span>!
-          </div>
-          <div style={{ color: colors.dim }}>  cwd: {cwd}</div>
+        <div style={{ fontSize: 30, lineHeight: 1.5, display: 'flex', padding: '0 12px' }}>
+          <span style={{ whiteSpace: 'pre' }}>⏺ </span>
+          <span>{greeting}</span>
         </div>
-        <div style={{ border: `2px solid ${colors.faint}`, borderRadius: 18, padding: '30px 36px', fontSize, lineHeight: 1.3, whiteSpace: 'pre', display: 'flex', alignItems: 'center' }}>
-          <span style={{ color: colors.dim }}>{'> '}</span>
-          <span>{typed}</span>
-          <span style={{ display: 'inline-block', width: fontSize * 0.55, height: fontSize * 1.05, marginLeft: 2, background: cursorOn ? colors.text : 'transparent' }} />
+        <div style={{ border: `2px solid ${colors.faint}`, borderRadius: 18, padding: '30px 36px', fontSize, lineHeight: 1.3, display: 'flex' }}>
+          <span style={{ color: colors.dim, whiteSpace: 'pre' }}>{'> '}</span>
+          {/* The full prompt, invisible, reserves the wrapped height so the box does not grow while typing. */}
+          <div style={{ display: 'grid', flex: 1, minWidth: 0 }}>
+            <span style={{ gridArea: '1 / 1', visibility: 'hidden' }}>{prompt}█</span>
+            <span style={{ gridArea: '1 / 1' }}>
+              {typed}
+              <span style={{ display: 'inline-block', width: fontSize * 0.55, height: fontSize * 1.05, marginLeft: 2, verticalAlign: 'text-bottom', background: cursorOn ? colors.text : 'transparent' }} />
+            </span>
+          </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 28, color: colors.faint, padding: '0 10px' }}>
           <span>? for shortcuts</span>
@@ -240,14 +248,15 @@ function EndCard({ start, tagline, url }: { start: number; tagline: string; url:
 // Layout: equal outer margins, phone and terminal share the same top and height.
 const MARGIN_X = 96
 const GAP = 72
-const PHONE_HEIGHT = 940
+// Leaves room above the phone for its label.
+const PHONE_HEIGHT = 900
 
-export function AgentDemo({ timeline, plan, title, cwd, toolName, background, tagline, url }: AgentDemoProps) {
+export function AgentDemo({ timeline, plan, title, toolName, background, greeting, tagline, url, phoneLabel }: AgentDemoProps) {
   const frame = useCurrentFrame()
   const { fps, width, height } = useVideoConfig()
   const t = frame / fps
   const s = demoSchedule(timeline)
-  const events = demoEvents(timeline, plan, toolName)
+  const events = demoEvents({ timeline, plan, toolName, greeting })
   const { items, thinking, taps, todos, todosFrom } = events
 
   const screenHeight = phoneScreenHeight(PHONE_HEIGHT)
@@ -260,7 +269,8 @@ export function AgentDemo({ timeline, plan, title, cwd, toolName, background, ta
   const focus = progress(t, s.enter + 0.1, MORPH, easeInOut)
   // Crossfades with the shrinking intro content, so the window is never empty.
   const termOpacity = progress(t, s.morphEnd - 0.5, 0.3, Easing.linear)
-  const phoneIn = progress(t, s.enter + 0.45, 1.0)
+  // Starts once the window has moved off the left side, so the phone does not slide in under it.
+  const phoneIn = progress(t, s.enter + 0.6, 1.0)
 
   const phoneT = t - s.intro
   // Average over 6 seconds, so the label does not flicker between segments.
@@ -288,6 +298,37 @@ export function AgentDemo({ timeline, plan, title, cwd, toolName, background, ta
           transformOrigin: 'left center',
         }}
       >
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: 0,
+            width: body.width,
+            marginBottom: 16,
+            display: 'flex',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '7px 18px',
+              borderRadius: 999,
+              background: 'rgba(8, 20, 45, 0.45)',
+              border: '1px solid rgba(255, 255, 255, 0.22)',
+              fontFamily: sansFont,
+              fontSize: 22,
+              fontWeight: 600,
+              color: 'white',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <div style={{ width: 10, height: 10, borderRadius: 5, background: colors.green, boxShadow: `0 0 10px ${colors.green}` }} />
+            {phoneLabel}
+          </div>
+        </div>
         <PhoneMockup screenWidth={screenWidth} screenHeight={screenHeight}>
           {/* Before the phone video starts, hold its first frame; after it ends, hold the last. */}
           {t < s.intro ? <Freeze frame={0}>{video}</Freeze> : null}
@@ -307,7 +348,6 @@ export function AgentDemo({ timeline, plan, title, cwd, toolName, background, ta
             todos={todos}
             todosFrom={todosFrom}
             thinking={thinking}
-            cwd={cwd}
             title={title}
             width={termRect.width}
             height={termRect.height}
@@ -315,7 +355,7 @@ export function AgentDemo({ timeline, plan, title, cwd, toolName, background, ta
           />
         </div>
       )}
-      <IntroPrompt prompt={timeline.prompt} cwd={cwd} title={title} from={introRect} to={termRect} t={t} s={s} />
+      <IntroPrompt prompt={timeline.prompt} greeting={greeting} title={title} from={introRect} to={termRect} t={t} s={s} />
       {soundCues(timeline, events).map((cue, i) => (
         <Sfx key={i} {...cue} />
       ))}

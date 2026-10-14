@@ -82,7 +82,7 @@ which difference mattered. Do not claim that all system alerts reject mice or
 that changing the HID registration is necessary. The following contacts prompt
 was visible in USB capture; location and contacts prompts behaved differently.
 
-The default tap now holds for 110...130 ms, without adding repeated held reports.
+The default tap now holds for 150...190 ms (was 110...130 ms, 45...75 ms before), without adding repeated held reports.
 This is a duration change, not proof that it fixes every hidden dialog.
 
 On this SE2, the longer normal tap dismissed the subsequent contacts prompt's

@@ -112,9 +112,28 @@ export function HeroSection() {
             }}
             className={`${BUTTON} cursor-pointer border-transparent bg-primary text-primary-foreground hover:opacity-90`}
           >
-            {copied ? 'Copied ✓' : 'Copy setup prompt'}
+            <svg
+              aria-hidden
+              viewBox='0 0 24 24'
+              className='size-4 shrink-0'
+              fill='none'
+              stroke='currentColor'
+              strokeWidth={2}
+              strokeLinecap='round'
+              strokeLinejoin='round'
+            >
+              {copied ? (
+                <path d='M20 6 9 17l-5-5' />
+              ) : (
+                <>
+                  <rect width='8' height='4' x='8' y='2' rx='1' ry='1' />
+                  <path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2' />
+                </>
+              )}
+            </svg>
+            {copied ? 'Copied' : 'Copy setup prompt'}
           </button>
-          <p className='text-sm text-muted-foreground'>
+          <p className='rounded-xl bg-background/50 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur-md'>
             Paste the prompt into your agent to set up ghosthand
           </p>
         </div>

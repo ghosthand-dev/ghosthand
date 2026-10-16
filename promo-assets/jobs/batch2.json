@@ -1,0 +1,23 @@
+[
+ {"id":"three-phones-c-push","images":["three-phones-c.png"],"prompt":"Locked-off tripod shot, very slow push-in. The TikTok feed swipes up to the next video, the Instagram feed scrolls, new WhatsApp messages appear one by one. Steady ring lights. No haze, no hands."},
+ {"id":"three-phones-c-slide","images":["three-phones-c.png"],"prompt":"Slow smooth slider move from right to left, shallow depth of field, the three screens animate by themselves, soft bokeh lights. No hands, no fog."},
+ {"id":"three-phones-c-10s","duration":10,"images":["three-phones-c.png"],"prompt":"Slow cinematic push-in, rock steady. The three phones work by themselves in parallel: a video feed scrolls, a photo feed scrolls, a chat gets typed replies. No hands, no fog."},
+ {"id":"phone-portrait-a-scroll","aspect":"9:16","images":["phone-portrait-a.png"],"prompt":"Static camera. The Instagram feed scrolls smoothly by itself, a small translucent grey tap dot appears on a post and it likes. No hands. Warm bokeh lights twinkle."},
+ {"id":"phone-portrait-a-push","aspect":"9:16","images":["phone-portrait-a.png"],"prompt":"Slow push-in toward the phone on the stand, the screen scrolls on its own, ring light steady. Stable, cinematic."},
+ {"id":"presenter-c-gesture-talk","images":["presenter-c-gesture.png"],"prompt":"She explains to the camera-left side while gesturing with an open hand toward the phones, then turns slightly to the camera and smiles. Static camera, natural motion."},
+ {"id":"presenter-c-gesture-push","images":["presenter-c-gesture.png"],"prompt":"Slow smooth push-in while she gestures toward the display and the phones with her open hand and nods. Cinematic, natural, no morphing."},
+ {"id":"hands-typing-a","images":["hands-typing-a.png"],"prompt":"Hands type quickly on the keyboard then one finger presses Enter. Display behind scrolls terminal text. Shallow depth of field, static camera."},
+ {"id":"hand-place-phone-a","images":["hand-place-phone-a.png"],"prompt":"The hand gently sets the iPhone down on the stand and lets go, the screen lights up. Smooth, steady, shallow depth of field."},
+ {"id":"presenter-vertical-a-talk","aspect":"9:16","images":["presenter-vertical-a.png"],"prompt":"She speaks naturally to camera with a friendly expression, small head movements and blinks, static camera, soft light."},
+ {"id":"studio-wide-a-orbit","images":["studio-wide-a.png"],"prompt":"Slow smooth slider move to the right along the desk, the phone screens light up one after another, city lights twinkle outside the window. Cinematic, stable."},
+ {"id":"studio-wide-a-push","images":["studio-wide-a.png"],"prompt":"Slow push-in along the line of phones, phone screens animate by themselves. Cinematic, stable, no people."},
+ {"id":"phone-macro-tap-a","images":["phone-macro-tap-a.png"],"prompt":"The translucent grey touch dot presses the send button, a new blue message bubble appears and a reply arrives. No hands. Shallow depth of field, steady camera."},
+ {"id":"desk-hero-b-pullback","images":["desk-hero-b.png"],"prompt":"Smooth slow pull-back and slight rise, screens on the phones update softly, premium commercial look, no morphing."},
+ {"id":"phone-rack-a-pull","images":["phone-rack-a.png"],"prompt":"Slow pull-back from the rack, the phone screens switch apps in a wave, premium, steady, dark studio."},
+ {"id":"mac-terminal-a-slide","images":["mac-terminal-a.png"],"prompt":"Slow slider move to the left, the terminal text scrolls, the iPhone beside the desk shows its screen changing. Moody, cinematic."},
+ {"id":"t2v-phone-in-hand-whip","prompt":"Fast whip pan from a presenter's face to a line of iPhones on stands on a desk, brick wall, cinematic, smooth motion blur, photorealistic."},
+ {"id":"t2v-lightsweep-transition","prompt":"Abstract soft white light sweep across a dark frame from left to right with fine film grain, smooth, clean, usable as a transition overlay."},
+ {"id":"t2v-finger-tap-ripple","aspect":"9:16","prompt":"Vertical close-up of an iPhone screen on a dark background: a translucent grey tap dot moves and taps, an app opens, a feed scrolls, no hands, photorealistic, steady camera."},
+ {"id":"t2v-usb-plug","prompt":"Macro shot of a white USB-C plug sliding into an iPhone on a matte black stand on a walnut desk, shallow depth of field, warm light, smooth cinematic."},
+ {"id":"t2v-hero-720-three","resolution":"720p","images":["three-phones-a.png"],"prompt":"Locked-off tripod shot, extremely subtle slow push-in. The three phone screens scroll their content by themselves. Warm bokeh lights stay still. No fog, no haze."}
+]

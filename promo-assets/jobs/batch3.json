@@ -1,0 +1,216 @@
+[
+ {
+  "id": "g-desk-hero-push",
+  "images": [
+   "gpt/desk-hero-16x9.png"
+  ],
+  "prompt": "Extremely slow smooth push-in toward the center display. The terminal text scrolls softly and the phone screens update by themselves. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-desk-hero-edit-push",
+  "images": [
+   "gpt/desk-hero-edit-16x9.png"
+  ],
+  "prompt": "Extremely slow smooth push-in toward the center display. The terminal text scrolls softly and the phone screens update by themselves. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-desk-hero-slide",
+  "images": [
+   "gpt/desk-hero-16x9.png"
+  ],
+  "prompt": "Slow smooth slider move left to right with parallax between phones and brick wall, phone screens animate by themselves. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-desk-hero-edit-slide",
+  "images": [
+   "gpt/desk-hero-edit-16x9.png"
+  ],
+  "prompt": "Slow smooth slider move left to right with parallax between phones and brick wall, phone screens animate by themselves. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-desk-hero-pull",
+  "images": [
+   "gpt/desk-hero-16x9.png"
+  ],
+  "prompt": "Slow smooth pull-back and slight rise revealing the whole desk, screens animate softly. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-desk-hero-edit-pull",
+  "images": [
+   "gpt/desk-hero-edit-16x9.png"
+  ],
+  "prompt": "Slow smooth pull-back and slight rise revealing the whole desk, screens animate softly. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-three-phones-push",
+  "images": [
+   "gpt/three-phones-16x9.png"
+  ],
+  "prompt": "Very slow push-in. The TikTok feed swipes up to the next video, the Instagram photo scrolls, new chat messages appear. No hands. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-three-phones-slide",
+  "images": [
+   "gpt/three-phones-16x9.png"
+  ],
+  "prompt": "Slow smooth slider move right to left, shallow depth of field, screens animate by themselves, bokeh lights twinkle. No hands. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-three-phones-taps",
+  "images": [
+   "gpt/three-phones-16x9.png"
+  ],
+  "prompt": "Static camera. A small translucent grey tap dot appears on each screen and the apps respond. No hands. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-three-phones-10s",
+  "images": [
+   "gpt/three-phones-16x9.png"
+  ],
+  "prompt": "Slow cinematic push-in. The three phones work by themselves in parallel: a video feed swipes, a photo feed scrolls, a chat gets replies. No hands. Locked-off tripod, rock steady, photorealistic, no morphing.",
+  "duration": 10
+ },
+ {
+  "id": "g-three-agents-push",
+  "images": [
+   "gpt/three-phones-agents-16x9.png"
+  ],
+  "prompt": "Very slow push-in. The map route animates, the Reddit thread scrolls, the seat selection highlights a seat and confirms. No hands. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-three-agents-slide",
+  "images": [
+   "gpt/three-phones-agents-16x9.png"
+  ],
+  "prompt": "Slow smooth slider move left to right, screens animate by themselves in parallel. No hands. Locked-off tripod, rock steady, photorealistic, no morphing."
+ },
+ {
+  "id": "g-three-agents-10s",
+  "images": [
+   "gpt/three-phones-agents-16x9.png"
+  ],
+  "prompt": "Static camera. The three phones work independently: map route starts, Reddit scrolls, flight seat gets confirmed. Small translucent tap dots on screens. No hands. Locked-off tripod, rock steady, photorealistic, no morphing.",
+  "duration": 10
+ },
+ {
+  "id": "g-presenter-woman-talk",
+  "images": [
+   "gpt/presenter-woman-16x9.png"
+  ],
+  "prompt": "Speaks naturally to camera, friendly confident expression, small head movements and blinks. Static camera, soft light."
+ },
+ {
+  "id": "g-presenter-woman-talk2",
+  "images": [
+   "gpt/presenter-woman-16x9.png"
+  ],
+  "prompt": "Explains something to camera, nods slightly, a quick smile at the end. Very slow subtle push-in. Natural skin, no morphing."
+ },
+ {
+  "id": "g-presenter-woman-talk-10s",
+  "images": [
+   "gpt/presenter-woman-16x9.png"
+  ],
+  "prompt": "Speaks to camera in a relaxed confident way, occasional nods and small shoulder movements, blinks. Static camera.",
+  "duration": 10
+ },
+ {
+  "id": "g-presenter-man-talk",
+  "images": [
+   "gpt/presenter-man-16x9.png"
+  ],
+  "prompt": "Speaks naturally to camera, friendly confident expression, small head movements and blinks. Static camera, soft light."
+ },
+ {
+  "id": "g-presenter-man-talk2",
+  "images": [
+   "gpt/presenter-man-16x9.png"
+  ],
+  "prompt": "Explains something to camera, nods slightly, a quick smile at the end. Very slow subtle push-in. Natural skin, no morphing."
+ },
+ {
+  "id": "g-presenter-man-talk-10s",
+  "images": [
+   "gpt/presenter-man-16x9.png"
+  ],
+  "prompt": "Speaks to camera in a relaxed confident way, occasional nods and small shoulder movements, blinks. Static camera.",
+  "duration": 10
+ },
+ {
+  "id": "g-presenter-gesture-talk",
+  "images": [
+   "gpt/presenter-gesture-16x9.png"
+  ],
+  "prompt": "She gestures with an open hand toward the phones and then looks at the camera and smiles. Static camera, natural motion."
+ },
+ {
+  "id": "g-presenter-gesture-push",
+  "images": [
+   "gpt/presenter-gesture-16x9.png"
+  ],
+  "prompt": "Slow smooth push-in while she gestures toward the display and phones and nods. Natural, no morphing."
+ },
+ {
+  "id": "g-phone-closeup-scroll",
+  "images": [
+   "gpt/phone-closeup-16x9.png"
+  ],
+  "prompt": "Static camera, shallow depth of field. The video feed swipes up to the next video by itself, a translucent grey tap dot appears. No hands. Bokeh lights stay steady."
+ },
+ {
+  "id": "g-phone-closeup-push",
+  "images": [
+   "gpt/phone-closeup-16x9.png"
+  ],
+  "prompt": "Very slow push-in on the phone, ring light steady, the feed plays and swipes. Stable, cinematic."
+ },
+ {
+  "id": "g-terminal-mac-push",
+  "images": [
+   "gpt/terminal-mac-16x9.png"
+  ],
+  "prompt": "Slow push-in on the display. Terminal text scrolls steadily like an agent working, the iPhone screen changes. Moody, stable."
+ },
+ {
+  "id": "g-terminal-mac-slide",
+  "images": [
+   "gpt/terminal-mac-16x9.png"
+  ],
+  "prompt": "Slow slider move to the left. Terminal text scrolls, the iPhone beside shows its screen changing. Moody, stable."
+ },
+ {
+  "id": "g-phone-rack-push",
+  "images": [
+   "gpt/phone-rack-16x9.png"
+  ],
+  "prompt": "Slow symmetrical push-in toward the rack. Screens change apps one after another in a wave from top-left to bottom-right. Stable, premium."
+ },
+ {
+  "id": "g-phone-rack-static",
+  "images": [
+   "gpt/phone-rack-16x9.png"
+  ],
+  "prompt": "Locked-off static camera. Every phone screen scrolls or changes content at different times like many agents working in parallel. Stable."
+ },
+ {
+  "id": "g-hands-typing",
+  "images": [
+   "gpt/hands-typing-16x9.png"
+  ],
+  "prompt": "The hands type fast then one finger presses Enter. Display behind scrolls text. Shallow depth of field, static camera."
+ },
+ {
+  "id": "g-studio-wide-slide",
+  "images": [
+   "gpt/studio-wide-16x9.png"
+  ],
+  "prompt": "Slow smooth slider move right along the desk, phone screens light up one by one, city lights twinkle outside. Cinematic, stable."
+ },
+ {
+  "id": "g-studio-wide-push",
+  "images": [
+   "gpt/studio-wide-16x9.png"
+  ],
+  "prompt": "Slow push-in along the line of phones, screens animate by themselves. Cinematic, stable, no people."
+ }
+]

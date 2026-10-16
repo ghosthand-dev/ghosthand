@@ -1,6 +1,7 @@
 // Schema of the ghosthand.dev D1 database.
 //
 //   user ──< session, account, device_code          (better-auth: Google login, CLI device flow)
+//   user ──< apikey                                  (tokens for scripts: HTTP API through the Mac tunnel)
 //   user ──< oauth_consent, oauth_*_token >── oauth_client   (remote MCP OAuth; jwks signs tokens)
 //   user ──< org_member >── org ──< stripe_customer  one per (org, Stripe account)
 //                               ──< subscription     mirrored from Stripe webhooks
@@ -94,10 +95,45 @@ export const deviceCode = s.sqliteTable('device_code', {
   s.index('device_code_user_id_idx').on(table.userId),
 ])
 
+/** better-auth api-key plugin: tokens for scripts that call the HTTP API through the Mac tunnel. */
+export const apikey = s.sqliteTable('apikey', {
+  id: s.text('id').primaryKey().$defaultFn(() => ulid()),
+  configId: s.text('config_id').notNull().default('default'),
+  name: s.text('name'),
+  /** First characters of the token, to recognise it in a list. */
+  start: s.text('start'),
+  /** The owner: a user id. */
+  referenceId: s.text('reference_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  prefix: s.text('prefix'),
+  /** SHA-256 of the token. */
+  key: s.text('key').notNull(),
+  refillInterval: s.integer('refill_interval', { mode: 'number' }),
+  refillAmount: s.integer('refill_amount', { mode: 'number' }),
+  lastRefillAt: s.integer('last_refill_at', { mode: 'timestamp_ms' }),
+  enabled: s.integer('enabled', { mode: 'boolean' }).default(true),
+  rateLimitEnabled: s.integer('rate_limit_enabled', { mode: 'boolean' }).default(true),
+  rateLimitTimeWindow: s.integer('rate_limit_time_window', { mode: 'number' }),
+  rateLimitMax: s.integer('rate_limit_max', { mode: 'number' }),
+  requestCount: s.integer('request_count', { mode: 'number' }).default(0),
+  remaining: s.integer('remaining', { mode: 'number' }),
+  lastRequest: s.integer('last_request', { mode: 'timestamp_ms' }),
+  expiresAt: s.integer('expires_at', { mode: 'timestamp_ms' }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+  permissions: s.text('permissions'),
+  metadata: s.text('metadata'),
+}, (table) => [
+  s.index('apikey_config_id_idx').on(table.configId),
+  s.index('apikey_reference_id_idx').on(table.referenceId),
+  s.index('apikey_key_idx').on(table.key),
+])
+
 // ── remote MCP OAuth (jwt + @better-auth/mcp + cimd) ────────────────
-// Fields and onDelete rules copy @better-auth/oauth-provider 1.7 exactly: no onDelete means
-// NO ACTION. A CIMD client is one shared row (client_id is its metadata URL), so CASCADE on
-// it would drop every user's tokens. string[] fields are JSON text: D1 rejects array binds.
+// Fields copy @better-auth/oauth-provider 1.7. onDelete too, except user_id and refresh_id
+// cascade so deleting a user or refresh token cleans up. client_id stays NO ACTION: a CIMD
+// client is one shared row (client_id is its metadata URL), CASCADE would drop every user's
+// tokens. oauth_client.user_id stays NO ACTION: rebuilding oauth_client in a migration fires
+// its cascade on oauth_client_resource. string[] fields are JSON text: D1 rejects array binds.
 
 /** Signing keys for MCP access tokens (jwt plugin, served at /api/auth/jwks). */
 export const jwks = s.sqliteTable('jwks', {

@@ -1,13 +1,16 @@
-// Per-org hub: every signed-in Mac keeps a WebSocket here, and the remote MCP at
-// https://ghosthand.dev/mcp reaches the Macs through it. One Durable Object per org;
-// today each user's Macs and MCP tokens go to the user's personal org.
+// Per-org hub: every signed-in Mac keeps a WebSocket here. Remote MCP (/mcp) and the HTTP
+// API (/macs/<slug>/v1/...) reach the Macs through it. One Durable Object per org;
+// today each user's Macs, MCP tokens and API tokens go to the user's personal org.
 //
-//   MCP client ── POST /mcp (OAuth JWT) ──▶ requireMcpAuth ──▶ GhosthandHub(org)  ◀── WSS /tunnel/upstream ── daemon (Mac A)
-//              ◀── JSON or SSE stream ─────                    (this file)        ◀── WSS /tunnel/upstream ── daemon (Mac B)
-//                                                                   │  request / cancel ──────────────────▶
-//                                                                   │  ◀── response, chunk, end, error ────
-//                                                                   ▼
+//   MCP client ── POST /mcp (OAuth JWT) ────────────▶ requireMcpAuth ──▶ GhosthandHub(org)  ◀── WSS /tunnel/upstream ── daemon (Mac A)
+//   script ── /macs/<slug>/v1/... (Bearer ghk_...) ─▶ verify API token ─▶ (this file)        ◀── WSS /tunnel/upstream ── daemon (Mac B)
+//              ◀── JSON or SSE stream ─────                                   │  request / cancel ──────────────────▶
+//                                                                             │  ◀── response, chunk, end, error ────
+//                                                                             ▼
 //                                     routeMcpCall (lib/mcp-routing.ts): lease prefix, `mac`, `list` fan-out
+//
+// The API path is the daemon's own API (Sources/ghosthand/openapi.yaml) with the Mac in the
+// URL, so lease ids stay `42` there; only MCP, which has no URL per Mac, prefixes them.
 //
 // The daemon authenticates with its better-auth session token; the Worker checks it and
 // passes the session id and Mac name to the DO in headers it sets itself. HTTP goes over the
@@ -16,7 +19,7 @@
 
 import { DurableObject, env } from 'cloudflare:workers'
 import { requireMcpAuth } from '@better-auth/mcp'
-import { getAuth, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent } from './db.ts'
+import { getAuth, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent, verifyApiToken } from './db.ts'
 import {
   macSlug,
   mcpCacheKey,
@@ -54,6 +57,8 @@ const MAC_NAME_HEADER = 'x-ghosthand-mac-name'
 // A daemon restart reconnects within seconds: calls wait for it instead of failing.
 const RECONNECT_WAIT_MS = 5_000
 const RECENTLY_ONLINE_MS = 60_000
+// The hub buffers a request body and sends it down the WebSocket as base64.
+const MAX_API_BODY = 20_000_000
 // Hop-by-hop and Cloudflare headers, credentials, and our trusted headers.
 const DROPPED_HEADERS = /^(host|connection|upgrade|content-length|transfer-encoding|keep-alive|authorization|cookie|cf-.*|x-forwarded-.*|x-real-ip|cdn-loop|x-ghosthand-.*)$/i
 
@@ -61,10 +66,11 @@ export function getHub(orgId: string) {
   return env.GHOSTHAND_HUB.get(env.GHOSTHAND_HUB.idFromName(orgId))
 }
 
-/** Handles /mcp, /tunnel/upstream and old /tunnel/* URLs; null for every other path. */
+/** Handles /mcp, /macs, /tunnel/upstream and old /tunnel/* URLs; null for every other path. */
 export function routeHubRequest(request: Request): Promise<Response> | null {
   const { pathname } = new URL(request.url)
   if (pathname === '/mcp') return handleMcpRequest(request)
+  if (pathname === '/macs' || pathname.startsWith('/macs/')) return handleApiRequest(request)
   if (pathname === UPSTREAM_PATH) return connectUpstream(request)
   if (pathname.startsWith('/tunnel/')) {
     return Promise.resolve(problem({
@@ -92,6 +98,26 @@ async function handleMcpRequest(request: Request): Promise<Response> {
   )(request)
 }
 
+/** `GET /macs` and `/macs/<slug>/v1/...` for scripts. The API token only proves the account. */
+async function handleApiRequest(request: Request): Promise<Response> {
+  // Same rule as /mcp: browsers must never call this with a user's token.
+  if (request.headers.has('origin') || request.headers.has('sec-fetch-site')) {
+    return problem({ status: 403, code: 'permission-denied', title: 'Permission denied', detail: 'Browser requests are not allowed; call the API from a script.' })
+  }
+  const userId = await verifyApiToken(request)
+  if (!userId) {
+    return problem({
+      status: 401,
+      code: 'unauthorized',
+      title: 'Unauthorized',
+      detail: 'Send `Authorization: Bearer <token>`. Create a token on a Mac with `ghosthand tunnel url --new-token`.',
+      headers: { 'www-authenticate': 'Bearer' },
+    })
+  }
+  const org = await getPersonalOrg(userId)
+  return getHub(org.orgId).fetch(new Request(request, { headers: withoutTrustedHeaders(request.headers) }))
+}
+
 async function connectUpstream(request: Request): Promise<Response> {
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
     return problem({ status: 426, code: 'upgrade-required', title: 'Upgrade required', detail: 'Connect with a WebSocket.' })
@@ -117,7 +143,8 @@ function withoutTrustedHeaders(source: Headers): Headers {
 
 type Pending = {
   sessionId: string
-  rpcId: JsonRpcId
+  /** The error answer in the caller's protocol: a JSON-RPC error for MCP, a Problem for the API. */
+  fail(message: string): Response
   respond(response: Response): void
   body?: ReadableStreamDefaultController<Uint8Array>
 }
@@ -135,7 +162,9 @@ export class GhosthandHub extends DurableObject<Env> {
 
   /** Only the Worker calls this, with the trusted headers it set (routeHubRequest). */
   async fetch(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname === UPSTREAM_PATH) return this.openUpstream(request)
+    const { pathname } = new URL(request.url)
+    if (pathname === UPSTREAM_PATH) return this.openUpstream(request)
+    if (pathname === '/macs' || pathname.startsWith('/macs/')) return this.handleApi(request)
     return this.handleMcp(request)
   }
 
@@ -201,7 +230,7 @@ export class GhosthandHub extends DurableObject<Env> {
       case 'reply':
         return route.body ? Response.json(route.body, { status: route.status }) : new Response(null, { status: route.status })
       case 'forward': {
-        const response = await this.dispatch({ slug: route.slug, request, body: text, rpcId })
+        const response = await this.dispatch({ slug: route.slug, request, method: 'POST', path: '/mcp', body: text, fail: mcpFail(rpcId) })
         const cacheKey = mcpCacheKey(message)
         if (!cacheKey || !response.ok || !response.headers.get('content-type')?.includes('application/json')) return response
         // Small JSON: keep its result so clients can connect while every Mac is offline.
@@ -212,7 +241,7 @@ export class GhosthandHub extends DurableObject<Env> {
         return new Response(json, { status: response.status, headers: response.headers })
       }
       case 'fanout': {
-        const replies = await Promise.all(route.slugs.map((slug) => this.collect({ slug, request, body: text, rpcId })))
+        const replies = await Promise.all(route.slugs.map((slug) => this.collect({ slug, request, method: 'POST', path: '/mcp', body: text, fail: mcpFail(rpcId) })))
         return Response.json(mergeListReplies(rpcId, replies))
       }
     }
@@ -224,27 +253,65 @@ export class GhosthandHub extends DurableObject<Env> {
     return routeMcpCall({ message, online, cached: cacheKey ? this.ctx.storage.kv.get(cacheKey) : undefined })
   }
 
+  /** `/macs` lists the Macs; `/macs/<slug>/v1/...` replays the request on that Mac's daemon. */
+  private async handleApi(request: Request): Promise<Response> {
+    const url = new URL(request.url)
+    if (url.pathname === '/macs') {
+      if (request.method !== 'GET') return problem({ status: 405, code: 'method-not-allowed', title: 'Method not allowed', detail: 'Use GET.', headers: { allow: 'GET' } })
+      return Response.json({ macs: this.macs().map(({ slug, name, online }) => ({ slug, name, online })) })
+    }
+    const match = url.pathname.match(/^\/macs\/([a-z0-9-]+)(\/v1\/.*)$/)
+    if (!match) {
+      return problem({ status: 404, code: 'not-found', title: 'Not found', detail: 'Use /macs/<mac>/v1/<route>, e.g. /macs/studio/v1/devices. `GET /macs` lists your Macs.' })
+    }
+    const [, slug, path] = match
+    if (Number(request.headers.get('content-length')) > MAX_API_BODY) return tooLarge()
+    const hasBody = request.method !== 'GET' && request.method !== 'HEAD'
+    const body = hasBody ? await readBounded(request, MAX_API_BODY) : null
+    if (body === 'too-large') return tooLarge()
+
+    if (!this.onlineMacs().some((mac) => mac.slug === slug) && this.recentlyOnline()) await this.waitForUpstream()
+    if (!this.onlineMacs().some((mac) => mac.slug === slug)) {
+      const online = this.onlineMacs().map((mac) => mac.slug)
+      return problem({
+        status: 503,
+        code: 'mac-offline',
+        title: 'Mac offline',
+        detail: online.length ? `Mac ${slug} is offline. Online: ${online.join(', ')}.` : `Mac ${slug} is offline, and no other Mac of this account is online.`,
+      })
+    }
+    return this.dispatch({ slug: slug!, request, method: request.method, path: path! + url.search, body, fail: apiFail })
+  }
+
   /** Sends one request to a Mac; resolves with its streamed response. */
-  private async dispatch({ slug, request, body, rpcId }: { slug: string; request: Request; body: string; rpcId: JsonRpcId }): Promise<Response> {
+  private async dispatch({ slug, request, method, path, body, fail }: {
+    slug: string
+    request: Request
+    method: string
+    path: string
+    body: string | Uint8Array | null
+    fail: Pending['fail']
+  }): Promise<Response> {
     const mac = this.onlineMacs().find((m) => m.slug === slug)
-    if (!mac) return Response.json(rpcError(rpcId, -32603, `Mac ${slug} disconnected. Try again.`))
+    if (!mac) return fail(`Mac ${slug} disconnected. Try again.`)
     if (request.signal.aborted) return new Response(null, { status: 499 })
     const headers: Record<string, string> = {}
     request.headers.forEach((value, key) => { if (!DROPPED_HEADERS.test(key)) headers[key] = value })
     headers['ghosthand-mac'] = slug
     const id = crypto.randomUUID()
-    const response = new Promise<Response>((respond) => this.pending.set(id, { sessionId: mac.sessionId, rpcId, respond }))
+    const response = new Promise<Response>((respond) => this.pending.set(id, { sessionId: mac.sessionId, fail, respond }))
     // The client went away (needs the enable_request_signal flag): stop the call on the Mac too.
     request.signal.addEventListener('abort', () => this.cancel(id))
-    if (!send(mac.socket, { type: 'request', id, method: 'POST', path: '/mcp', headers, body: toBase64(new TextEncoder().encode(body)) })) {
+    const encoded = body === null ? null : toBase64(typeof body === 'string' ? new TextEncoder().encode(body) : body)
+    if (!send(mac.socket, { type: 'request', id, method, path, headers, body: encoded })) {
       this.pending.delete(id)
-      return Response.json(rpcError(rpcId, -32603, `Lost the connection to Mac ${slug}. Try again.`))
+      return fail(`Lost the connection to Mac ${slug}. Try again.`)
     }
     return response
   }
 
   /** A whole JSON-RPC reply from one Mac, for the `list` fan-out. */
-  private async collect(options: { slug: string; request: Request; body: string; rpcId: JsonRpcId }): Promise<MacReply> {
+  private async collect(options: Parameters<GhosthandHub['dispatch']>[0]): Promise<MacReply> {
     const { slug } = options
     try {
       const response = await this.dispatch(options)
@@ -284,7 +351,7 @@ export class GhosthandHub extends DurableObject<Env> {
       case 'error':
         this.pending.delete(message.id)
         if (pending.body) pending.body.error(new Error(message.message))
-        else pending.respond(Response.json(rpcError(pending.rpcId, -32603, message.message)))
+        else pending.respond(pending.fail(message.message))
     }
   }
 
@@ -325,7 +392,7 @@ export class GhosthandHub extends DurableObject<Env> {
       if (pending.sessionId !== sessionId) continue
       this.pending.delete(id)
       if (pending.body) pending.body.error(new Error(reason))
-      else pending.respond(Response.json(rpcError(pending.rpcId, -32603, `Request lost: ${reason}. Try again.`)))
+      else pending.respond(pending.fail(`Request lost: ${reason}. Try again.`))
     }
   }
 
@@ -362,9 +429,18 @@ export class GhosthandHub extends DurableObject<Env> {
 }
 
 /** Same shape as the daemon's errors. */
-function problem({ status, code, title, detail }: { status: number; code: string; title: string; detail: string }): Response {
-  return Response.json({ code, title, status, detail }, { status, headers: { 'content-type': 'application/problem+json' } })
+function problem({ status, code, title, detail, headers }: { status: number; code: string; title: string; detail: string; headers?: Record<string, string> }): Response {
+  return Response.json({ code, title, status, detail }, { status, headers: { 'content-type': 'application/problem+json', ...headers } })
 }
+
+const mcpFail = (rpcId: JsonRpcId): Pending['fail'] => (message) => Response.json(rpcError(rpcId, -32603, message))
+const apiFail: Pending['fail'] = (message) => problem({ status: 502, code: 'tunnel-error', title: 'Tunnel error', detail: message })
+const tooLarge = () => problem({
+  status: 413,
+  code: 'invalid-request',
+  title: 'Request too large',
+  detail: `Through the tunnel a request body is at most ${MAX_API_BODY / 1_000_000} MB. Use \`ghosthand upload\` for big files, or call the daemon on the Mac.`,
+})
 
 function attachment(socket: WebSocket): Attachment | null {
   return socket.deserializeAttachment() as Attachment | null
@@ -391,6 +467,32 @@ function close({ socket, code, reason }: { socket: WebSocket; code: number; reas
   try {
     socket.close(code, reason)
   } catch {}
+}
+
+/** Reads a body up to `limit` bytes, and stops at once above it: a chunked body has no Content-Length to check. */
+async function readBounded(request: Request, limit: number): Promise<Uint8Array | 'too-large'> {
+  const chunks: Uint8Array[] = []
+  let size = 0
+  if (request.body) {
+    const reader = request.body.getReader()
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > limit) {
+        await reader.cancel()
+        return 'too-large'
+      }
+      chunks.push(value)
+    }
+  }
+  const body = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return body
 }
 
 function toBase64(bytes: Uint8Array): string {

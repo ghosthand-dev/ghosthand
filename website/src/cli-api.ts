@@ -5,12 +5,15 @@
 //          ── POST /api/cli/login/token ──▶ pending | approved (+ token) | denied | expired
 //          ── GET  /api/cli/account ──────▶ plan, allowed, notice     (Bearer token)
 //          ── POST /api/cli/logout ───────▶ revokes the token          (Bearer token)
-//          ── POST /api/cli/upload ───────▶ R2 file + share page URL   (Bearer token, uploads.ts)
+//          ── POST /api/cli/tokens ───────▶ new API token for scripts  (Bearer token)
+//          ── DELETE /api/cli/tokens/:id ─▶ revokes an API token       (Bearer token)
+//          ── POST /api/cli/upload ───────▶ R2 file + share page URL   (Bearer session or API token, uploads.ts)
+//          script ─ POST /api/cli/upload ─▶ same, straight from another computer with an API token
 
 import { Spiceflow, json } from 'spiceflow'
 import { APIError } from 'better-auth/api'
 import { z } from 'zod'
-import { getAuth, getBaseUrl, getPersonalOrg, getSessionStrict } from './db.ts'
+import { getAuth, getBaseUrl, getPersonalOrg, getSessionStrict, verifyApiToken } from './db.ts'
 import { entitlementFor } from './lib/billing.ts'
 import { createUpload } from './uploads.ts'
 
@@ -97,15 +100,45 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     detail: { hide: true },
     query: z.object({ name: z.string().min(1).max(255) }),
     async handler({ request, query }) {
-      const session = await getSessionStrict(request)
-      if (!session) throw json({ message: 'unauthorized' }, { status: 401 })
-      const org = await getPersonalOrg(session.userId)
+      // The Mac's session, or an API token from a script on another computer: the file never touches the Mac.
+      const userId = (await getSessionStrict(request))?.userId ?? (await verifyApiToken(request))
+      if (!userId) throw json({ message: 'unauthorized' }, { status: 401 })
+      const org = await getPersonalOrg(userId)
       const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
       if (!entitlement.allowed) {
         const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
         throw json({ message: `${entitlement.notice ?? 'This ghosthand account has no active plan.'} Subscribe: ${subscribeUrl}` }, { status: 402 })
       }
-      return createUpload({ request, name: query.name, userId: session.userId })
+      return createUpload({ request, name: query.name, userId })
+    },
+  })
+  .route({
+    method: 'POST',
+    path: '/tokens',
+    detail: { hide: true },
+    request: z.object({ name: z.string().trim().min(1).max(64) }),
+    async handler({ request }) {
+      const session = await getSessionStrict(request)
+      if (!session) throw json({ message: 'unauthorized' }, { status: 401 })
+      const { name } = await request.json()
+      // Server-side create: no session cookie, the owner is passed as userId.
+      const created = await getAuth().api.createApiKey({ body: { name, userId: session.userId } })
+      return { id: created.id, name, token: created.key }
+    },
+  })
+  .route({
+    method: 'DELETE',
+    path: '/tokens/:id',
+    detail: { hide: true },
+    async handler({ request, params }) {
+      const session = await getSessionStrict(request)
+      if (!session) throw json({ message: 'unauthorized' }, { status: 401 })
+      // Deletes only keys the session's user owns.
+      await getAuth().api.deleteApiKey({ body: { keyId: params.id }, headers: request.headers }).catch((cause) => {
+        if (cause instanceof APIError) throw json({ message: 'no such token' }, { status: 404 })
+        throw cause
+      })
+      return { ok: true }
     },
   })
   .route({

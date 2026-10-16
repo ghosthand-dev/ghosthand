@@ -2,78 +2,137 @@
 $schema: https://holocron.so/frontmatter.json
 title: "HTTP API to control an iPhone from code"
 sidebarTitle: "Overview"
-description: "Drive a real iPhone over HTTP: take a lease, read the screen with screenshots and OCR, tap and type over Bluetooth, then release it."
+description: "Drive a real iPhone over HTTP from your own scripts, on any computer: get the tunnel URL and an API token, take a lease, read the screen, tap and type, then release it."
 icon: lucide:compass
 prompt: |
-  Write the API overview from @/Sources/ghosthand/openapi.yaml, @/Sources/ghosthand/api.swift
-  and @/Sources/ghosthand/daemon.swift. Cover transport, auth, leases, coordinates,
+  Write the API overview from @/Sources/ghosthand/openapi.yaml, @/Sources/ghosthand/api.swift,
+  @/Sources/ghosthand/tunnel.swift and @/website/src/tunnel.ts. Lead with getting the tunnel URL
+  and an API token, then using them from your own scripts. Cover leases, coordinates,
   server-sent events and the after-input query parameters, with curl examples.
 ---
 
 The **ghosthand daemon** serves every CLI command as an HTTP route. The CLI and the MCP
-server are thin clients of this API, so anything they do, your code can do too.
+server are thin clients of this API, so anything they do, your scripts can do too, from
+**any computer**.
 
 ```diagram
-  your code ──HTTP──>┌──────────────────┐──USB──────────> screenshots, OCR, lock state
-  ghosthand CLI ────>│ ghosthand daemon │
-  MCP client ───────>└──────────────────┘──Bluetooth────> taps, swipes, keys, typing
+  your script ──HTTPS, API token──> ghosthand.dev ──WebSocket the Mac opened──> ghosthand daemon ──USB──────> screenshots, OCR
+  (any computer)  /macs/studio/v1/...                                                          └─Bluetooth─> taps, swipes, typing
 ```
 
 ## Quick start
 
-Every request goes to the **unix socket** at `~/.ghosthand/daemon.sock`. Start the daemon
-once with `ghosthand daemon start` (the CLI also starts it by itself).
+**1. On the Mac with the iPhones**, get the tunnel URL and an API token:
 
 ```bash
-SOCK=~/.ghosthand/daemon.sock
+ghosthand tunnel url                          # https://ghosthand.dev/macs/studio
+ghosthand tunnel url --new-token             # prints export GHOSTHAND_URL=... and export GHOSTHAND_TOKEN=...
+```
 
+Copy the two lines to the other computer or your script's secrets. The token is shown once.
+Do not run the exports on the Mac itself: with `GHOSTHAND_URL` set, the CLI there talks to the tunnel instead of the local daemon.
+
+**2. In your script**, on any computer, send the token as a bearer header:
+
+```bash
 # 1. take the iPhone
-curl --unix-socket $SOCK http://localhost/v1/leases \
+curl "$GHOSTHAND_URL/v1/leases" -H "Authorization: Bearer $GHOSTHAND_TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"reason":"reply to Anna in Messages","label":"ses_123"}'
+  -d '{"reason":"reply to Anna in Messages","label":"nightly-script"}'
 # {"id":"42","device":"7EF219AD-...","deviceName":"Tommy's iPhone",...}
 
 # 2. read the screen
-curl --unix-socket $SOCK http://localhost/v1/leases/42/text
-curl --unix-socket $SOCK -o screen.png http://localhost/v1/leases/42/screenshot
+curl "$GHOSTHAND_URL/v1/leases/42/text" -H "Authorization: Bearer $GHOSTHAND_TOKEN"
+curl -o screen.png "$GHOSTHAND_URL/v1/leases/42/screenshot" -H "Authorization: Bearer $GHOSTHAND_TOKEN"
 
 # 3. tap a button by its text, and get the new screen text in the same call
-curl --unix-socket $SOCK 'http://localhost/v1/leases/42/tap?screentext=true' \
+curl "$GHOSTHAND_URL/v1/leases/42/tap?screentext=true" -H "Authorization: Bearer $GHOSTHAND_TOKEN" \
   -H 'content-type: application/json' -d '{"text":"Messages"}'
 
 # 4. give the iPhone back
-curl --unix-socket $SOCK -X DELETE http://localhost/v1/leases/42
+curl -X DELETE "$GHOSTHAND_URL/v1/leases/42" -H "Authorization: Bearer $GHOSTHAND_TOKEN"
+```
+
+The `ghosthand` CLI reads the same two variables, so on another computer
+`ghosthand list`, `ghosthand acquire --reason "..."` and the rest work without flags.
+
+### In TypeScript
+
+```ts
+const url = process.env.GHOSTHAND_URL!
+const headers = { authorization: `Bearer ${process.env.GHOSTHAND_TOKEN}`, 'content-type': 'application/json' }
+
+const lease = await fetch(`${url}/v1/leases`, {
+  method: 'POST',
+  headers,
+  body: JSON.stringify({ reason: 'check the inbox', label: 'inbox-script' }),
+}).then((r) => r.json())
+
+try {
+  const tap = await fetch(`${url}/v1/leases/${lease.id}/tap?screentext=true`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ text: 'Mail' }),
+  }).then((r) => r.json())
+  console.log(tap.screen)
+} finally {
+  await fetch(`${url}/v1/leases/${lease.id}`, { method: 'DELETE', headers })
+}
 ```
 
 ## Transport and authentication
 
-The daemon always listens on the **unix socket**. Its file permissions allow only your
-user, so it needs no token. The host in the URL is ignored; use `http://localhost`.
+There are two ways to reach a daemon:
 
-The HTTP API is **local**. To reach the iPhones from anywhere, connect an agent to the
-**remote MCP server** at `https://ghosthand.dev/mcp` (OAuth, same Google account). While the
-Mac is signed in, the daemon keeps a WebSocket to ghosthand.dev and MCP calls go through it.
+| Where                     | URL                                       | Auth                      |
+| ------------------------- | ----------------------------------------- | ------------------------- |
+| **Any computer** (tunnel) | `https://ghosthand.dev/macs/<mac>`        | `Authorization: Bearer <API token>` |
+| **The Mac itself**        | unix socket `~/.ghosthand/daemon.sock`    | none: file permissions    |
 
-Start the daemon with `--port` to listen on **TCP**, for a client on your network. TCP
-requests need a bearer token, and HTTPS needs a certificate:
+**The tunnel needs no open port.** While a Mac is signed in, the daemon keeps a WebSocket
+to ghosthand.dev, so it works behind NAT and on a laptop. `ghosthand daemon status` shows
+the URL.
+
+**API tokens belong to your account** and work for every Mac of it. Manage them on a Mac:
 
 ```bash
-GHOSTHAND_TOKEN=secret ghosthand daemon start --port 7420 --host 0.0.0.0 \
-  --tls-cert cert.pem --tls-key key.pem
-
-curl https://mac.local:7420/v1/devices -H 'Authorization: Bearer secret'
+ghosthand tunnel url --new-token --name ci    # create; the id goes to stderr
+ghosthand tunnel revoke <id>                  # scripts that use it get 401 at once
 ```
 
 <Aside>
 <Warning>
-The TCP listener **rejects browser requests** (any `Origin` or `Sec-Fetch-*` header) and
-never sends CORS headers. Call it from a server or a native client.
+A token lets a script drive your iPhones like a person holding them. Store it like a
+password. Only the Mac can create or revoke tokens, so a leaked token cannot make more.
 </Warning>
 </Aside>
 
-The generated cURL examples on the endpoint pages use TCP. The **Socket** tab shows the
-same request over the unix socket, and the **CLI** tab shows the matching `ghosthand`
-command.
+**Find your Macs:** `GET https://ghosthand.dev/macs` returns every Mac of the account and
+whether it is online. The slug in the URL is the name in that list.
+
+```bash
+curl https://ghosthand.dev/macs -H "Authorization: Bearer $GHOSTHAND_TOKEN"
+# {"macs":[{"slug":"studio","name":"Studio","online":true},{"slug":"laptop","name":"Laptop","online":false}]}
+```
+
+**Limits of the tunnel:**
+
+- A request body is at most **20 MB**. For bigger files use `ghosthand upload`.
+- A Mac that is off or signed out answers `503 mac-offline`. A daemon that is restarting
+  is waited for up to 5 seconds.
+- Browser requests (`Origin` or `Sec-Fetch-Site` headers) get 403 and no CORS headers are
+  sent. Call it from a server or a native client.
+
+<Aside>
+<Info>
+**MCP agents** use `https://ghosthand.dev/mcp` (OAuth, same Google account) instead. It needs
+no token, and its lease ids carry the Mac, e.g. `studio:42`, because MCP has no URL per Mac.
+</Info>
+</Aside>
+
+The generated cURL examples on the endpoint pages use the tunnel URL. The **Socket** tab
+shows the same request over the unix socket, and the **CLI** tab shows the matching
+`ghosthand` command.
 
 ## Leases
 
@@ -99,8 +158,10 @@ runs on that iPhone.
 
 <Aside>
 <Info>
-Lease ids only increase, also across daemon restarts. A **`label`** is display text,
-not a way to resume a lease.
+**The id is a number on this API**, because the Mac is already in the URL. The CLI prints
+`42` on the Mac and `r1` on another computer (a local id that remembers the URL). Only
+remote MCP uses `studio:42`. Ids only increase, also across daemon restarts. A **`label`**
+is display text, not a way to resume a lease.
 </Info>
 </Aside>
 
@@ -125,9 +186,8 @@ One request then replaces three:
 | `screentext` | Returns the OCR text of the still screen in `screen`.               |
 
 ```bash
-curl --unix-socket ~/.ghosthand/daemon.sock \
-  'http://localhost/v1/leases/42/tap?waitText=About&screentext=true' \
-  -H 'content-type: application/json' -d '{"text":"General"}'
+curl "$GHOSTHAND_URL/v1/leases/42/tap?waitText=About&screentext=true" \
+  -H "Authorization: Bearer $GHOSTHAND_TOKEN" -H 'content-type: application/json' -d '{"text":"General"}'
 ```
 
 <Aside>
@@ -143,7 +203,7 @@ An input can wait up to **300 s** while the iPhone pairs or reconnects over Blue
 Send `Accept: text/event-stream` to get progress on the same request:
 
 ```bash
-curl -N --unix-socket ~/.ghosthand/daemon.sock http://localhost/v1/leases/42/tap \
+curl -N "$GHOSTHAND_URL/v1/leases/42/tap" -H "Authorization: Bearer $GHOSTHAND_TOKEN" \
   -H 'accept: text/event-stream' -H 'content-type: application/json' \
   -d '{"x":207,"y":448}'
 ```
@@ -179,8 +239,8 @@ Switch on **`code`**; `detail` tells a person or an agent what to do next.
 | Code                     | Status | Meaning                                                     |
 | ------------------------ | ------ | ----------------------------------------------------------- |
 | `invalid-request`        | 400    | The body or a parameter is wrong. Nothing was sent.         |
-| `unauthorized`           | 401    | TCP request without the right bearer token.                 |
-| `permission-denied`      | 403    | Browser request, Camera access denied, or remote `executable`. |
+| `unauthorized`           | 401    | Tunnel request without a valid API token.                   |
+| `permission-denied`      | 403    | Browser request, Camera access denied, or a unix-socket-only route called through the tunnel. |
 | `lease-invalid`          | 403    | The lease is unknown, expired, released or forced away.     |
 | `not-found`              | 404    | No such route.                                              |
 | `device-not-found`       | 404    | No iPhone matches `device`.                                 |
@@ -195,6 +255,8 @@ Switch on **`code`**; `detail` tells a person or an agent what to do next.
 | `recording-active`       | 409    | The iPhone is already recording.                            |
 | `daemon-busy`            | 409    | Restart with `ifIdle` while a lease is active.              |
 | `cancelled`              | 499    | The client closed the stream.                               |
+| `mac-offline`            | 503    | The Mac in the tunnel URL is off, signed out or not connected. |
+| `tunnel-error`           | 502    | The tunnel lost the connection to the Mac mid-request. Try again. |
 | `internal-error`         | 500    | A bug in the daemon. The detail has the cause.              |
 | `recording-failed`       | 500    | The video writer failed, for example a full disk.           |
 | `bluetooth-unavailable`  | 503    | Bluetooth is off or not allowed on the Mac.                 |
@@ -214,5 +276,5 @@ typed client from it with any OpenAPI generator. The Swift CLI is built from the
 with swift-openapi-generator.
 
 ```bash
-curl --unix-socket ~/.ghosthand/daemon.sock http://localhost/v1/openapi.yaml > ghosthand.yaml
+curl "$GHOSTHAND_URL/v1/openapi.yaml" -H "Authorization: Bearer $GHOSTHAND_TOKEN" > ghosthand.yaml
 ```

@@ -224,7 +224,7 @@ export const oauthRefreshToken = s.sqliteTable('oauth_refresh_token', {
   token: s.text('token').notNull().unique(),
   clientId: s.text('client_id').notNull().references(() => oauthClient.clientId),
   sessionId: s.text('session_id').references(() => session.id, { onDelete: 'set null' }),
-  userId: s.text('user_id').notNull().references(() => user.id),
+  userId: s.text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   referenceId: s.text('reference_id'),
   authorizationCodeId: s.text('authorization_code_id'),
   resources: s.text('resources', { mode: 'json' }).$type<string[]>(),
@@ -251,12 +251,12 @@ export const oauthAccessToken = s.sqliteTable('oauth_access_token', {
   token: s.text('token').unique(),
   clientId: s.text('client_id').notNull().references(() => oauthClient.clientId),
   sessionId: s.text('session_id').references(() => session.id, { onDelete: 'set null' }),
-  userId: s.text('user_id').references(() => user.id),
+  userId: s.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: s.text('reference_id'),
   authorizationCodeId: s.text('authorization_code_id'),
   resources: s.text('resources', { mode: 'json' }).$type<string[]>(),
   requestedUserInfoClaims: s.text('requested_user_info_claims', { mode: 'json' }).$type<string[]>(),
-  refreshId: s.text('refresh_id').references(() => oauthRefreshToken.id),
+  refreshId: s.text('refresh_id').references(() => oauthRefreshToken.id, { onDelete: 'cascade' }),
   expiresAt: s.integer('expires_at', { mode: 'timestamp_ms' }),
   createdAt: s.integer('created_at', { mode: 'timestamp_ms' }).$defaultFn(() => new Date()),
   revoked: s.integer('revoked', { mode: 'timestamp_ms' }),
@@ -273,7 +273,7 @@ export const oauthAccessToken = s.sqliteTable('oauth_access_token', {
 export const oauthConsent = s.sqliteTable('oauth_consent', {
   id: s.text('id').primaryKey().$defaultFn(() => ulid()),
   clientId: s.text('client_id').notNull().references(() => oauthClient.clientId),
-  userId: s.text('user_id').references(() => user.id),
+  userId: s.text('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: s.text('reference_id'),
   resources: s.text('resources', { mode: 'json' }).$type<string[]>(),
   requestedUserInfoClaims: s.text('requested_user_info_claims', { mode: 'json' }).$type<string[]>(),
@@ -346,7 +346,7 @@ export const subscription = s.sqliteTable('subscription', {
 
 export const relations = defineRelations(
   {
-    user, session, account, verification, deviceCode,
+    user, session, account, verification, deviceCode, apikey,
     jwks, oauthClient, oauthResource, oauthClientResource, oauthRefreshToken, oauthAccessToken, oauthConsent, oauthClientAssertion,
     org, orgMember, stripeCustomer, subscription,
   },
@@ -354,10 +354,43 @@ export const relations = defineRelations(
     user: {
       sessions: r.many.session(),
       accounts: r.many.account(),
+      deviceCodes: r.many.deviceCode(),
+      apikeys: r.many.apikey(),
+      oauthClients: r.many.oauthClient(),
+      oauthRefreshTokens: r.many.oauthRefreshToken(),
+      oauthAccessTokens: r.many.oauthAccessToken(),
+      oauthConsents: r.many.oauthConsent(),
       memberships: r.many.orgMember(),
+    },
+    session: {
+      user: r.one.user({ from: r.session.userId, to: r.user.id }),
+      oauthRefreshTokens: r.many.oauthRefreshToken(),
+      oauthAccessTokens: r.many.oauthAccessToken(),
+    },
+    account: {
+      user: r.one.user({ from: r.account.userId, to: r.user.id }),
+    },
+    deviceCode: {
+      user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
+    },
+    apikey: {
+      user: r.one.user({ from: r.apikey.referenceId, to: r.user.id }),
     },
     oauthClient: {
       user: r.one.user({ from: r.oauthClient.userId, to: r.user.id }),
+      resources: r.many.oauthResource({
+        from: r.oauthClient.clientId.through(r.oauthClientResource.clientId),
+        to: r.oauthResource.identifier.through(r.oauthClientResource.resourceId),
+      }),
+      refreshTokens: r.many.oauthRefreshToken(),
+      accessTokens: r.many.oauthAccessToken(),
+      consents: r.many.oauthConsent(),
+    },
+    oauthResource: {
+      clients: r.many.oauthClient({
+        from: r.oauthResource.identifier.through(r.oauthClientResource.resourceId),
+        to: r.oauthClient.clientId.through(r.oauthClientResource.clientId),
+      }),
     },
     oauthClientResource: {
       client: r.one.oauthClient({ from: r.oauthClientResource.clientId, to: r.oauthClient.clientId }),
@@ -366,23 +399,18 @@ export const relations = defineRelations(
     oauthRefreshToken: {
       client: r.one.oauthClient({ from: r.oauthRefreshToken.clientId, to: r.oauthClient.clientId }),
       user: r.one.user({ from: r.oauthRefreshToken.userId, to: r.user.id }),
+      session: r.one.session({ from: r.oauthRefreshToken.sessionId, to: r.session.id }),
+      accessTokens: r.many.oauthAccessToken(),
     },
     oauthAccessToken: {
       client: r.one.oauthClient({ from: r.oauthAccessToken.clientId, to: r.oauthClient.clientId }),
       user: r.one.user({ from: r.oauthAccessToken.userId, to: r.user.id }),
+      session: r.one.session({ from: r.oauthAccessToken.sessionId, to: r.session.id }),
+      refreshToken: r.one.oauthRefreshToken({ from: r.oauthAccessToken.refreshId, to: r.oauthRefreshToken.id }),
     },
     oauthConsent: {
       client: r.one.oauthClient({ from: r.oauthConsent.clientId, to: r.oauthClient.clientId }),
       user: r.one.user({ from: r.oauthConsent.userId, to: r.user.id }),
-    },
-    session: {
-      user: r.one.user({ from: r.session.userId, to: r.user.id }),
-    },
-    account: {
-      user: r.one.user({ from: r.account.userId, to: r.user.id }),
-    },
-    deviceCode: {
-      user: r.one.user({ from: r.deviceCode.userId, to: r.user.id }),
     },
     org: {
       members: r.many.orgMember(),

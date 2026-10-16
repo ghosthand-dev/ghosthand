@@ -14,7 +14,8 @@
     "secrets:preview": "sigillo secrets download -c preview --format env | wrangler secret bulk --env preview",
     "secrets:prod": "sigillo secrets download -c prod --format env | wrangler secret bulk --env=\"\"",
     "deploy": "pnpm db:migrate:preview && tsc && CLOUDFLARE_ENV=preview vite build && wrangler deploy --env preview",
-    "deploy:prod": "pnpm db:migrate:prod && tsc && vite build && wrangler deploy"
+    "deploy:prod": "pnpm db:migrate:prod && tsc && vite build && wrangler deploy",
+    "generate-docs": "bun scripts/generate-docs.ts"
   },
   "dependencies": {
     "@better-auth/api-key": "1.7.7",

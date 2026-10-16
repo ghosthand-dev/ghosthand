@@ -1,0 +1,52 @@
+---
+$schema: https://holocron.so/frontmatter.json
+title: "MCP server to control an iPhone from any agent"
+sidebarTitle: "Overview"
+description: "Add ghosthand.dev/mcp to Claude Code, Cursor or opencode and drive your iPhones with the same commands as the CLI."
+icon: lucide:plug
+prompt: |
+  Write the MCP overview from @/README.md (MCP server section), @/Sources/ghosthand/mcp.swift
+  and @/website/src/tunnel.ts. Cover connecting a client, leases across Macs and how tools map to CLI commands.
+---
+
+Every CLI command is an **MCP tool** with the same name and the same help text. Agents without a
+shell (Claude Code, Cursor, opencode, claude.ai) can lease an iPhone, read the screen and tap.
+
+![Remote MCP: the MCP client signs in once with OAuth and sends POST /mcp to the account hub on ghosthand.dev. The hub routes each call over the WebSocket tunnel to the Mac named by the lease prefix (studio:42), whose Controller and leases drive the iPhone over Bluetooth and USB. Each Mac also uses USB lockdown services and ImageCaptureCore.](/assets/diagram-remote-mcp.svg)
+
+## Connect a client
+
+Add the server URL to any client that supports **streamable HTTP**. The client signs in with the
+same Google account as your Macs.
+
+```bash
+claude mcp add --transport http ghosthand https://ghosthand.dev/mcp
+```
+
+```json
+// opencode.json
+{ "mcp": { "ghosthand": { "type": "remote", "url": "https://ghosthand.dev/mcp" } } }
+// .cursor/mcp.json
+{ "mcpServers": { "ghosthand": { "url": "https://ghosthand.dev/mcp" } } }
+```
+
+## How tools map to the CLI
+
+| CLI | MCP |
+| --- | --- |
+| `ghosthand file push` | tool `file-push` (words joined by `-`) |
+| `-l 42` | `lease: "studio:42"` |
+| `--wait-text`, `--timeout-ms` | `waitText`, `timeoutMs` |
+| `--screenshot`, `--screentext` | `screenshot: true`, `screentext: true` (images come back as image content) |
+
+## Several Macs
+
+The tools reach every Mac signed in to your account. `list` shows each iPhone under its Mac.
+When more than one Mac is online, pass `mac` (the slug from `list`) to `acquire`, `wait`,
+`setup` and `setup-status`. Leases look like `studio:42`; pass them exactly as `acquire` printed
+them, because the prefix picks the Mac.
+
+## Tools
+
+Each page below is generated from the daemon, so it is the exact text your agent sees. The
+[CLI reference](/docs/cli/overview) has the same commands with every flag.

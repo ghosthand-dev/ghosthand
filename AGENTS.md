@@ -106,6 +106,21 @@ acquire ──> Account.authorizeLease() ──GET /api/cli/account──> plan 
 - Orgs: identity (sessions, OAuth tokens) belongs to the user; the plan, the trial (`org.createdAt`) and the Mac hub (`getHub(orgId)`) belong to the org. A signup hook creates a personal org with `org_id = user.id`. Always resolve it with `getPersonalOrg(userId)` (through `org_member`); never pass a user id as an org id, or team orgs break later.
 - Website: `db/` has the D1 schema (drizzle). Stripe rows store their Stripe account id; today the account is shared with Playwriter (sigillo project `website` in the `ghosthand` org).
 
+# CLI and MCP docs (website)
+
+The website's CLI and MCP tabs are generated from the binary, never written by hand:
+
+```
+ghosthand docs-json <file> (main.swift: docsJSON) ──> website/scripts/generate-docs.ts
+   ├─> website/src/docs/cli/*.md   one page per command (frontmatter, usage, options, details)
+   ├─> website/docs.jsonc          CLI tab groups, between the // cli-pages markers
+   └─> website/mcp-tools.json      MCP tab, read by holocron (tools/list shape)
+```
+
+- Run `pnpm generate-docs` in website/ after changing any command, option, help text or MCP tool, and commit the output.
+- A new command lands in the "Other" group until you add it to `groups` in the script.
+- `docs-json` never needs a daemon or an iPhone. It writes to a file because opening the state DB logs to stdout.
+
 # Demo videos
 
 `demo-video/` is a Remotion package for 16:9 promo videos: a ghosthand screen recording (left) next to an animated Claude Code style terminal (right). Record with `record start` plus a `log.jsonl` of every command, then `scripts/prepare.ts` speeds up the recording and writes `timeline.json`. Read `demo-video/README.md` first.

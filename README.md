@@ -38,15 +38,7 @@ npx ghosthand record start demo.mov           # screen + sound; keep acting mean
 npx ghosthand record stop
 ```
 
-```diagram
-agent / CLI / curl                       Mac                                  iPhone
-      │                     ┌───────────────────────┐   USB screen capture
-      │  HTTP (unix socket) │                       │<─────────────────── screen frames
-      └────────────────────>│   ghosthand daemon    │
-                            │  OCR · leases · state │   Bluetooth Classic HID
-                            │                       │──────────────────> AssistiveTouch
-                            └───────────────────────┘   mouse + keyboard   pointer, keys
-```
+![Architecture: coding agents call the ghosthand CLI over HTTP, MCP clients go through the ghosthand.dev hub and a tunnel. Both reach the Controller in the daemon (leases, OCR, state.db), which taps and types through the Bluetooth driver, reads the screen through USB capture, and uses USB lockdown for files, photos and apps. XCTest driver is optional.](/assets/diagram-architecture.svg)
 
 ## Features
 
@@ -1078,6 +1070,10 @@ error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames si
 - Two iPhones with the same name both show up as `... Camera`. Only the one on USB has a screen entry.
 
 ## How the Mac becomes a mouse
+
+A `tap --text "Settings"` from command to touch: OCR finds the text on the last USB frame, the Controller converts its center to screen fractions, and the Bluetooth driver sends the HID click.
+
+![tap --text flow: CLI to the daemon HTTP route, Controller runs OCR on the latest USB frame and converts the center to 0..1 fractions, BluetoothDriver sends a HID click to AssistiveTouch on the iPhone.](/assets/diagram-tap-flow.svg)
 
 The daemon publishes a **Bluetooth Classic HID** service, the same profile a real Bluetooth keyboard uses. macOS has no public API to be a Classic HID device, so it uses CoreBluetooth's private `CBClassicManager` (`Sources/ClassicBluetooth`).
 

@@ -2,6 +2,16 @@
 
 ## 0.7.0
 
+0. **Scripts on any computer: the HTTP API through the tunnel. Breaking: the TCP listener is gone.** While a Mac is signed in, its API is at `https://ghosthand.dev/macs/<mac>/v1/...`, with an API token. No port, no TLS files:
+
+   ```bash
+   ghosthand tunnel url --new-token --name ci   # prints export lines for GHOSTHAND_URL and GHOSTHAND_TOKEN
+   curl -H "Authorization: Bearer $GHOSTHAND_TOKEN" $GHOSTHAND_URL/v1/devices
+   ghosthand tunnel revoke <id>
+   ```
+
+   Removed: `daemon start --port/--host/--tls-cert/--tls-key/--token` and `--ca` / `GHOSTHAND_CA`. Use `tunnel url`. Lease ids: bare number on the CLI and HTTP API (`r1` on another computer), `studio:42` over MCP only.
+
 1. **Breaking: commands are grouped under subcommands.** Update scripts. MCP tool names stay dash-joined (`file-push`):
 
    | before                        | after                           |

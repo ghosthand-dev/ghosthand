@@ -3,7 +3,7 @@
 - `.passcode` is stale. Never read, print, upload, or commit its contents. Use only a user-confirmed Sigillo `IPHONE_PASSCODE` if unlocking is needed; never print secrets or put them in command arguments.
 - Take a lease first: `.build/debug/ghosthand acquire --label <session id> --reason "<task>"` prints a short ID, e.g. `42`. Pass `-l 42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `GHOSTHAND_LEASE`.
 - Always pass `--reason` with your task. If another session holds it, acquire fails and shows its reason and last command: give up or tell the user, or run `ghosthand wait --reason "<task>" --timeout 600`. Never `--force`. The label is only display text; it does not resume a lease. Leave the phone unlocked and run `ghosthand release -l 42` when done.
-- Do not delete or restore `state.db`: its persistent counter prevents old lease IDs from controlling new leases. Lease numbers are coordination IDs, not remote authentication; TCP requires the daemon bearer token.
+- Do not delete or restore `state.db`: its persistent counter prevents old lease IDs from controlling new leases. Lease numbers are coordination IDs, not remote authentication; the tunnel requires an API token.
 - For secret text, pipe directly to `ghosthand type -l 42 --stdin`. One final LF or CRLF is removed; other whitespace is preserved. Validate focus first, and never repeat input automatically after a verification timeout.
 - Check the iPhone with `ghosthand list` before input. A wrong passcode is not retried because failed attempts count toward lockout.
 - Read `docs/system-dialogs.md` before diagnosing untappable system alerts: App Store can show Resume during an active download; hidden capture does not prove rejected input.
@@ -23,13 +23,13 @@ When you find a new limit or a rule while testing on a real iPhone, add it to th
 The daemon has two thin front ends over the same `Controller` calls. Keep them equal:
 
 ```
-ghosthand CLI (main.swift) ──HTTP /v1/... (api.swift, openapi.yaml), unix socket or TCP──────┐
+ghosthand CLI (main.swift) ──HTTP /v1/... (api.swift, openapi.yaml), unix socket──────────────┐
                                                                                              ├──> Controller
-MCP client ──POST ghosthand.dev/mcp (OAuth)──> per-user hub (website/src/tunnel.ts) ──WS──> │
-           tunnel.sock ──POST /mcp (MCPServer, mcp.swift)───────────────────────────────────┘
+MCP client ──POST ghosthand.dev/mcp (OAuth)──────────> per-user hub (website/src/tunnel.ts) ──WS──> │
+script ──ghosthand.dev/macs/<mac>/v1/... (API token)─>    tunnel.sock ──/mcp (MCPServer), /v1 (API)──┘
 ```
 
-MCP is remote only: the daemon keeps a WebSocket to ghosthand.dev while the Mac is signed in (`tunnel.swift`, authenticated by the Mac's session token). The hub routes each call to one Mac by the lease prefix (`studio:42`) or the `mac` argument, and joins `list` from all Macs. The protocol and the tools live in the daemon; the hub only routes.
+There is no TCP listener. Remote access is only the tunnel: the daemon keeps a WebSocket to ghosthand.dev while the Mac is signed in (`tunnel.swift`, authenticated by the Mac's session token). The hub routes MCP calls to one Mac by the lease prefix (`studio:42`) or the `mac` argument, and joins `list` from all Macs. Scripts call the daemon API at `/macs/<mac>/v1/...` with an API token (`ghosthand tunnel url --new-token`, better-auth api-key plugin); the Mac is in the URL, so REST lease ids stay `42` and only MCP ids carry the Mac. Token routes (`/v1/tunnel/tokens`) work on the unix socket only. The protocol and the tools live in the daemon; the hub only authenticates and routes.
 
 - **Logic goes in the daemon**, never in a front end. If the CLI or a tool needs OCR, polling, retries or matching, add it to `Controller` and expose it on the HTTP route, so both front ends share it. The CLI and MCP tools only parse arguments, call routes or `Controller` methods, and format results; selection, sorting, waiting and retries stay in the daemon (`photo pull` asks the daemon for the newest photos, then downloads each). Formatters both use (`fileLines`, `appLines`, `deviceInfoLines`) live in `api.swift`.
 - **One manual for both.** MCP tool descriptions and instructions are built from the CLI help (`mcpDocs()` in `main.swift`): `description`, `details`, option names, `examples`, `agentLoopHelp`. Write help text there, never a second copy in `mcp.swift`.

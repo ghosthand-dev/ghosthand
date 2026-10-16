@@ -6,6 +6,8 @@
 // gets from the device flow (deviceAuthorization plugin, see cli-api.ts).
 // Remote MCP clients get OAuth access tokens instead: mcp() is the OAuth provider,
 // jwt() signs resource-bound tokens, cimd() loads clients from their metadata URL.
+// API tokens (api-key plugin, prefix ghk_) are for scripts that call the HTTP API through
+// the Mac tunnel (tunnel.ts): the daemon mints them with its session, hub checks them.
 // A signup hook creates the user's personal org: it owns the plan, trial and Mac hub.
 
 import { env } from 'cloudflare:workers'
@@ -13,6 +15,7 @@ import { drizzle } from 'drizzle-orm/d1'
 import * as schema from 'db/schema'
 import { betterAuth } from 'better-auth/minimal'
 import { bearer, deviceAuthorization, jwt } from 'better-auth/plugins'
+import { apiKey } from '@better-auth/api-key'
 import { mcp } from '@better-auth/mcp'
 import { cimd } from '@better-auth/cimd'
 import { drizzleAdapter } from 'better-auth-drizzle-adapter'
@@ -57,6 +60,8 @@ export function getAuth() {
     plugins: [
       deviceAuthorization({ verificationUri: '/device', expiresIn: '15m', interval: '2s' }),
       bearer(),
+      // Rate limits are off: a script drives an iPhone with many calls.
+      apiKey({ defaultPrefix: 'ghk_', rateLimit: { enabled: false }, maximumNameLength: 64 }),
       jwt({ disableSettingJwtHeader: true }),
       mcp({ loginPage: '/login', consentPage: '/consent', resource: getMcpResource() }),
       cimd({ fetchClientMetadataResource: fetchCimdOnWorkers, metadataProfile: 'mcp-2026-07-28' }),
@@ -93,6 +98,14 @@ export async function getSessionStrict(request: Pick<Request, 'headers'>): Promi
     sessionId: result.session.id,
     user: { id: user.id, name: user.name, email: user.email, image: user.image ?? null, createdAt: new Date(user.createdAt) },
   }
+}
+
+/** The user id behind `Authorization: Bearer ghk_...`, or null. */
+export async function verifyApiToken(request: Pick<Request, 'headers'>): Promise<string | null> {
+  const key = request.headers.get('authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1]
+  if (!key?.startsWith('ghk_')) return null
+  const result = await getAuth().api.verifyApiKey({ body: { key } })
+  return result.valid ? (result.key?.referenceId ?? null) : null
 }
 
 export async function requireSession(request: Pick<Request, 'headers'>): Promise<Session> {

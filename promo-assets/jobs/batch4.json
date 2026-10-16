@@ -1,0 +1,6 @@
+[
+ {"id":"ui-messages-scroll","aspect":"9:16","images":["ui/messages-group.png"],"prompt":"Static front-on flat phone screen recording. The group chat is visible, a new message from Tom appears, then a small translucent grey tap dot taps the Hog Island Oyster Co. location card. UI stays crisp and flat, no camera motion, no phone frame."},
+ {"id":"ui-waymo-request","aspect":"9:16","images":["ui/waymo-booking.png"],"prompt":"Static front-on flat phone screen recording. The map route is visible, a small translucent grey tap dot taps the black Request Waymo button and the button shows a loading state. UI stays crisp and flat, no camera motion, no phone frame."},
+ {"id":"ui-waymo-confirmed","aspect":"9:16","images":["ui/waymo-confirmed.png"],"prompt":"Static front-on flat phone screen recording. The white car icon slowly moves along the route toward the pin on the map, the green check pulses once. UI stays crisp and flat, no camera motion, no phone frame."},
+ {"id":"ui-messages-scroll-b","aspect":"9:16","images":["ui/messages-group.png"],"prompt":"Static flat phone screen recording. The chat scrolls up slightly as a reply arrives, a translucent grey tap dot taps the map card. Crisp UI, no camera motion, no phone frame."}
+]

@@ -1,6 +1,8 @@
 import { Composition, registerRoot } from 'remotion'
 import { AgentDemo, demoSchedule, type AgentDemoProps, type PlanItem } from './scene.tsx'
 import type { Timeline } from './timeline.ts'
+import { AgentChips, EndCard, IconOrbit, IconRow, LogoPop, PromptCard, SplitFrame, TapDot } from './promo-graphics.tsx'
+import { Shot1Hook, Shot2Intro, Shot3Demo, Shot4Multi, Shot6Anything, Shot7End } from './promo-shots.tsx'
 import tiktok from '../public/tiktok/timeline.json'
 import tiktokWarmup from '../public/tiktok-warmup/timeline.json'
 
@@ -56,6 +58,20 @@ function Root() {
           defaultProps={{ ...defaults, timeline, plan }}
         />
       ))}
+      <Composition id="gfx-icon-orbit" component={IconOrbit} fps={FPS} width={1920} height={1080} durationInFrames={90} defaultProps={{ names: ['Instagram', 'TikTok', 'Spotify', 'Gmail', 'Uber', 'LinkedIn', 'Airbnb', 'Slack'] }} />
+      <Composition id="gfx-icon-row" component={IconRow} fps={FPS} width={1920} height={1080} durationInFrames={90} defaultProps={{ names: ['WhatsApp', 'Reddit', 'Instagram', 'TikTok'] }} />
+      <Composition id="gfx-logo-pop" component={LogoPop} fps={FPS} width={1920} height={1080} durationInFrames={60} />
+      <Composition id="gfx-agent-chips" component={AgentChips} fps={FPS} width={1920} height={1080} durationInFrames={75} />
+      <Composition id="gfx-split-frame" component={SplitFrame} fps={FPS} width={1920} height={1080} durationInFrames={Math.round(12.7 * FPS)} defaultProps={{ left: 'ghosthand on your Mac', right: 'Your iPhone', total: 38, speed: 3 }} />
+      <Composition id="gfx-end-card" component={EndCard} fps={FPS} width={1920} height={1080} durationInFrames={90} defaultProps={{ url: 'ghosthand.dev' }} />
+      <Composition id="gfx-prompt-card" component={PromptCard} fps={FPS} width={1920} height={1080} durationInFrames={150} defaultProps={{ prompt: 'order me a Waymo to the restaurant Tom sent in the group chat' }} />
+      <Composition id="shot1-hook" component={Shot1Hook} fps={FPS} width={1920} height={1080} durationInFrames={129} defaultProps={{ src: 'promo/g-desk-hero-edit-push.mp4' }} />
+      <Composition id="shot2-intro" component={Shot2Intro} fps={FPS} width={1920} height={1080} durationInFrames={153} />
+      <Composition id="shot3-demo" component={Shot3Demo} fps={FPS} width={1920} height={1080} durationInFrames={285} defaultProps={{ phones: ['promo/ui-messages-scroll.mp4', 'promo/ui-waymo-request.mp4', 'promo/ui-waymo-confirmed.mp4'], total: 38, speed: 4 }} />
+      <Composition id="shot4-multi" component={Shot4Multi} fps={FPS} width={1920} height={1080} durationInFrames={138} />
+      <Composition id="shot6-anything" component={Shot6Anything} fps={FPS} width={1920} height={1080} durationInFrames={198} />
+      <Composition id="shot7-end" component={Shot7End} fps={FPS} width={1920} height={1080} durationInFrames={93} />
+      <Composition id="gfx-tap-dot" component={TapDot} fps={FPS} width={400} height={400} durationInFrames={45} />
     </>
   )
 }

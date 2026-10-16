@@ -71,7 +71,7 @@ The setup window waits on this step and continues by itself after the restart.
 
 ### 3. Choose XCTest
 
-From the setup window (the choice is hidden by default):
+From the setup window. It shows the choice once Developer Mode is on; before that, open it with:
 
 ```bash
 ghosthand setup --xctest

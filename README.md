@@ -754,7 +754,7 @@ ghosthand control -l 42 xctest      # builds WebDriverAgent once (1-3 min), then
 ghosthand control -l 42 bluetooth   # back to the default
 ```
 
-The setup window shows the choice only with `ghosthand setup --xctest`. Details: [docs/xctest-mode.md](docs/xctest-mode.md).
+The setup window shows the choice for iPhones with Developer Mode on. For others, open it with `ghosthand setup --xctest`. Details: [docs/xctest-mode.md](docs/xctest-mode.md).
 
 ## Alternatives
 

@@ -37,6 +37,9 @@ Wi-Fi is not (macOS gives its screen only over USB). Each line:
   list warns. Plug them in one at a time once.
 When no phone is found, the error says why per phone: not on USB, not trusted
 (unlock it and tap Trust), or locked.
+- Warning "macOS screen capture does not list it": a trusted iPhone was locked or
+  untrusted when plugged in. Tell the user to replug its cable. Without a person,
+  `ghosthand daemon restart` also fixes it (all screen capture stops for a few seconds).
 - No iPhone listed, or one that is not trusted or paired: run `ghosthand setup` once.
   Tell the user to complete setup in the small Ghosthand window. Do not interact
   with it. Poll `ghosthand setup status` every 2 seconds until ready is true.

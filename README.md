@@ -1030,7 +1030,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 - **No verified global Back command.** `key home` goes Home; `key esc` sends Escape. Neither is a promise of Back in Settings or Safari. AC Back (Consumer usage `0x0224`) is not exposed because reliable iOS behavior has not been verified. Descriptors are unchanged.
 - **Screen off:** no frames. `unlock` tries to wake a locked iPhone; USB capture may still return no frame. An unlocked one with the screen off needs a tap from you.
 - **Several new iPhones with one name**, plugged in together, cannot be matched to their USB data. Plug them in one at a time once (see [More iPhones](#more-iphones)).
-- **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper.
+- **Many fast daemon restarts** can hide the iPhones for about a minute. macOS throttles the screen capture helper (see [The startup timer](#the-startup-timer)).
 - **About 7 iPhones per Mac**, set by Bluetooth, not by ghosthand. Only 2 tested. See [How many iPhones per Mac](#how-many-iphones-per-mac).
 - **The cable must stay in.** Screenshots only come over USB; a phone on Bluetooth or Wi-Fi alone is not listed.
 - **Typing is US-ASCII only**: no accents or emoji. There is no length limit.
@@ -1145,6 +1145,45 @@ tap:    computed reports from the last known spot ──> 100 ms pause ──> c
 - A macOS update can change any of these.
 
 </details>
+
+## How the USB screen is captured
+
+**macOS shows each USB iPhone as a camera** once a process sets the CoreMediaIO flag `kCMIOHardwarePropertyAllowScreenCaptureDevices` (QuickTime uses the same path). launchd then starts `iOSScreenCaptureAssistant`, a macOS helper that sets up each USB iPhone, and AVFoundation lists it. Only the daemon sets the flag: the helper exits with its last client.
+
+```diagram
+daemon ──sets CMIO flag──> launchd ──starts──> iOSScreenCaptureAssistant
+                                                 │ sets up each USB iPhone once, on attach
+                                                 v
+daemon <──────────── one AVCaptureDevice per iPhone (frames) ──── AVFoundation
+```
+
+### The startup timer
+
+**The helper sets up an iPhone only once and never retries.** After a quick daemon restart this can fail in two ways:
+
+- **No iPhone listed:** the new helper started while launchd still throttled the old one.
+- **Only some listed:** the old helper's USB teardown disconnected some iPhones while the new one set them up (`kAMDDeviceDisconnectedError` in its log). Seen with 4 iPhones; the control plane then says "Screen capture does not show this iPhone yet".
+
+Setting the flag again does not help; only a fresh helper does. So after start the daemon runs a timer every 5.5 s:
+
+```diagram
+tick ──> every trusted, unlocked USB iPhone listed? ──yes──> stop the timer (usually 1st tick)
+          │
+          ├── none listed ──────────────> flag off (helper exits), next tick on (fresh helper)
+          │
+          └── some missing on 2 ticks ──> same restart, at most 3 times,
+              in a row (11 s)              then log which iPhones are still missing
+```
+
+- **Nothing waits for it.** The API answers at once; listed iPhones work at once.
+- **A restart costs about 11 s** and stops capture of every iPhone meanwhile. That is why a partial list gets only 3.
+- **After the timer stops, nothing restarts the helper.** An iPhone plugged in locked or untrusted stays missing: `list` warns, the log says `screen capture does not list <name>`, and a replug fixes it.
+
+```text
+screen capture does not list iPhone, restarting the screen capture helper
+screen capture devices on again
+screen capture lists iPhone, Naomi’s iPhone, Morse’s iPhone, iPhone XR Tommy
+```
 
 ## How a phone is found
 

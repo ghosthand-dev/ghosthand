@@ -133,7 +133,7 @@ export function HeroSection() {
             </svg>
             {copied ? 'Copied' : 'Copy setup prompt'}
           </button>
-          <p className='rounded-xl bg-background/50 px-3 py-1.5 text-sm text-muted-foreground backdrop-blur-md'>
+          <p className='rounded-xl bg-background/50 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur-md'>
             Paste the prompt into your agent to set up ghosthand
           </p>
         </div>

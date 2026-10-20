@@ -37,7 +37,10 @@ The button goes down, stays still for --duration, then goes up. Same targets as 
 - Links, photos, messages, buttons with menus: context menu or preview.
 - A button that ignored `tap`: read the screen, then press it once more (tap or
   `hold --duration 400`). A just-opened alert can ignore the first press; the second
-  worked every time in tests, with tap, hold or swipe alike.
+  worked in the iOS 18 alert tests, with tap, hold or swipe alike.
+- Still blocked: try `hold --duration 5000` at verified coordinates, then check the
+  result. On an SE2, iOS 26.5.2, Apple Account's Do Not Sign Out accepted this after
+  taps and 1500...2500 ms holds failed. One success; duration is not a proven cause.
 - To move the item after the long press (reorder icons or rows), use `hold-drag`.
 
 ## Examples

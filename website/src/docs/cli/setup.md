@@ -52,8 +52,7 @@ offers a prompt to copy for an agent.
   allowed. It never requests permission by itself.
 Detaches at once, so the terminal is free and the window stays open after the
 command exits. `dashboard` and `setup` share one process: running either again shows its
-window. Starts the daemon when needed. Uses only the default local daemon: remove
---url and --token, and unset GHOSTHAND_URL and GHOSTHAND_TOKEN.
+window. Starts the daemon when needed.
 
 ## Examples
 

@@ -33,7 +33,7 @@ Missing permissions, no phone, and incomplete setup are normal JSON results, not
   on later polls so a cable change cannot switch your target. When ready, acquire
   that phone with its captureId from overview (the id shown by list).
 - All actions in the Ghosthand app window are user-only. Agents must not interact with the window or complete setup for the user. Poll `ghosthand setup status` (MCP: setup-status) every 2 seconds until ready is true. Pass --device (MCP: device) for the intended iPhone if known or if several are connected; use the returned device id on later polls. When ready, acquire that phone using its captureId from overview. Wait while the user completes setup, then continue automatically when ready. Do not reopen setup, request permissions, or retry input while waiting. If setup is still incomplete after 10 minutes, report the current status instead of retrying forever.
-- Works with remote daemons through --url; setup itself opens on the daemon's Mac.
+- This Mac only: setup of an iPhone on another Mac happens on that Mac.
 
 ## Examples
 

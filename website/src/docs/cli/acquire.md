@@ -31,16 +31,16 @@ file, photo, app, info, logs, restart, shutdown) needs a lease and runs on its
 iPhone; list and `random list` do not. -d picks the iPhone here only.
 - Always pass --reason with the task you need the iPhone for. Other agents read it
   to decide if they wait or give up.
-- stdout is only a short numeric ID, e.g. 42. Pass -l 42 on every device command.
+- stdout is only the lease ID, e.g. 42. Pass -l 42 on every device command.
   Tool-call environments may not persist. Do not rely on an exported lease.
+- An iPhone on another Mac of the account (see `list`) gives an ID with its Mac,
+  e.g. studio:42. Pass it exactly so; this Mac's daemon sends each command there
+  through ghosthand.dev. Without -d, a Mac with no iPhone takes the account's only one.
 - IDs increase in state.db and are never reused there. Do not delete or restore
   state.db: that resets the counter. --label is only display text, not proof of
   ownership; acquiring again with the same label does not resume an active lease.
-- Lease numbers are not authentication. A tunnel URL still needs its API token.
-- CLI on another computer (--url from `tunnel url`): stdout is a local id like r1.
-  It remembers the URL and token in ~/.ghosthand/remote-leases.json, so later commands
-  need only -l r1, never --url again. release forgets it.
-- Over MCP the id carries the Mac, e.g. studio:42: pass it exactly as acquire returned it.
+- Lease numbers are not authentication. The tunnel needs an account token.
+- Over MCP the id always carries the Mac, e.g. studio:42: pass it exactly as acquire returned it.
 - The lease ends by itself after --idle-timeout seconds without a command, so a
   crashed agent never blocks the phone. Run `ghosthand release -l 42` when done.
 - acquire turns AssistiveTouch on over USB (the pointer for tap and swipe) if it

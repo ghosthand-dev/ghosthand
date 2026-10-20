@@ -29,7 +29,16 @@ MCP client ──POST ghosthand.dev/mcp (OAuth)──────────> p
 script ──ghosthand.dev/macs/<mac>/v1/... (API token)─>    tunnel.sock ──/mcp (MCPServer), /v1 (API)──┘
 ```
 
-There is no TCP listener. Remote access is only the tunnel: the daemon keeps a WebSocket to ghosthand.dev while the Mac is signed in (`tunnel.swift`, authenticated by the Mac's session token). The hub routes MCP calls to one Mac by the lease prefix (`studio:42`) or the `mac` argument, and joins `list` from all Macs. Scripts call the daemon API at `/macs/<mac>/v1/...` with an API token (`ghosthand tunnel url --new-token`, better-auth api-key plugin); the Mac is in the URL, so REST lease ids stay `42` and only MCP ids carry the Mac. Token routes (`/v1/tunnel/tokens`) work on the unix socket only. The protocol and the tools live in the daemon; the hub only authenticates and routes.
+There is no TCP listener. Remote access is only the tunnel: the daemon keeps a WebSocket to ghosthand.dev while the Mac is signed in (`tunnel.swift`, authenticated by the Mac's session token). The hub routes MCP calls to one Mac by the lease prefix (`studio:42`) or the `mac` argument, and joins `list` from all Macs. Scripts call the daemon API at `/macs/<mac>/v1/...` with an API token (`ghosthand tunnel url --new-token`, better-auth api-key plugin). Token routes (`/v1/tunnel/tokens`) work on the unix socket only. The protocol and the tools live in the daemon; the hub only authenticates and routes.
+
+The CLI only talks to its local daemon (no `--url`). On the unix socket, `LeaseRoutingMiddleware` (`api.swift`) sends a lease of another Mac (`studio:42`) and an acquire of a phone that only another Mac has to that Mac, via `Tunnel.forward` with this Mac's session token (`/macs/<mac>/v1/...`). `GET /v1/devices` there joins the other Macs' phones (`Tunnel.otherMacs`), each with `mac`.
+
+```
+CLI ──daemon.sock──> daemon (laptop) ──/macs/studio/v1/..., session token──> hub ──WS──> daemon (studio)
+```
+
+- **Lease ids:** `42` for a phone acquired on the unix socket of its own Mac; `<mac>:<n>` for every lease taken through the hub (MCP, tunnel REST, other Macs). Every daemon accepts its own prefix and strips it (`LeaseTarget`).
+- Remote phones of a daemon without `mac` in `/v1/devices` (older version) are skipped: its leases would come back without the prefix and hit the wrong Mac.
 
 - **Logic goes in the daemon**, never in a front end. If the CLI or a tool needs OCR, polling, retries or matching, add it to `Controller` and expose it on the HTTP route, so both front ends share it. The CLI and MCP tools only parse arguments, call routes or `Controller` methods, and format results; selection, sorting, waiting and retries stay in the daemon (`photo pull` asks the daemon for the newest photos, then downloads each). Formatters both use (`fileLines`, `appLines`, `deviceInfoLines`) live in `api.swift`.
 - **One manual for both.** MCP tool descriptions and instructions are built from the CLI help (`mcpDocs()` in `main.swift`): `description`, `details`, option names, `examples`, `agentLoopHelp`. Write help text there, never a second copy in `mcp.swift`.

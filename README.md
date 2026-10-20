@@ -269,9 +269,9 @@ The MCP tools are `triple-tap`, `hold` (`durationMs`) and `hold-drag` (`holdMs`,
 
 - **Sidebar:** each iPhone with a status dot: blue in use, green free, orange locked, yellow connecting, red needs setup. A badge counts agents waiting for it.
 - **Lease:** agent label, task, lease age, last command, idle timeout, and agents running `ghosthand wait`.
-- **Screen:** small and read-only, live at up to 30 fps while the window is on screen (no frames when it is hidden or covered). It needs no lease and does not reset the agent's idle timer.
+- **Screen:** small, live at up to 30 fps while the window is on screen (no frames when it is hidden or covered). It needs no lease and does not reset the agent's idle timer.
 - **Connection and ids:** USB, Bluetooth, pointer mode, AssistiveTouch, and the device id to copy for `acquire -d`.
-- **Send Keys:** click it, then type on the Mac keyboard into the iPhone, shortcuts like ⌘A included. ⌘V types the Mac clipboard as text. Esc or a second click stops. No lease: it works also while an agent holds the iPhone, and your keys go between its commands. ⌘Space and ⌘Tab stay on the Mac unless Ghosthand is allowed in System Settings > Privacy & Security > Accessibility.
+- **Take Control:** hover the screen and click it. Then a click on the screen taps the iPhone there, a drag swipes with the same start, end and speed, and the Mac keyboard types into it, shortcuts like ⌘A included. ⌘V types the Mac clipboard as text. Esc or **Release Control** under the screen stops. No lease: it works also while an agent holds the iPhone, and your input goes between its commands. In Bluetooth mode a tap or swipe turns AssistiveTouch on; it goes off again 60 s after your last input if no lease holds the iPhone. ⌘Space and ⌘Tab stay on the Mac unless Ghosthand is allowed in System Settings > Privacy & Security > Accessibility.
 
 `dashboard` and `setup` share one process; running either again brings its window to the front. Both read `GET /v1/phones` (see [HTTP API](#http-api)).
 

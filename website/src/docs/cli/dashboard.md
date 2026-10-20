@@ -26,9 +26,12 @@ Also takes the [global options](/docs/cli/overview#global-options).
 For a person, not an agent. Shows every iPhone on USB in a sidebar with a status dot
 (blue in use, green free, orange locked, yellow connecting, red needs setup). The
 detail shows the lease (agent label, task, lease age, last command, idle timeout),
-agents waiting for it, the USB and Bluetooth state, the ids, and a small read-only
-screen refreshed every 2 s. The screen view needs no lease and does not reset the
-agent's idle timer. Updates every second. "Set Up iPhone" opens the setup window.
+agents waiting for it, the USB and Bluetooth state, the ids, and a live screen at up
+to 30 fps. The screen view needs no lease and does not reset the agent's idle timer.
+Hover the screen and click Take Control to tap it with clicks, swipe with drags and type
+with the Mac keyboard; Esc or Release Control stops. Take Control needs no lease either: while an
+agent holds the iPhone, the person's input goes between its commands. Updates every
+second. "Set Up iPhone" opens the setup window.
 Detaches at once, so the terminal is free and the window stays open after the
 command exits. `dashboard` and `setup` share one process: running either again shows its
 window. Starts the daemon when needed. Uses only the default local daemon: remove

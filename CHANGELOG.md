@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-1. **Type into an iPhone from the control plane.** Click **Send Keys** under the screen, then type on the Mac keyboard: text, arrows, backspace and shortcuts like ⌘A go to the iPhone. ⌘V types the Mac clipboard as text. Esc or a second click stops. It needs no lease, so it works also while an agent holds the iPhone (new app-only routes `POST /v1/phones/{phone}/key` and `/type`, unix socket only).
+1. **Tap and type on an iPhone from the control plane.** Hover the screen and click **Take Control**. A click on the screen is a tap there, a drag is a swipe with the same start, end and duration; the Mac keyboard types into the iPhone: text, arrows, backspace and shortcuts like ⌘A. ⌘V types the Mac clipboard as text. Esc or **Release Control** under the screen stops. It needs no lease, so it works also while an agent holds the iPhone (new app-only routes `POST /v1/phones/{phone}/tap`, `/swipe`, `/key` and `/type`, unix socket only). In Bluetooth mode a tap or swipe turns AssistiveTouch on; it stays on until 60 s after the last input, then goes off if no lease holds the iPhone.
 
 2. **Live screen in the control plane at 30 fps** (was one frame every 2 s), only while the window is on screen. A preview takes about 5 ms (was 150 ms): it returns the newest capture frame, scales it on the GPU, and reads the lock state from the last phone list. The sidebar keeps a fixed order, by UDID.
 

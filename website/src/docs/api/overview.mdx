@@ -30,7 +30,8 @@ ghosthand tunnel url --new-token             # prints export GHOSTHAND_URL=... a
 ```
 
 Copy the two lines to the other computer or your script's secrets. The token is shown once.
-Do not run the exports on the Mac itself: with `GHOSTHAND_URL` set, the CLI there talks to the tunnel instead of the local daemon.
+The `ghosthand` CLI does not need them: on another Mac, sign that Mac in and `ghosthand list`
+shows the iPhones of every Mac of the account.
 
 **2. In your script**, on any computer, send the token as a bearer header:
 
@@ -39,7 +40,7 @@ Do not run the exports on the Mac itself: with `GHOSTHAND_URL` set, the CLI ther
 curl "$GHOSTHAND_URL/v1/leases" -H "Authorization: Bearer $GHOSTHAND_TOKEN" \
   -H 'content-type: application/json' \
   -d '{"reason":"reply to Anna in Messages","label":"nightly-script"}'
-# {"id":"42","device":"7EF219AD-...","deviceName":"Tommy's iPhone",...}
+# {"id":"studio:42","device":"7EF219AD-...","deviceName":"Tommy's iPhone",...}  (42 works too on this URL)
 
 # 2. read the screen
 curl "$GHOSTHAND_URL/v1/leases/42/text" -H "Authorization: Bearer $GHOSTHAND_TOKEN"
@@ -52,9 +53,6 @@ curl "$GHOSTHAND_URL/v1/leases/42/tap?screentext=true" -H "Authorization: Bearer
 # 4. give the iPhone back
 curl -X DELETE "$GHOSTHAND_URL/v1/leases/42" -H "Authorization: Bearer $GHOSTHAND_TOKEN"
 ```
-
-The `ghosthand` CLI reads the same two variables, so on another computer
-`ghosthand list`, `ghosthand acquire --reason "..."` and the rest work without flags.
 
 ### In TypeScript
 
@@ -158,10 +156,10 @@ runs on that iPhone.
 
 <Aside>
 <Info>
-**The id is a number on this API**, because the Mac is already in the URL. The CLI prints
-`42` on the Mac and `r1` on another computer (a local id that remembers the URL). Only
-remote MCP uses `studio:42`. Ids only increase, also across daemon restarts. A **`label`**
-is display text, not a way to resume a lease.
+**Through the tunnel the id carries the Mac**, e.g. `studio:42`, like over remote MCP and
+in the CLI for an iPhone on another Mac. On the Mac's own URL the plain number works too.
+On the unix socket an iPhone of that Mac gets `42`. Ids only increase, also across daemon
+restarts. A **`label`** is display text, not a way to resume a lease.
 </Info>
 </Aside>
 

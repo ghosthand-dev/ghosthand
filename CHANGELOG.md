@@ -8,6 +8,16 @@
 
 3. **Every USB iPhone comes back after a daemon restart.** With several iPhones, macOS screen capture sometimes showed only some of them after a quick restart, until a replug. The daemon now restarts the screen capture helper (up to 3 times) until every trusted, unlocked USB iPhone is listed.
 
+4. **Use the iPhones of every Mac from any signed-in Mac. Breaking: `--url`, `--token` and `r1` leases are gone.** Sign each Mac in once (`ghosthand setup`). `list` then shows the iPhones of all online Macs of the account, and `acquire -d <id>` takes one on its own Mac:
+
+   ```bash
+   ghosthand list                       # mac studio: ... / mac laptop: ...
+   ghosthand acquire -d 7EF219AD-... --reason "reply to Anna"   # studio:42
+   ghosthand tap -l studio:42 --text General --screenshot s.png
+   ```
+
+   The local daemon sends each command for `studio:42` to that Mac through ghosthand.dev, with its own session. No token to copy. A Mac with no iPhone takes the account's only one without `-d`. Leases taken through the tunnel URL now also carry the Mac (`studio:42`, like MCP); the plain `42` still works on its own Mac's URL. `tunnel url --new-token` stays for curl and scripts; the CLI no longer reads `GHOSTHAND_URL` and `GHOSTHAND_TOKEN`. Update every Mac: older daemons are skipped with a warning.
+
 ## 0.8.0
 
 1. **Scripts on any computer: the HTTP API through the tunnel. Breaking: the TCP listener is gone.** While a Mac is signed in, its API is at `https://ghosthand.dev/macs/<mac>/v1/...`, with an API token. No port, no TLS files, works behind NAT:

@@ -18,7 +18,7 @@ Also takes the [global options](/docs/cli/overview#global-options).
 The setup window does the same with its Sign in button; prefer it. This command opens
 the browser, prints the page and the code it shows, and waits until the browser
 approves or denies. The daemon checks the server itself, so Ctrl-C does not stop the
-sign-in. Only on the daemon's Mac (no --url).
+sign-in. Signing in also lets this Mac's CLI use the iPhones of the account's other Macs.
 
 ## Examples
 

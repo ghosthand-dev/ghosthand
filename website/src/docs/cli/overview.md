@@ -33,9 +33,7 @@ The full rules are in the [agent manual](#agent-manual).
 
 | Option | Description |
 | --- | --- |
-| `-l, --lease [id]` | Lease id from `ghosthand acquire` (or GHOSTHAND_LEASE). Every command that uses an iPhone needs it and runs on its iPhone. A remote lease (r1) also picks its daemon |
-| `--url [url]` | Daemon address: a Mac's tunnel URL from `ghosthand tunnel url`, or unix:/path.sock (or GHOSTHAND_URL; default: local socket). Not needed with a remote lease |
-| `--token [token]` | API token for a tunnel --url, from `ghosthand tunnel url --new-token` (or GHOSTHAND_TOKEN) |
+| `-l, --lease [id]` | Lease id from `ghosthand acquire` (or GHOSTHAND_LEASE), e.g. 42, or studio:42 for an iPhone on Mac studio. Every command that uses an iPhone needs it and runs on its iPhone |
 | `-h, --help` | Display this message |
 | `-v, --version` | Display version number |
 
@@ -47,7 +45,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 
 | Command | What it does |
 | --- | --- |
-| [`list`](/docs/cli/list) | List iPhones connected over USB |
+| [`list`](/docs/cli/list) | List iPhones connected over USB, to this Mac and to the account's other Macs |
 | [`acquire`](/docs/cli/acquire) | Take exclusive use of an iPhone for a task. Prints a short lease id; pass it explicitly with -l to every other command |
 | [`wait`](/docs/cli/wait) | Wait until another lease on the iPhone ends, then acquire it. Use only after `acquire` said it is busy and you decided to wait |
 | [`release`](/docs/cli/release) | End the lease from -l or GHOSTHAND_LEASE, so another client can acquire the iPhone |
@@ -129,7 +127,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 
 | Command | What it does |
 | --- | --- |
-| [`tunnel url`](/docs/cli/tunnel-url) | Print this Mac's tunnel URL, to call the HTTP API from a script on another computer. --new-token also creates the API token |
+| [`tunnel url`](/docs/cli/tunnel-url) | Print this Mac's tunnel URL, to call the HTTP API from a script (curl, Linux). --new-token also creates the API token |
 | [`tunnel revoke`](/docs/cli/tunnel-revoke) | Revoke an API token made with `tunnel url --new-token`; scripts that use it get 401 |
 
 ### Daemon

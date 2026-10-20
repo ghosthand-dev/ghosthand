@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand list"
 sidebarTitle: "list"
-description: "List iPhones connected over USB"
+description: "List iPhones connected over USB, to this Mac and to the account's other Macs"
 ---
 
 ## Usage
@@ -18,7 +18,11 @@ Also takes the [global options](/docs/cli/overview#global-options).
 Only iPhones on a USB cable are listed; a phone near the Mac over Bluetooth or
 Wi-Fi is not (macOS gives its screen only over USB). Each line:
   &lt;id&gt;  &lt;name&gt;  &lt;model&gt; iOS &lt;version&gt;  &lt;phone number&gt;  [locked]  (bluetooth &lt;state&gt;, &lt;pointer&gt; pointer)
-- id: stable on this Mac (same after rename, iOS update, cable replug). Pass it to `acquire -d`.
+- id: stable on its Mac (same after rename, iOS update, cable replug). Pass it to `acquire -d`.
+- Other Macs: while this Mac is signed in, list also shows the iPhones of every other
+  online Mac of the account, under a `mac <slug>:` header. `acquire -d <id>` takes one
+  on its Mac and prints a lease like studio:42; every command then works from here.
+  A Mac that does not answer is a warning; a Mac without iPhones is not listed.
 - phone number: read from the SIM over USB. Missing without a SIM, or when the carrier
   did not write it to the SIM.
 - [locked]: unlock with `ghosthand unlock` before screenshots or input.

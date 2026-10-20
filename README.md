@@ -712,7 +712,7 @@ agent B:       decides: give up / tell the user, or
 - **IDs increase in SQLite** and are not reused after expiry, force, release or a daemon restart. Do not delete or restore `state.db`.
 - **`--label` is only display text**, e.g. your agent session id, so others can find who holds the phone. It is not checked, not unique, and an acquire with the same label does not resume an active lease.
 - **Lease numbers are coordination IDs, not authentication.** The tunnel needs an API token. Anyone with daemon access can acquire or force leases.
-- **Lease ids by transport:** the CLI and the HTTP API use the bare number (`42`, or `r1` for a Mac reached by URL). Remote MCP has no URL per Mac, so its ids carry the Mac: `studio:42`.
+- **Lease ids carry their Mac when it is another one:** `42` for an iPhone on this Mac, `studio:42` for an iPhone on Mac `studio` (see [Several Macs](#several-macs-one-list)). Remote MCP and the tunnel URL always return `studio:42`.
 - Leases live in the `lease` table of `state.db`, so they survive a daemon restart (a rebuild restarts it).
 
 ## Coordinates: screen points
@@ -844,7 +844,31 @@ ghosthand rename "iPhone XR"  # on the lease's iPhone
 | USB                | 127 devices per bus | **Not the problem.** Power is: use a powered hub, each iPhone charges while it is controlled                                                                                                                                |
 | Screen capture CPU | not measured        | one video stream per iPhone                                                                                                                                                                                                 |
 
-More than 7 iPhones needs a second Mac. Run a daemon on each one and reach it with `--url` (see [Scripts and other computers](#scripts-and-other-computers)).
+More than 7 iPhones needs a second Mac. Sign each Mac in: the CLI on any of them reaches all the iPhones (see [Several Macs, one list](#several-macs-one-list)).
+
+### Several Macs, one list
+
+**Sign each Mac in once (`ghosthand setup`).** Then `list` on any of them shows the iPhones of every online Mac of the account, and a lease on another Mac works like a local one:
+
+```bash
+ghosthand list
+# mac studio:
+#   7EF219AD-...  Tommy's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth connected)
+# mac laptop:
+#   0A1B2C3D-...  Test iPhone  iPhone SE (iPhone12,8) iOS 17.6  (bluetooth connected)
+ghosthand acquire -d 7EF219AD-... --reason "reply to Anna"   # studio:42
+ghosthand tap -l studio:42 --text General --screenshot s.png
+```
+
+```diagram
+CLI (laptop) ──unix socket──> daemon (laptop) ──/macs/studio/v1/..., Mac session──> hub
+hub (ghosthand.dev) ──WebSocket──> daemon (studio) ──USB + Bluetooth──> iPhone
+```
+
+- **No token to copy.** The local daemon calls the other Mac through ghosthand.dev with its own sign-in.
+- **`acquire` finds the Mac.** A `-d` id or name that only another Mac has is taken there. A Mac with no iPhone takes the account's only iPhone without `-d`.
+- **Every Mac needs this version.** A Mac with an older ghosthand is skipped with a warning; one that does not answer in 10 s is a warning too.
+- Screenshots and input travel through ghosthand.dev, so each command is slower than on the Mac with the cable.
 
 ### Several Macs: give each a unique name
 
@@ -936,7 +960,7 @@ curl --unix-socket $S -X DELETE $L                  # release
 
 ### Scripts and other computers
 
-**Agents with MCP use [remote MCP](#mcp-server).** Your own scripts call the same HTTP API through the Mac's tunnel: no port, no TLS files, works behind NAT.
+**Agents with MCP use [remote MCP](#mcp-server); the CLI on another Mac uses [Several Macs, one list](#several-macs-one-list).** Your own scripts (curl, any language, Linux) call the same HTTP API through the Mac's tunnel: no port, no TLS files, works behind NAT.
 
 ```bash
 # on the Mac with the iPhones
@@ -945,16 +969,14 @@ ghosthand tunnel url --new-token                # prints export GHOSTHAND_URL=..
 
 # anywhere else: paste those two export lines, then
 curl -H "Authorization: Bearer $GHOSTHAND_TOKEN" $GHOSTHAND_URL/v1/devices
-ghosthand acquire --reason "reply to Anna"      # r1
-ghosthand screenshot -l r1 -o s.png
 ```
 
 ```diagram
-script / CLI ──HTTPS /macs/studio/v1/..., Bearer API token──> ghosthand.dev hub ──WebSocket──> daemon
+script ──HTTPS /macs/studio/v1/..., Bearer API token──> ghosthand.dev hub ──WebSocket──> daemon
 ```
 
 - **One token for the account.** `tunnel url --new-token` creates it (shown once); `ghosthand tunnel revoke <id>` ends it. Only the Mac can create or revoke tokens.
-- **Remote leases remember their daemon.** `acquire` with a `--url` prints a local id like `r1` and saves the URL and `--token` in `~/.ghosthand/remote-leases.json`, mode 0600. Later commands need only `-l r1`, so a forgotten `--url` can never hit a lease on the local daemon.
+- **Leases through the tunnel carry the Mac:** `POST /v1/leases` returns `studio:42`. The plain `42` works too on its own Mac's URL.
 - **`GET https://ghosthand.dev/macs`** lists your Macs and whether they are online. Request bodies through the tunnel are at most 20 MB.
 
 ## MCP server

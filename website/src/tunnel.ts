@@ -4,6 +4,7 @@
 //
 //   MCP client ── POST /mcp (OAuth JWT) ────────────▶ requireMcpAuth ──▶ GhosthandHub(org)  ◀── WSS /tunnel/upstream ── daemon (Mac A)
 //   script ── /macs/<slug>/v1/... (Bearer ghk_...) ─▶ verify API token ─▶ (this file)        ◀── WSS /tunnel/upstream ── daemon (Mac B)
+//   daemon (Mac A, for its CLI) ── /macs/<B>/v1/... (Bearer session) ──▶ same route
 //              ◀── JSON or SSE stream ─────                                   │  request / cancel ──────────────────▶
 //                                                                             │  ◀── response, chunk, end, error ────
 //                                                                             ▼
@@ -98,19 +99,20 @@ async function handleMcpRequest(request: Request): Promise<Response> {
   )(request)
 }
 
-/** `GET /macs` and `/macs/<slug>/v1/...` for scripts. The API token only proves the account. */
+/** `GET /macs` and `/macs/<slug>/v1/...` for scripts (API token) and for the daemon of another
+ *  Mac of the account (its session token), so its CLI reaches phones on every Mac. */
 async function handleApiRequest(request: Request): Promise<Response> {
   // Same rule as /mcp: browsers must never call this with a user's token.
   if (request.headers.has('origin') || request.headers.has('sec-fetch-site')) {
     return problem({ status: 403, code: 'permission-denied', title: 'Permission denied', detail: 'Browser requests are not allowed; call the API from a script.' })
   }
-  const userId = await verifyApiToken(request)
+  const userId = (await getSessionStrict(request))?.userId ?? (await verifyApiToken(request))
   if (!userId) {
     return problem({
       status: 401,
       code: 'unauthorized',
       title: 'Unauthorized',
-      detail: 'Send `Authorization: Bearer <token>`. Create a token on a Mac with `ghosthand tunnel url --new-token`.',
+      detail: 'Send `Authorization: Bearer <token>`: an API token (create one on a Mac with `ghosthand tunnel url --new-token`), or the session of a signed-in Mac.',
       headers: { 'www-authenticate': 'Bearer' },
     })
   }

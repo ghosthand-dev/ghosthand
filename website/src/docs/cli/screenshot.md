@@ -32,8 +32,11 @@ enough for LLM vision, and the same coordinates `tap` and `swipe` take.
   unlocked, try daemon restart. Ask the user before restarting their iPhone.
 - A locked iPhone gives no screenshot. Unlock only with a confirmed passcode.
   Never lock the phone to fix capture.
+- Read the file only after the command returns. A read started in parallel with the
+  capture can show the previous image.
 - Screen dimmed but no dialog in the image? Some system dialogs are hidden from USB
-  capture. --native takes a real iOS screenshot (about 2 s): the dialog shows, at the
+  capture (seen: App Store Install sheet, cellular data and location prompts).
+  --native takes a real iOS screenshot (about 2 s): the dialog shows, at the
   same coordinates `tap` takes. It needs Bluetooth, an unlocked phone, and is deleted
   from Photos after reading. iOS shows a screenshot thumbnail at the bottom left for
   a few seconds; it does not block taps elsewhere.

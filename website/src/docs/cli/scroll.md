@@ -35,6 +35,8 @@ right shows content further right (carousels, wide tables); left goes back.
 - Faster than `swipe` for long distances: swipes have no momentum.
 - --at: the content under this point scrolls (for a list inside a page or sheet).
 - ticks 1-1000. At the end of the content nothing moves; compare --screentext.
+- Date and picker wheels: `scroll up 2 --at x,y` over the wheel moves about 3.3 rows
+  per tick (XR, iOS 18.7). Scroll near the target, tap the row, read the result.
 
 ## Examples
 

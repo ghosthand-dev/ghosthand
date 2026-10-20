@@ -46,7 +46,13 @@ Only US-ASCII: no accents or emoji. iOS autocorrect may change a word; check wit
   field first so the keyboard shows. WebDriverAgent does not check focus: with no field
   focused `type` still says "typed" and nothing happens. Use --screenshot or --wait-text.
 - Password fields: while a secure field has focus, screenshots show the old screen
-  for 2-6 s. Type once, wait, or press `key tab` before you read the screen.
+  for 2-30 s. Type once, wait, or press `key tab` before you read the screen. Never
+  type again because the screen looks unchanged: that once doubled a password. Never
+  tap "Show password". To clear a secure field, tap it and press `key backspace` once
+  per character; cmd+a did not clear it reliably.
+- SIM PIN sheet (Settings &gt; Cellular &gt; SIM PIN) ignores the Bluetooth keyboard: tap
+  the on-screen keypad digits, one dot per tap, then Done ONCE. If the PIN is rejected
+  or the result is unclear, stop and ask the user: 3 wrong PINs lock the SIM (PUK).
 
 ## Examples
 

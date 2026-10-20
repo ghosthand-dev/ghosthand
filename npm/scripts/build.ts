@@ -3,6 +3,7 @@
 // Run with `pnpm build` (Node strips the types).
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import url from 'node:url'
 
@@ -20,11 +21,15 @@ if (process.platform !== 'darwin') {
   throw new Error('ghosthand builds only on macOS')
 }
 
+// Swift 6.4's build system uses one bin path for every --arch, so each build overwrites
+// the last. Copy each slice out before building the next arch.
+const slicesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ghosthand-slices-'))
 const slices = archs.map((arch) => {
   console.log(`building ${arch} (swift build -c release --arch ${arch})`)
   execFileSync('swift', ['build', '-c', 'release', '--arch', arch], { cwd: repoRoot, stdio: 'inherit' })
   const binPath = run('swift', ['build', '-c', 'release', '--arch', arch, '--show-bin-path'])
-  const slice = path.join(binPath, 'ghosthand')
+  const slice = path.join(slicesDir, `ghosthand-${arch}`)
+  fs.copyFileSync(path.join(binPath, 'ghosthand'), slice)
   console.log(`built ${slice}`)
   return slice
 })

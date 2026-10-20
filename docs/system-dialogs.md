@@ -164,6 +164,22 @@ would not help here. Ask the user to tap OK on the phone.
 `key home` now clicks that button 3 (mapped once in AssistiveTouch > Devices). It went Home
 from Settings and Safari (2 of 2); it was not retested on this alert.
 
+### Apple password confirmation, October 20
+
+**A 5-second hold succeeded once** on an SE2, iOS 26.5.2. Apple Account's
+**Do Not Sign Out** stayed open after normal taps and 1500...2500 ms holds.
+After a new lease, this press closed it and a native screenshot showed the
+Sign-In & Security page again:
+
+```bash
+ghosthand hold -l 42 --text "Do Not Sign Out" --duration 5000 --screentext
+ghosthand screenshot -l 42 --native -o result.png
+```
+
+**The cause is unresolved.** Duration, elapsed time and reacquiring the lease were
+not isolated. Use a verified button position and check the result; do not claim
+that every system dialog needs a 5-second press.
+
 ### Other input paths
 
 | Method | Scope | Limit |

@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.7.0
+## 0.8.0
 
-0. **Scripts on any computer: the HTTP API through the tunnel. Breaking: the TCP listener is gone.** While a Mac is signed in, its API is at `https://ghosthand.dev/macs/<mac>/v1/...`, with an API token. No port, no TLS files:
+1. **Scripts on any computer: the HTTP API through the tunnel. Breaking: the TCP listener is gone.** While a Mac is signed in, its API is at `https://ghosthand.dev/macs/<mac>/v1/...`, with an API token. No port, no TLS files, works behind NAT:
 
    ```bash
    ghosthand tunnel url --new-token --name ci   # prints export lines for GHOSTHAND_URL and GHOSTHAND_TOKEN
@@ -11,6 +11,20 @@
    ```
 
    Removed: `daemon start --port/--host/--tls-cert/--tls-key/--token` and `--ca` / `GHOSTHAND_CA`. Use `tunnel url`. Lease ids: bare number on the CLI and HTTP API (`r1` on another computer), `studio:42` over MCP only.
+
+2. **`swipe` is a fast, human-like flick**: random speed, easing and a small sideways bow, lifted while still moving so lists keep their momentum. `--duration` fixes the speed. `hold-drag` keeps the slow, exact drag.
+
+3. **Faster input**: screen capture stays open 60 s after the last command (was 1 s), so a warm `swipe` takes about 0.4 s (was 1.2 s).
+
+4. **More reliable taps**: the default press is now 150...190 ms (was 110...130 ms), for `tap`, `double-tap` and `triple-tap`.
+
+5. **`list` warns about iPhones missing from screen capture**: an iPhone plugged in while locked or untrusted never shows up in capture after you trust it. `list` and the setup window now tell you to unplug and replug the cable, instead of "not found".
+
+6. **Setup shows the XCTest choice for iPhones with Developer Mode on**, without `setup --xctest`.
+
+7. **MCP screenshots are JPEG**: 2-3x smaller over the ghosthand.dev tunnel. The CLI and HTTP API still return PNG.
+
+## 0.7.0
 
 1. **Breaking: commands are grouped under subcommands.** Update scripts. MCP tool names stay dash-joined (`file-push`):
 

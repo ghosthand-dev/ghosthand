@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+1. **Type into an iPhone from the control plane.** Click **Send Keys** under the screen, then type on the Mac keyboard: text, arrows, backspace and shortcuts like ⌘A go to the iPhone. Esc or a second click stops. It needs no lease, so it works also while an agent holds the iPhone (new app-only routes `POST /v1/phones/{phone}/key` and `/type`, unix socket only).
+
+2. **Live screen in the control plane at 30 fps** (was one frame every 2 s), only while the window is on screen. A preview takes about 5 ms (was 150 ms): it returns the newest capture frame, scales it on the GPU, and reads the lock state from the last phone list. The sidebar keeps a fixed order, by UDID.
+
 ## 0.8.0
 
 1. **Scripts on any computer: the HTTP API through the tunnel. Breaking: the TCP listener is gone.** While a Mac is signed in, its API is at `https://ghosthand.dev/macs/<mac>/v1/...`, with an API token. No port, no TLS files, works behind NAT:

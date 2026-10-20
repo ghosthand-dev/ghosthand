@@ -11,7 +11,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import * as esbuild from 'esbuild'
+import { pathToFileURL } from 'node:url'
 import { chromium, type Page } from 'playwright-core'
+import { CLIP_FPS, CLIP_WIDTH, CLIPS } from '../src/clips.ts'
 
 const root = path.resolve(import.meta.dirname, '..')
 const { values: args } = parseArgs({
@@ -27,6 +29,34 @@ const { values: args } = parseArgs({
 function fontFace(family: string, file: string) {
   const data = fs.readFileSync(path.join(root, 'node_modules', file)).toString('base64')
   return `@font-face { font-family: '${family}'; src: url(data:font/woff2;base64,${data}) format('woff2'); font-weight: 100 900; }`
+}
+
+/** Extracts each clip to out/clips/<name>/00001.jpg... once. Returns frame counts. */
+function prepareClips() {
+  const frames: Record<string, number> = {}
+  for (const clip of CLIPS) {
+    const dir = path.join(root, 'out/clips', clip.name)
+    if (!fs.existsSync(dir)) {
+      console.log(`extracting ${clip.src} to ${dir}`)
+      fs.mkdirSync(dir, { recursive: true })
+      execFileSync('ffmpeg', [
+        '-v', 'error', '-i', path.resolve(root, clip.src),
+        '-vf', `fps=${CLIP_FPS},scale=${CLIP_WIDTH}:-2`, '-q:v', '3',
+        path.join(dir, '%05d.jpg'),
+      ])
+    }
+    frames[clip.name] = fs.readdirSync(dir).filter((f) => f.endsWith('.jpg')).length
+  }
+  return frames
+}
+
+/** Writes the page into out/ so clip frames load with relative URLs. */
+async function writeHtml({ preview }: { preview: boolean }) {
+  const file = path.join(root, 'out', preview ? 'preview.html' : 'render.html')
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const clipFrames = prepareClips()
+  fs.writeFileSync(file, (await buildHtml({ preview })).replace('<body>', `<body><script>window.clipFrames = ${JSON.stringify(clipFrames)}</script>`))
+  return file
 }
 
 async function buildHtml({ preview }: { preview: boolean }) {
@@ -76,10 +106,10 @@ async function buildHtml({ preview }: { preview: boolean }) {
   return `<!doctype html><html><head><meta charset="utf-8"><style>${fonts}</style></head><body>${body}<script>${js}</script>${preview ? previewUi : ''}</body></html>`
 }
 
-async function openPage(html: string, browser: Awaited<ReturnType<typeof chromium.launch>>) {
+async function openPage(file: string, browser: Awaited<ReturnType<typeof chromium.launch>>) {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 })
   page.on('pageerror', (e) => console.error('page error:', e))
-  await page.setContent(html)
+  await page.goto(pathToFileURL(file).href)
   await page.evaluate(() => window.video.ready)
   return page
 }
@@ -92,21 +122,19 @@ async function shot(page: Page, t: number, file: string) {
 async function main() {
   console.log('bundling src/video.ts')
   if (args.preview) {
-    const file = path.join(root, 'out/preview.html')
-    fs.mkdirSync(path.dirname(file), { recursive: true })
-    fs.writeFileSync(file, await buildHtml({ preview: true }))
+    const file = await writeHtml({ preview: true })
     console.log(`wrote ${file}`)
     execFileSync('open', [file])
     return
   }
 
-  const html = await buildHtml({ preview: false })
+  const file = await writeHtml({ preview: false })
   const browser = await chromium.launch({ channel: 'chrome', headless: true })
 
   if (args.stills) {
     const dir = path.join(root, 'out/stills')
     fs.mkdirSync(dir, { recursive: true })
-    const page = await openPage(html, browser)
+    const page = await openPage(file, browser)
     for (const t of args.stills.split(',').map(Number)) {
       const file = path.join(dir, `t${t.toFixed(2)}.png`)
       await shot(page, t, file)
@@ -118,7 +146,7 @@ async function main() {
 
   const fps = Number(args.fps)
   const workers = Number(args.workers)
-  const pages = await Promise.all(Array.from({ length: workers }, () => openPage(html, browser)))
+  const pages = await Promise.all(Array.from({ length: workers }, () => openPage(file, browser)))
   const total = Math.round((await pages[0].evaluate(() => window.video.duration)) * fps)
   const framesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'promo-frames-'))
   console.log(`rendering ${total} frames at ${fps} fps with ${workers} workers into ${framesDir}`)

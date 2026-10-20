@@ -21,6 +21,8 @@ The help output is the full agent manual: leases, coordinates, the screenshot fe
 
 If `ghosthand` is not found, use `npx -y ghosthand@latest` instead.
 
+Task skills in the same repo: `ghosthand-accounts` (Google, Apple, App Store and social account signup) and `tiktok-warmup` (watch and like TikTok videos for a niche).
+
 Rules:
 
 - **Prefer full app access.** When the app being used requests permission, grant the broadest available access unless the user explicitly restricts it: camera, microphone, Full Photos Access (not limited selection), contacts, notifications, location, and tracking. Complete related in-app access prompts too, so controls work immediately and repeated dialogs are reduced. Do not ask again for routine permission choices.

@@ -355,6 +355,39 @@ secret-provider | ghosthand unlock -l 42 --stdin --screenshot s.png --screentext
 > [!IMPORTANT]
 > **Leave the iPhone unlocked.** Do not run `ghosthand lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`.
 
+## Example: turn off the SIM PIN
+
+**The iPhone asks for the SIM PIN after every restart?** An agent can turn it off in Settings. The lock is saved **on the SIM card**, so you do it once. No USB service, MDM profile or Bluetooth protocol changes it; only the Settings switch does, so the agent drives the UI.
+
+Put the PIN in your secret store, then ask:
+
+```text
+Use ghosthand to turn off the SIM PIN on my iPhone. The PIN is SIM_PIN in sigillo.
+```
+
+> [!CAUTION]
+> **One PIN try only.** 3 wrong tries lock the SIM, and then only the carrier's PUK unlocks it. If the first PIN is rejected, or the result is unclear, the agent stops and asks the user. It never types a second PIN and never guesses `0000` or `1234`.
+
+The agent does these steps, reading the screen after each one:
+
+```bash
+ghosthand acquire --reason "turn off SIM PIN"                 # prints 42
+ghosthand tap -l 42 --text "Settings" --screentext             # or tap its Home Screen icon
+ghosthand tap -l 42 --text "Cellular" --screentext             # "Mobile Service" in some regions
+ghosthand tap -l 42 --text "SIM PIN" --screenshot s.png        # dual SIM: tap the line first
+ghosthand tap -l 42 340 180 --screenshot s.png                 # the switch, x,y read from s.png
+ghosthand tap -l 42 60 520 --screenshot s.png                  # one keypad digit; check one new dot
+# ... one tap per digit, then check: exactly 4 dots
+ghosthand tap -l 42 --text "Done" --screentext                 # once; the switch is now off
+ghosthand release -l 42
+```
+
+- **Tap the keypad, do not type.** The SIM PIN sheet ignores the Bluetooth keyboard: `type` says "typed" and the field stays empty (tested on an SE2, iOS 18.6). Tap each digit on the on-screen keypad and check that one dot appears after each tap.
+- **Tap the switch, not the label.** Read its position from the screenshot.
+- **Wrong digit?** Clear it with the keypad delete key before you tap Done. Done is the one try.
+
+Tested on an XR (iOS 18.7) and an SE2 (iOS 18.6) with ho. SIMs.
+
 ## CLI
 
 > [!NOTE]

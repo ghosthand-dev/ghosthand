@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand CLI reference"
 sidebarTitle: "Overview"
-description: "Every ghosthand 0.8.0 command, option and example, generated from the CLI help."
+description: "Every ghosthand 0.9.0 command, option and example, generated from the CLI help."
 ---
 
 The **ghosthand** CLI controls an iPhone through the daemon on your Mac. Every command is
@@ -84,7 +84,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`rename`](/docs/cli/rename) | Set the iPhone's name over USB (Settings &gt; General &gt; About &gt; Name), no touch needed |
 | [`forget`](/docs/cli/forget) | Remove this Mac's Bluetooth bond with the iPhone, to pair again from scratch |
 | [`control`](/docs/cli/control) | Show or switch how input reaches the iPhone: Bluetooth mouse and keyboard (default) or XCTest (WebDriverAgent). Switch only when the user asks |
-| [`info`](/docs/cli/info) | Show battery, storage, iOS build, serial number, language and time zone over USB (works while locked) |
+| [`info`](/docs/cli/info) | Show battery, storage, iOS build, serial number, language, time zone and SIM over USB (works while locked) |
 | [`logs`](/docs/cli/logs) | Read the iPhone system log over USB for a few seconds, filtered by process or text |
 | [`restart`](/docs/cli/restart) | Restart the iPhone over USB. Afterwards a person must type the passcode once |
 | [`shutdown`](/docs/cli/shutdown) | Turn the iPhone off over USB. Only a person can turn it on again |

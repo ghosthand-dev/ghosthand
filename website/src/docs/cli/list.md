@@ -23,8 +23,8 @@ Wi-Fi is not (macOS gives its screen only over USB). Each line:
   online Mac of the account, under a `mac <slug>:` header. `acquire -d <id>` takes one
   on its Mac and prints a lease like studio:42; every command then works from here.
   A Mac that does not answer is a warning; a Mac without iPhones is not listed.
-- phone number: read from the SIM over USB. Missing without a SIM, or when the carrier
-  did not write it to the SIM.
+- phone number: read from the SIM over USB. Missing without a SIM, but also when the
+  carrier did not write it to the SIM: check `ghosthand info` for the SIM state.
 - [locked]: unlock with `ghosthand unlock` before screenshots or input.
 - [AssistiveTouch off]: no pointer on the phone. acquire turns it on.
 - bluetooth connected: input works.

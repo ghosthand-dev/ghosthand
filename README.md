@@ -354,6 +354,8 @@ secret-provider | ghosthand unlock -l 42 --stdin --screenshot s.png --screentext
 
 **Secure password fields freeze frames** for 10 to 30 seconds. Wait; do not type again.
 
+**Password dots are often not visible.** Screenshots of a secure field can show it empty after `type`. Do not use the dots to check that the password was typed, and never type it again. Submit, then check the next screen or the error.
+
 > [!IMPORTANT]
 > **Leave the iPhone unlocked.** Do not run `ghosthand lock` at the end of a task. Locking stops USB screen capture and makes the next action less reliable. Use `unlock` only when `list` shows `[locked]`.
 

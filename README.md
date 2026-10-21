@@ -432,7 +432,7 @@ Tested on an XR (iOS 18.7) and an SE2 (iOS 18.6) with ho. SIMs.
 | `photo list` / `photo pull [--last n]`                              | newest Camera Roll files, or copy them to this Mac                                                                 |
 | `photo delete <name...>`                                            | delete photos so Photos forgets them too (ImageCaptureCore); needs Allow Photos                                   |
 | `app list` / `app install <file.ipa>` / `app uninstall <id>`        | installed apps with their Home Screen page; install a signed IPA; uninstall                                        |
-| `info`                                                              | battery, storage, iOS build, serial, language, time zone; works while locked                                       |
+| `info`                                                              | battery, storage, iOS build, serial, language, time zone, SIM; works while locked                                  |
 | `logs [--process p] [--grep text] [--seconds n]`                    | iPhone system log over USB, from now on                                                                            |
 | `restart` / `shutdown`                                              | restart or turn off over USB; ask the user first                                                                   |
 | `setup`                                                             | window for people: connect a new iPhone step by step                                                               |
@@ -680,6 +680,8 @@ ghosthand app uninstall -l 42 com.example.app
 ghosthand info -l 42
 # battery: 100%, on power
 # storage: 51.0 GB free of 57.4 GB
+# sim tray: SIM card in
+# sim line 2: Vodafone_Ho_it, physical SIM, MCC 222 MNC 10
 ghosthand logs -l 42 --process SpringBoard --grep fullyMuted --seconds 5
 ghosthand restart -l 42      # ask the user first
 ```

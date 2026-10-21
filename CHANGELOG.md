@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
 
 1. **Tap and type on an iPhone from the control plane.** Hover the screen and click **Take Control**. A click on the screen is a tap there, a drag is a swipe with the same start, end and duration; the Mac keyboard types into the iPhone: text, arrows, backspace and shortcuts like ⌘A. ⌘V types the Mac clipboard as text. Esc or **Release Control** under the screen stops. It needs no lease, so it works also while an agent holds the iPhone (new app-only routes `POST /v1/phones/{phone}/tap`, `/swipe`, `/key` and `/type`, unix socket only). In Bluetooth mode a tap or swipe turns AssistiveTouch on; Release Control turns it off again if no lease holds the iPhone (new route `POST /v1/phones/{phone}/release`); if the app quits without it, it goes off 60 s after the last input.
 
@@ -16,9 +16,11 @@
    ghosthand tap -l studio:42 --text General --screenshot s.png
    ```
 
-   The local daemon sends each command for `studio:42` to that Mac through ghosthand.dev, with its own session. No token to copy. A Mac with no iPhone takes the account's only one without `-d`. Leases taken through the tunnel URL now also carry the Mac (`studio:42`, like MCP); the plain `42` still works on its own Mac's URL. `tunnel url --new-token` stays for curl and scripts; the CLI no longer reads `GHOSTHAND_URL` and `GHOSTHAND_TOKEN`. Update every Mac: older daemons are skipped with a warning.
+   The local daemon sends each command for `studio:42` to that Mac through ghosthand.dev, with its own session. No token to copy. A Mac with no iPhone takes the account's only one without `-d`. Leases taken through the tunnel URL now also carry the Mac (`studio:42`, like MCP); the plain `42` still works on its own Mac's URL. `tunnel url --new-token` stays for curl and scripts; the CLI no longer reads `GHOSTHAND_URL` and `GHOSTHAND_TOKEN`. Update every Mac: older daemons are skipped with a warning. The warning shows also when this Mac has no iPhone, so `list` tells which Mac to update instead of only "No iPhone found on USB".
 
 5. **Longer tap press**: 220...260 ms (was 150...190 ms) in Bluetooth mode, for `tap`, `double-tap`, `triple-tap` and Take Control clicks. Short presses often did not register.
+
+6. **Breaking: remote MCP tools never read or write Mac paths.** File, photo, upload, app install and recording tools over MCP take and return file bytes, not paths on the daemon's Mac. The local CLI keeps its path arguments. Files uploaded to ghosthand.dev are served as downloads.
 
 ## 0.8.0
 

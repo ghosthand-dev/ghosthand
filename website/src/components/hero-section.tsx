@@ -1,7 +1,8 @@
 // Page-width hero with an ASCII VideoBackgroundShader, serif title, and a copy-setup-prompt CTA.
 'use client'
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
+import { preload } from 'react-dom'
 import { VideoBackgroundShader } from '@holocron.so/vite/mdx'
 import dedent from 'string-dedent'
 
@@ -48,7 +49,6 @@ function subscribeToThemeClass(onChange: () => void) {
 }
 
 export function HeroSection() {
-  const [fontsReady, setFontsReady] = useState(false)
   const [copied, setCopied] = useState(false)
   const isDark = useSyncExternalStore(
     subscribeToThemeClass,
@@ -56,11 +56,9 @@ export function HeroSection() {
     () => false,
   )
 
-  useEffect(() => {
-    const timeout = setTimeout(() => setFontsReady(true), 3000)
-    void document.fonts.ready.then(() => setFontsReady(true))
-    return () => clearTimeout(timeout)
-  }, [])
+  // Starts the font download from <head>. `font-display: block` in globals.css keeps
+  // the title hidden until it arrives, so no JS gate (which delayed LCP to hydration).
+  preload('/fonts/ivartext-regular.woff2', { as: 'font', type: 'font/woff2', crossOrigin: '' })
 
   return (
     <div className='relative mt-4 lg:mt-8 mb-6 lg:mb-10 w-full rounded-xl flex flex-col items-center overflow-hidden'>
@@ -87,13 +85,7 @@ export function HeroSection() {
         }}
       />
 
-      <div
-        className='relative z-[2] flex flex-col items-center justify-center text-center max-w-[820px] w-full px-5 pt-16 sm:pt-24 pb-20 lg:pb-[160px] gap-6'
-        style={{
-          opacity: fontsReady ? 1 : 0,
-          transition: 'opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1)',
-        }}
-      >
+      <div className='relative z-[2] flex flex-col items-center justify-center text-center max-w-[820px] w-full px-5 pt-16 sm:pt-24 pb-20 lg:pb-[160px] gap-6'>
         <h1
           className='flex flex-col items-center leading-none text-[36px] sm:text-[44px] md:text-[52px] text-foreground'
           style={{ fontFamily: HERO_FONT }}

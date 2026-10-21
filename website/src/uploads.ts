@@ -4,8 +4,8 @@
 //   iPhone Safari ── GET /u/<id> ──▶ share page ── fetch /u/<id>/file ──▶ blob
 //                    tap Save ──▶ navigator.share({ files }) ──▶ Save Video / Save Image
 //
-// A direct video link only plays in iOS Safari (no Save Video); the share sheet of a
-// File has it. navigator.share runs only from a tap, so the page has a button.
+// The share sheet of a File offers Save Video / Save Image in iOS Safari.
+// navigator.share runs only from a tap, so the page has a button.
 // The id (12 base62 chars, ~71 bits) is the only secret: the GET routes need no auth.
 // The bucket lifecycle rule deletes objects after 1 day, but it runs late (up to a
 // day), so the GET routes also check expiresAt and answer 404 on time.
@@ -65,7 +65,7 @@ function escapeHtml(text: string): string {
 }
 
 /** JSON inside <script>: `<` escaped so a name cannot close the tag. */
-function scriptJson(value: unknown): string {
+function scriptJson(value: string): string {
   return JSON.stringify(value).replace(/</g, '\\u003c')
 }
 
@@ -122,9 +122,9 @@ function sharePage(id: string, object: R2Object): string {
 }
 
 /** RFC 9110 Content-Range of a ranged R2 read. */
-function contentRange(range: R2Range, size: number): string {
-  // R2 returns every key, unset ones as undefined, so check values, not `in`.
-  const { offset: start, length: count, suffix } = range as { offset?: number; length?: number; suffix?: number }
+function contentRange(range: { offset?: number; length?: number; suffix?: number }, size: number): string {
+  // R2 can include unset keys, so choose suffix ranges by value.
+  const { offset: start, length: count, suffix } = range
   const offset = suffix !== undefined ? size - suffix : (start ?? 0)
   const length = suffix !== undefined ? suffix : (count ?? size - offset)
   return `bytes ${offset}-${offset + length - 1}/${size}`
@@ -154,13 +154,19 @@ export const uploadsApp = new Spiceflow()
     async handler({ params, request }) {
       const parsed = idParams.safeParse(params)
       if (!parsed.success) return notFound()
-      // Range: Safari plays a video from the direct link only with range requests.
+      // Download bytes only: uploaded HTML must never run on the account's origin.
       const object = await env.UPLOADS.get(parsed.data.id, { range: request.headers })
       if (!isLive(object)) return notFound()
-      const headers = new Headers({ 'cache-control': 'private, no-store', 'accept-ranges': 'bytes', etag: object.httpEtag })
-      object.writeHttpMetadata(headers)
+      const headers = new Headers({
+        'cache-control': 'private, no-store',
+        'accept-ranges': 'bytes',
+        etag: object.httpEtag,
+        'content-type': 'application/octet-stream',
+        'content-security-policy': "sandbox; default-src 'none'",
+        'x-content-type-options': 'nosniff',
+      })
       const name = object.customMetadata?.name ?? parsed.data.id
-      headers.set('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(name)}`)
+      headers.set('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(name)}`)
       const ranged = request.headers.has('range') && object.range
       if (ranged) headers.set('content-range', contentRange(object.range!, object.size))
       return new Response(object.body, { status: ranged ? 206 : 200, headers })

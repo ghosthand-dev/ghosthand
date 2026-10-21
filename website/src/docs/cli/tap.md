@@ -38,7 +38,7 @@ Rules:
   (Settings &gt; Accessibility &gt; Touch &gt; AssistiveTouch &gt; Always Show Menu off).
 - App Store can show Resume while downloading. Check download/installation state
   before repeating taps; an unchanged label does not prove the click failed.
-- Each press lasts 150...190 ms. Double taps have a 100...150 ms release-to-press gap,
+- Each press lasts 220...260 ms. Double taps have a 100...150 ms release-to-press gap,
   with no pointer movement between clicks. Use double-tap to select a word or zoom
   supported content, triple-tap to select a paragraph; app behavior varies. It is
   not a VoiceOver gesture or a side-button purchase confirmation.

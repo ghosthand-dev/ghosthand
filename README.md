@@ -214,7 +214,7 @@ See [Agent feedback loop](#agent-feedback-loop) for the rules the agent follows.
 
 **Double tap** selects words and zooms content in apps that support it. It sends two
 mouse clicks at one position, not a VoiceOver gesture or a side-button confirmation.
-Each press lasts 150...190 ms; the release-to-press gap is 100...150 ms. Single taps
+Each press lasts 220...260 ms; the release-to-press gap is 100...150 ms. Single taps
 use the same press duration. [Apple's text-selection guide](https://support.apple.com/guide/iphone/select-cut-copy-and-paste-text-iph1a9cae52c/ios)
 describes double-tap word selection.
 

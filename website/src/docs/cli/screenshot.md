@@ -34,6 +34,9 @@ enough for LLM vision, and the same coordinates `tap` and `swipe` take.
   Never lock the phone to fix capture.
 - Read the file only after the command returns. A read started in parallel with the
   capture can show the previous image.
+- Password fields: screenshots often do not show the typed dots. An empty-looking
+  secure field does not mean the password was not typed. Never type it again; check
+  the result after you submit (next screen or error).
 - Screen dimmed but no dialog in the image? Some system dialogs are hidden from USB
   capture (seen: App Store Install sheet, cellular data and location prompts).
   --native takes a real iOS screenshot (about 2 s): the dialog shows, at the

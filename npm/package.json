@@ -1,6 +1,6 @@
 {
   "name": "ghosthand",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Control real iPhones from a Mac with AI agents. Screenshots, files, photos and apps over USB, taps over Bluetooth. No jailbreak, no Xcode, no app on the phone.",
   "type": "module",
   "bin": "dist/ghosthand",

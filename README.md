@@ -829,7 +829,9 @@ After that, a rename changes nothing. Only **several new iPhones with the same n
 **Rename from the Mac** over USB, no touch needed (works while locked):
 
 ```bash
-ghosthand rename "iPhone XR"  # on the lease's iPhone
+ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --reason "rename"  # prints a lease id, e.g. 42
+ghosthand rename -l 42 "iPhone XR"
+ghosthand release -l 42
 # renamed "iPhone" to "iPhone XR". The id stays 7EF219AD-69B4-423E-B8C4-4F4A6140822F
 ```
 

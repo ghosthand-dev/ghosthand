@@ -18,6 +18,8 @@
 
    The local daemon sends each command for `studio:42` to that Mac through ghosthand.dev, with its own session. No token to copy. A Mac with no iPhone takes the account's only one without `-d`. Leases taken through the tunnel URL now also carry the Mac (`studio:42`, like MCP); the plain `42` still works on its own Mac's URL. `tunnel url --new-token` stays for curl and scripts; the CLI no longer reads `GHOSTHAND_URL` and `GHOSTHAND_TOKEN`. Update every Mac: older daemons are skipped with a warning.
 
+5. **Longer tap press**: 220...260 ms (was 150...190 ms) in Bluetooth mode, for `tap`, `double-tap`, `triple-tap` and Take Control clicks. Short presses often did not register.
+
 ## 0.8.0
 
 1. **Scripts on any computer: the HTTP API through the tunnel. Breaking: the TCP listener is gone.** While a Mac is signed in, its API is at `https://ghosthand.dev/macs/<mac>/v1/...`, with an API token. No port, no TLS files, works behind NAT:

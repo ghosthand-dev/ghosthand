@@ -10,6 +10,8 @@
   "routes": [
     { "pattern": "ghosthand.dev", "custom_domain": true }
   ],
+  // Prerendered pages (`rendering: static`) are read from build assets through this binding.
+  "assets": { "binding": "ASSETS" },
   "d1_databases": [
     {
       "binding": "DB",

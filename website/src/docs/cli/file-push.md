@@ -22,6 +22,7 @@ Also takes the [global options](/docs/cli/overview#global-options).
 ## Details
 
 &lt;iphone path&gt; is the full path of the new file, with its name.
+MCP: send data (base64, up to about 3 MB) and path (the iPhone destination), never source.
 Files go over USB (AFC), no Developer Mode. Paths start with /. The default root is the
 iPhone's media folder (/var/mobile/Media):
   /DCIM        Camera Roll: photos, videos, screenshots (IMG_0001.PNG ...). Use the photo commands

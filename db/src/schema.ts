@@ -128,14 +128,14 @@ export const apikey = s.sqliteTable('apikey', {
   s.index('apikey_key_idx').on(table.key),
 ])
 
-// ── remote MCP OAuth (jwt + @better-auth/mcp + cimd) ────────────────
+// ── remote MCP OAuth (@better-auth/mcp + cimd) ─────────────────────
 // Fields copy @better-auth/oauth-provider 1.7. onDelete too, except user_id and refresh_id
 // cascade so deleting a user or refresh token cleans up. client_id stays NO ACTION: a CIMD
 // client is one shared row (client_id is its metadata URL), CASCADE would drop every user's
 // tokens. oauth_client.user_id stays NO ACTION: rebuilding oauth_client in a migration fires
 // its cascade on oauth_client_resource. string[] fields are JSON text: D1 rejects array binds.
 
-/** Signing keys for MCP access tokens (jwt plugin, served at /api/auth/jwks). */
+/** Signing keys left from the former JWT token provider. */
 export const jwks = s.sqliteTable('jwks', {
   id: s.text('id').primaryKey().$defaultFn(() => ulid()),
   publicKey: s.text('public_key').notNull(),
@@ -245,7 +245,7 @@ export const oauthRefreshToken = s.sqliteTable('oauth_refresh_token', {
   s.index('oauth_refresh_token_authorization_code_id_idx').on(table.authorizationCodeId),
 ])
 
-/** Opaque access tokens; MCP tokens are JWTs and do not land here. */
+/** Revocable MCP access tokens, checked against current grants and sessions. */
 export const oauthAccessToken = s.sqliteTable('oauth_access_token', {
   id: s.text('id').primaryKey().$defaultFn(() => ulid()),
   token: s.text('token').unique(),

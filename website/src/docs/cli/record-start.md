@@ -25,9 +25,13 @@ Also takes the [global options](/docs/cli/overview#global-options).
 
 Returns at once; the recording runs in the daemon while you send input. Use any
 other command meanwhile: screenshots, screentext and taps keep working.
-- The file is written on the daemon's Mac. The CLI makes a relative path absolute
-  against its own folder; through MCP or HTTP pass an absolute path. The folder must
-  exist and the file must not: a recording never overwrites a file.
+- Local CLI and Unix-socket HTTP: the file is written on this Mac. The CLI makes a
+  relative path absolute against its own folder. The folder must exist and the file
+  must not: a recording never overwrites a file. Remote HTTP cannot choose a Mac path.
+- MCP: omit path. The daemon owns a temporary file; record-stop returns an embedded
+  resource blob up to 16 MiB, or a 1-day upload link up to 100 MB. Larger files need
+  local collection on the Mac. Upload failures keep the recording for another record-stop
+  while the lease is active. Delivery, a new recording or lease end removes temporary files.
 - It stops by itself, and the file is complete, after --max-duration, when the
   lease ends (release, idle timeout, --force), or when the daemon stops. Run
   `record stop` to get its size and duration.

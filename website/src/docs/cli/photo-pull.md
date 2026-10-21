@@ -23,6 +23,7 @@ Also takes the [global options](/docs/cli/overview#global-options).
 ## Details
 
 Prints each saved path. Files keep their iPhone names (IMG_0004.PNG).
+MCP returns original bytes as embedded resource blobs, up to 16 MiB total; there is no out argument.
 
 ## Examples
 

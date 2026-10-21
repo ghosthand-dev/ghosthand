@@ -39,6 +39,10 @@ claude mcp add --transport http ghosthand https://ghosthand.dev/mcp
 | `--wait-text`, `--timeout-ms` | `waitText`, `timeoutMs` |
 | `--screenshot`, `--screentext` | `screenshot: true`, `screentext: true` (images come back as image content) |
 
+**File transfers use bytes, not Mac paths.** Remote tools cannot read or write the Mac's
+filesystem. Send files as base64 `data`; downloads return to the MCP client. Use the local
+CLI when you need to select a source or destination on the Mac.
+
 ## Several Macs
 
 The tools reach every Mac signed in to your account. `list` shows each iPhone under its Mac.

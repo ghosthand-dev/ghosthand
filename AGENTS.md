@@ -41,6 +41,7 @@ CLI ──daemon.sock──> daemon (laptop) ──/macs/studio/v1/..., session 
 - Remote phones of a daemon without `mac` in `/v1/devices` (older version) are skipped: its leases would come back without the prefix and hit the wrong Mac.
 
 - **Logic goes in the daemon**, never in a front end. If the CLI or a tool needs OCR, polling, retries or matching, add it to `Controller` and expose it on the HTTP route, so both front ends share it. The CLI and MCP tools only parse arguments, call routes or `Controller` methods, and format results; selection, sorting, waiting and retries stay in the daemon (`photo pull` asks the daemon for the newest photos, then downloads each). Formatters both use (`fileLines`, `appLines`, `deviceInfoLines`) live in `api.swift`.
+- **Remote access is to the phone, not the Mac filesystem.** MCP sends file bytes, never Mac source or destination paths. Local CLI paths stay local. Uploaded bytes are downloads, never executable documents on the account's web origin.
 - **One manual for both.** MCP tool descriptions and instructions are built from the CLI help (`mcpDocs()` in `main.swift`): `description`, `details`, option names, `examples`, `agentLoopHelp`. Write help text there, never a second copy in `mcp.swift`.
 - **A new route or capability gets both.** Add the HTTP route (`openapi.yaml` + `api.swift`), the CLI command or flag (`main.swift`), and the MCP tool or argument (`tools` in `mcp.swift`) in the same change. A tool name is the CLI command name, words joined by `-` (`file push` is the tool `file-push`, see `MCPDocs.toolName`).
 - **A new CLI flag needs its MCP argument:** add it to the tool's `properties`, and to `MCPDescription.arguments` (flag -> argument) or `MCPDescription.positionals`. Otherwise its examples are dropped from the tool description without an error.
@@ -103,6 +104,8 @@ To find code, search one unique function name or constant (`gh search code 'IOHI
 # Account and billing
 
 Every lease needs a ghosthand.dev account with a trial or plan. The daemon owns it (`Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
+
+Remote MCP uses resource-bound opaque OAuth tokens, checked against current grants and sessions. Before deleting a session, delete its refresh grants (revoked-token reuse can end other sessions' grants); then close its hub sockets. Hub session deadlines use alarms, not polling, so idle sockets still hibernate.
 
 ```
 setup app / ghosthand account login ──POST /v1/account/login──> daemon ──POST /api/cli/login──> website

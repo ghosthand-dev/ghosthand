@@ -24,6 +24,8 @@ Also takes the [global options](/docs/cli/overview#global-options).
 A file goes to [local path] (default: its name in this folder). A folder is unpacked
 inside [local path] (default: this folder), keeping its name.
 For the newest photos use `photo pull`; it finds them for you.
+MCP takes only the iPhone path: it returns original bytes as an embedded resource blob
+(folders as .zip), up to 16 MiB. There is no Mac destination argument.
 Files go over USB (AFC), no Developer Mode. Paths start with /. The default root is the
 iPhone's media folder (/var/mobile/Media):
   /DCIM        Camera Roll: photos, videos, screenshots (IMG_0001.PNG ...). Use the photo commands

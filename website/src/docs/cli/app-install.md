@@ -17,6 +17,8 @@ Also takes the [global options](/docs/cli/overview#global-options).
 
 iOS checks the signature: App Store apps install only from the App Store app (tap Get),
 and an IPA signed for other devices fails with an error from iOS.
+MCP: send the signed .ipa bytes as data (base64, up to about 3 MB), never source.
+Use the REST install endpoint for larger IPAs.
 
 ## Examples
 

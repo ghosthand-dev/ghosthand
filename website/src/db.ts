@@ -5,22 +5,27 @@
 // authenticates with the session token as a bearer header (bearer plugin), which it
 // gets from the device flow (deviceAuthorization plugin, see cli-api.ts).
 // Remote MCP clients get OAuth access tokens instead: mcp() is the OAuth provider,
-// jwt() signs resource-bound tokens, cimd() loads clients from their metadata URL.
+// opaque tokens can be revoked immediately; cimd() loads clients from their metadata URL.
 // API tokens (api-key plugin, prefix ghk_) are for scripts that call the HTTP API through
 // the Mac tunnel (tunnel.ts): the daemon mints them with its session, hub checks them.
 // A signup hook creates the user's personal org: it owns the plan, trial and Mac hub.
 
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/d1'
+import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import { betterAuth } from 'better-auth/minimal'
-import { bearer, deviceAuthorization, jwt } from 'better-auth/plugins'
+import { bearer, deviceAuthorization } from 'better-auth/plugins'
+import { APIError, createAuthEndpoint } from 'better-auth/api'
+import { createDpopReplayStore, enforceDpopBinding, isDpopBindingError, parseAccessTokenAuthorization } from 'better-auth/oauth2'
 import { apiKey } from '@better-auth/api-key'
 import { mcp } from '@better-auth/mcp'
+import { getOAuthProviderApi } from '@better-auth/oauth-provider'
 import { cimd } from '@better-auth/cimd'
 import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 import { json } from 'spiceflow'
 import { fetchCimdOnWorkers } from './cimd-fetch.ts'
+import { getHub } from './tunnel.ts'
 
 export function getDb() {
   return drizzle(env.DB, { schema, relations: schema.relations })
@@ -36,6 +41,11 @@ export function getMcpResource(): string {
 }
 
 export function getAuth() {
+  // JWTs are not stored or grant-revocable, even with online introspection.
+  const provider = mcp({
+    loginPage: '/login', consentPage: '/consent', resource: getMcpResource(),
+    disableJwtPlugin: true, prefix: { opaqueAccessToken: 'ghm_' },
+  })
   return betterAuth({
     baseURL: getBaseUrl(),
     secret: env.BETTER_AUTH_SECRET,
@@ -54,17 +64,50 @@ export function getAuth() {
     },
     databaseHooks: {
       user: { create: { after: (user) => createPersonalOrg(user) } },
+      session: { delete: {
+        before: async (session) => {
+          // Delete only this session's grants; revoked-token reuse also ends other sessions' grants.
+          await getDb().delete(schema.oauthRefreshToken)
+            .where(orm.eq(schema.oauthRefreshToken.sessionId, session.id))
+        },
+        after: async (session) => {
+          const org = await getPersonalOrg(session.userId)
+          await getHub(org.orgId).revoke(session.id)
+        },
+      } },
     },
-    // The jwt plugin's /token would hand out session JWTs; MCP uses /oauth2/token.
-    disabledPaths: ['/token'],
     plugins: [
       deviceAuthorization({ verificationUri: '/device', expiresIn: '15m', interval: '2s' }),
       bearer(),
       // Rate limits are off: a script drives an iPhone with many calls.
       apiKey({ defaultPrefix: 'ghk_', rateLimit: { enabled: false }, maximumNameLength: 64 }),
-      jwt({ disableSettingJwtHeader: true }),
-      mcp({ loginPage: '/login', consentPage: '/consent', resource: getMcpResource() }),
+      provider,
       cimd({ fetchClientMetadataResource: fetchCimdOnWorkers, metadataProfile: 'mcp-2026-07-28' }),
+      {
+        id: 'mcp-access',
+        endpoints: {
+          validateMcpAccess: createAuthEndpoint('/mcp-access', {
+            method: 'POST', metadata: { SERVER_ONLY: true },
+          }, async (ctx) => {
+            const authorization = parseAccessTokenAuthorization(ctx.headers?.get('authorization'))
+            if (!authorization?.token.startsWith('ghm_')) throw new APIError('UNAUTHORIZED', { error: 'invalid_token' })
+            const claims = await getOAuthProviderApi(ctx, provider.options).requireActiveAccessToken(authorization.token)
+            const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud]
+            // Deleting a session SET NULLs token.sessionId before the provider's revocation hook.
+            if (!audiences.includes(getMcpResource()) || !claims.sid || !claims.sub) throw new APIError('UNAUTHORIZED', { error: 'invalid_token' })
+            if (!ctx.request) throw new Error('MCP validation needs the original request')
+            await enforceDpopBinding({
+              payload: claims, authorization, proofJwt: ctx.headers?.get('dpop') ?? undefined,
+              method: ctx.request.method, url: ctx.request.url,
+              replayStore: createDpopReplayStore(ctx.context.internalAdapter),
+            }).catch((error) => {
+              if (isDpopBindingError(error)) throw new APIError('UNAUTHORIZED', { error: error.code, error_description: error.message })
+              throw error
+            })
+            return claims
+          }),
+        },
+      },
     ],
   })
 }
@@ -79,7 +122,7 @@ export type Session = {
 /** For pages: stale or corrupt cookies throw, and count as logged out. */
 export async function getSession(request: Pick<Request, 'headers'>): Promise<Session | null> {
   if (!request.headers.has('cookie') && !request.headers.has('authorization')) return null
-  return getSessionStrict(request).catch((cause) => {
+  return readSession({ headers: request.headers, disableCookieCache: false }).catch((cause) => {
     console.error('getSession failed:', cause)
     return null
   })
@@ -90,7 +133,11 @@ export async function getSession(request: Pick<Request, 'headers'>): Promise<Ses
  * daemon deletes its token on 401, so an outage must never look like a revoked session.
  */
 export async function getSessionStrict(request: Pick<Request, 'headers'>): Promise<Session | null> {
-  const result = await getAuth().api.getSession({ headers: request.headers })
+  return readSession({ headers: request.headers, disableCookieCache: true })
+}
+
+async function readSession({ headers, disableCookieCache }: { headers: Headers; disableCookieCache: boolean }): Promise<Session | null> {
+  const result = await getAuth().api.getSession({ headers, query: { disableCookieCache } })
   if (!result) return null
   const { user } = result
   return {
@@ -109,7 +156,7 @@ export async function verifyApiToken(request: Pick<Request, 'headers'>): Promise
 }
 
 export async function requireSession(request: Pick<Request, 'headers'>): Promise<Session> {
-  const session = await getSession(request)
+  const session = await getSessionStrict(request)
   if (!session) throw json({ error: 'unauthorized' }, { status: 401 })
   return session
 }

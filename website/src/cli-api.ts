@@ -146,7 +146,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     path: '/logout',
     detail: { hide: true },
     async handler({ request }) {
-      await getAuth().api.signOut({ headers: request.headers }).catch(() => {})
+      await getAuth().api.signOut({ headers: request.headers })
       return { ok: true }
     },
   })

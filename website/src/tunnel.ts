@@ -2,7 +2,7 @@
 // API (/macs/<slug>/v1/...) reach the Macs through it. One Durable Object per org;
 // today each user's Macs, MCP tokens and API tokens go to the user's personal org.
 //
-//   MCP client ── POST /mcp (OAuth JWT) ────────────▶ requireMcpAuth ──▶ GhosthandHub(org)  ◀── WSS /tunnel/upstream ── daemon (Mac A)
+//   MCP client ── POST /mcp (opaque OAuth token) ───▶ Better Auth ──▶ GhosthandHub(org)  ◀── WSS /tunnel/upstream ── daemon (Mac A)
 //   script ── /macs/<slug>/v1/... (Bearer ghk_...) ─▶ verify API token ─▶ (this file)        ◀── WSS /tunnel/upstream ── daemon (Mac B)
 //   daemon (Mac A, for its CLI) ── /macs/<B>/v1/... (Bearer session) ──▶ same route
 //              ◀── JSON or SSE stream ─────                                   │  request / cancel ──────────────────▶
@@ -19,7 +19,7 @@
 // The hub never runs MCP itself: each daemon serves the JSON-RPC on its own POST /mcp.
 
 import { DurableObject, env } from 'cloudflare:workers'
-import { requireMcpAuth } from '@better-auth/mcp'
+import { createResourceServerChallenge } from '@better-auth/oauth-provider'
 import { getAuth, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent, verifyApiToken } from './db.ts'
 import {
   macSlug,
@@ -49,7 +49,7 @@ type DownstreamMessage =
 
 /** Registry entry, stored per better-auth session id. The slug never changes for a session. */
 type MacEntry = { slug: string; name: string; lastSeenAt: number }
-type Attachment = { sessionId: string; connectedAt: number }
+type Attachment = { sessionId: string; connectedAt: number; expiresAt: number }
 export type HubMac = { sessionId: string; slug: string; name: string; online: boolean }
 
 const UPSTREAM_PATH = '/tunnel/upstream'
@@ -88,15 +88,15 @@ async function handleMcpRequest(request: Request): Promise<Response> {
   // Browsers send Origin; native MCP clients do not. No page may call this with a user's token.
   if (request.headers.has('origin')) return new Response(null, { status: 403 })
   if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } })
-  return requireMcpAuth(
-    getAuth(),
-    async (authenticated, claims) => {
-      if (typeof claims.sub !== 'string' || !claims.sub) return new Response(null, { status: 401 })
-      const org = await getPersonalOrg(claims.sub)
-      return getHub(org.orgId).fetch(new Request(authenticated, { headers: withoutTrustedHeaders(authenticated.headers) }))
-    },
-    { resource: getMcpResource() },
-  )(request)
+  const claims = await getAuth().api.validateMcpAccess({ request, headers: request.headers, asResponse: false }).catch((error) => {
+    const challenge = createResourceServerChallenge(error, getMcpResource())
+    if (!challenge) throw error
+    return Response.json(rpcError(null, -32000, challenge.message), { status: challenge.statusCode, headers: challenge.headers })
+  })
+  if (claims instanceof Response) return claims
+  if (typeof claims.sub !== 'string' || !claims.sub) return new Response(null, { status: 401 })
+  const org = await getPersonalOrg(claims.sub)
+  return getHub(org.orgId).fetch(new Request(request, { headers: withoutTrustedHeaders(request.headers) }))
 }
 
 /** `GET /macs` and `/macs/<slug>/v1/...` for scripts (API token) and for the daemon of another
@@ -165,24 +165,27 @@ export class GhosthandHub extends DurableObject<Env> {
   /** Only the Worker calls this, with the trusted headers it set (routeHubRequest). */
   async fetch(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url)
+    await this.refreshExpiredSessions()
     if (pathname === UPSTREAM_PATH) return this.openUpstream(request)
     if (pathname === '/macs' || pathname.startsWith('/macs/')) return this.handleApi(request)
     return this.handleMcp(request)
   }
 
   /** Every Mac this account connected, for the dashboard. */
-  macs(): HubMac[] {
+  async macs(): Promise<HubMac[]> {
+    await this.refreshExpiredSessions()
     const online = new Set(this.onlineMacs().map((mac) => mac.sessionId))
     return Object.entries(this.registry()).map(([sessionId, mac]) => ({ sessionId, slug: mac.slug, name: mac.name, online: online.has(sessionId) }))
   }
 
   /** Called after the session row is deleted: the daemon reconnects, gets 401 and stops. */
-  revoke(sessionId: string): void {
+  async revoke(sessionId: string): Promise<void> {
     for (const socket of this.ctx.getWebSockets(sessionId)) close({ socket, code: 4401, reason: 'Mac signed out' })
     this.failSession(sessionId, 'the Mac was signed out')
     const registry = this.registry()
     delete registry[sessionId]
     this.ctx.storage.kv.put('macs', registry)
+    await this.scheduleExpiry()
   }
 
   /** One socket per session; other Macs keep theirs. A newer connection of the same session
@@ -192,28 +195,59 @@ export class GhosthandHub extends DurableObject<Env> {
     if (!sessionId) return problem({ status: 400, code: 'bad-request', title: 'Bad request', detail: 'Missing session' })
     const name = decodeURIComponent(request.headers.get(MAC_NAME_HEADER) ?? 'Mac')
     // Blocks revoke() until the socket is accepted, so a sign-out during the D1 query cannot be undone.
-    const slug = await this.ctx.blockConcurrencyWhile(async () => {
+    return this.ctx.blockConcurrencyWhile(async () => {
       // Signed-out sessions free their slug; the connecting one must still be valid.
       const known = [...new Set([...Object.keys(this.registry()), sessionId])]
       const live = await getDb().query.session.findMany({ where: { id: { in: known }, expiresAt: { gt: new Date() } } })
       const liveIds = new Set(live.map((row) => row.id))
-      if (!liveIds.has(sessionId)) return null
+      const session = live.find((row) => row.id === sessionId)
+      if (!session) return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'This Mac was signed out' })
       const registry = Object.fromEntries(Object.entries(this.registry()).filter(([id]) => liveIds.has(id)))
       const slug = registry[sessionId]?.slug ?? macSlug(name, Object.values(registry).map((mac) => mac.slug))
       registry[sessionId] = { slug, name, lastSeenAt: Date.now() }
       this.ctx.storage.kv.put('macs', registry)
-      return slug
+      for (const old of this.ctx.getWebSockets(sessionId)) close({ socket: old, code: 4409, reason: 'Replaced by a newer daemon connection' })
+      this.failSession(sessionId, 'the daemon reconnected')
+      const [client, server] = Object.values(new WebSocketPair())
+      this.ctx.acceptWebSocket(server, [sessionId])
+      server.serializeAttachment({ sessionId, connectedAt: Date.now(), expiresAt: session.expiresAt.getTime() } satisfies Attachment)
+      await this.scheduleExpiry()
+      send(server, { type: 'accepted', mac: slug })
+      this.waitingForUpstream.forEach((done) => done())
+      return new Response(null, { status: 101, webSocket: client })
     })
-    if (!slug) return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'This Mac was signed out' })
+  }
 
-    for (const old of this.ctx.getWebSockets(sessionId)) close({ socket: old, code: 4409, reason: 'Replaced by a newer daemon connection' })
-    this.failSession(sessionId, 'the daemon reconnected')
-    const [client, server] = Object.values(new WebSocketPair())
-    this.ctx.acceptWebSocket(server, [sessionId])
-    server.serializeAttachment({ sessionId, connectedAt: Date.now() } satisfies Attachment)
-    send(server, { type: 'accepted', mac: slug })
-    this.waitingForUpstream.forEach((done) => done())
-    return new Response(null, { status: 101, webSocket: client })
+  /** One alarm at the next session deadline, not a keepalive or periodic poll. */
+  async alarm(): Promise<void> {
+    await this.refreshExpiredSessions()
+    await this.scheduleExpiry()
+  }
+
+  private async refreshExpiredSessions(): Promise<void> {
+    const expired = this.ctx.getWebSockets().filter((socket) => {
+      const info = attachment(socket)
+      return socket.readyState === WebSocket.OPEN && info && !(info.expiresAt > Date.now())
+    })
+    if (!expired.length) return
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const ids = [...new Set(expired.map((socket) => attachment(socket)!.sessionId))]
+      const live = await getDb().query.session.findMany({ where: { id: { in: ids }, expiresAt: { gt: new Date() } } })
+      for (const socket of expired) {
+        const info = attachment(socket)!
+        const session = live.find((row) => row.id === info.sessionId)
+        if (!session) await this.revoke(info.sessionId)
+        else socket.serializeAttachment({ ...info, expiresAt: session.expiresAt.getTime() } satisfies Attachment)
+      }
+      await this.scheduleExpiry()
+    })
+  }
+
+  private async scheduleExpiry(): Promise<void> {
+    const deadlines = this.ctx.getWebSockets().filter((socket) => socket.readyState === WebSocket.OPEN)
+      .map((socket) => attachment(socket)!.expiresAt)
+    if (deadlines.length) await this.ctx.storage.setAlarm(Math.min(...deadlines))
+    else await this.ctx.storage.deleteAlarm()
   }
 
   private async handleMcp(request: Request): Promise<Response> {
@@ -260,7 +294,7 @@ export class GhosthandHub extends DurableObject<Env> {
     const url = new URL(request.url)
     if (url.pathname === '/macs') {
       if (request.method !== 'GET') return problem({ status: 405, code: 'method-not-allowed', title: 'Method not allowed', detail: 'Use GET.', headers: { allow: 'GET' } })
-      return Response.json({ macs: this.macs().map(({ slug, name, online }) => ({ slug, name, online })) })
+      return Response.json({ macs: (await this.macs()).map(({ slug, name, online }) => ({ slug, name, online })) })
     }
     const match = url.pathname.match(/^\/macs\/([a-z0-9-]+)(\/v1\/.*)$/)
     if (!match) {
@@ -294,6 +328,7 @@ export class GhosthandHub extends DurableObject<Env> {
     body: string | Uint8Array | null
     fail: Pending['fail']
   }): Promise<Response> {
+    await this.refreshExpiredSessions()
     const mac = this.onlineMacs().find((m) => m.slug === slug)
     if (!mac) return fail(`Mac ${slug} disconnected. Try again.`)
     if (request.signal.aborted) return new Response(null, { status: 499 })
@@ -326,7 +361,9 @@ export class GhosthandHub extends DurableObject<Env> {
     }
   }
 
-  webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer): void {
+  async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer): Promise<void> {
+    await this.refreshExpiredSessions()
+    if (socket.readyState !== WebSocket.OPEN) return
     if (typeof raw !== 'string') return
     const message = parse(raw)
     const pending = message && this.pending.get(message.id)
@@ -410,7 +447,7 @@ export class GhosthandHub extends DurableObject<Env> {
       .flatMap((socket) => {
         const info = attachment(socket)
         const mac = info && registry[info.sessionId]
-        return info && mac ? [{ ...info, slug: mac.slug, name: mac.name, socket }] : []
+        return info && mac && info.expiresAt > Date.now() ? [{ ...info, slug: mac.slug, name: mac.name, socket }] : []
       })
       .sort((a, b) => b.connectedAt - a.connectedAt)
   }

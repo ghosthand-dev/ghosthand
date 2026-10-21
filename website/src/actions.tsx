@@ -5,8 +5,6 @@
 import { getActionRequest, parseFormData, redirect } from 'spiceflow'
 import { router } from 'spiceflow/react'
 import { z } from 'zod'
-import * as orm from 'drizzle-orm'
-import * as schema from 'db/schema'
 import { getAuth, getDb, getPersonalOrg, requireSession } from './db.ts'
 import { getHub } from './tunnel.ts'
 
@@ -51,11 +49,12 @@ const macForm = z.object({ sessionId: z.string().min(1) })
 
 /** Deletes the Mac's session and drops its hub connection: its next call gets 401. Only the owner's sessions. */
 export async function signOutMac(formData: FormData) {
-  const session = await requireSession(getActionRequest())
+  const request = getActionRequest()
+  const session = await requireSession(request)
   const { sessionId } = parseFormData(macForm, formData)
-  await getDb().delete(schema.session)
-    .where(orm.and(orm.eq(schema.session.id, sessionId), orm.eq(schema.session.userId, session.userId)))
-    .limit(1)
+  const target = await getDb().query.session.findFirst({ where: { id: sessionId, userId: session.userId } })
+  if (target) await getAuth().api.revokeSession({ headers: request.headers, body: { token: target.token } })
+  // Retry the hub cleanup even if an earlier attempt already deleted the row.
   const org = await getPersonalOrg(session.userId)
   await getHub(org.orgId).revoke(sessionId)
   throw redirect('/dashboard')

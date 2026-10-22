@@ -17,6 +17,10 @@
 // passes the session id and Mac name to the DO in headers it sets itself. HTTP goes over the
 // WebSocket as JSON text frames, bodies in base64, so server-sent events stream through.
 // The hub never runs MCP itself: each daemon serves the JSON-RPC on its own POST /mcp.
+//
+// For the control planes, each daemon sends `phones` when its iPhone list changes; the hub
+// stores it and passes it to the other Macs (and to a Mac that connects, and an empty list
+// when a Mac goes offline). Nothing here runs on a timer, so idle Macs never wake the DO.
 
 import { DurableObject, env } from 'cloudflare:workers'
 import { createResourceServerChallenge } from '@better-auth/oauth-provider'
@@ -40,12 +44,17 @@ type UpstreamMessage =
   | { type: 'chunk'; id: string; data: string }
   | { type: 'end'; id: string }
   | { type: 'error'; id: string; message: string }
+  | { type: 'phones'; macName: string; phones: unknown[] }
 
 /** DO → daemon. */
 type DownstreamMessage =
   | { type: 'accepted'; mac: string }
   | { type: 'request'; id: string; method: string; path: string; headers: Record<string, string>; body: string | null }
   | { type: 'cancel'; id: string }
+  | ({ type: 'phones'; mac: string } & PhoneList)
+
+/** A Mac's iPhones (daemon PhoneStatus, opaque here), for the other Macs' control planes. */
+type PhoneList = { macName: string; phones: unknown[] }
 
 /** Registry entry, stored per better-auth session id. The slug never changes for a session. */
 type MacEntry = { slug: string; name: string; lastSeenAt: number }
@@ -182,6 +191,7 @@ export class GhosthandHub extends DurableObject<Env> {
   async revoke(sessionId: string): Promise<void> {
     for (const socket of this.ctx.getWebSockets(sessionId)) close({ socket, code: 4401, reason: 'Mac signed out' })
     this.failSession(sessionId, 'the Mac was signed out')
+    this.clearPhones(sessionId)
     const registry = this.registry()
     delete registry[sessionId]
     this.ctx.storage.kv.put('macs', registry)
@@ -213,6 +223,10 @@ export class GhosthandHub extends DurableObject<Env> {
       server.serializeAttachment({ sessionId, connectedAt: Date.now(), expiresAt: session.expiresAt.getTime() } satisfies Attachment)
       await this.scheduleExpiry()
       send(server, { type: 'accepted', mac: slug })
+      for (const other of this.onlineMacs()) {
+        const list = other.sessionId === sessionId ? undefined : this.ctx.storage.kv.get<PhoneList>(phonesKey(other.sessionId))
+        if (list) send(server, { type: 'phones', mac: other.slug, ...list })
+      }
       this.waitingForUpstream.forEach((done) => done())
       return new Response(null, { status: 101, webSocket: client })
     })
@@ -366,6 +380,7 @@ export class GhosthandHub extends DurableObject<Env> {
     if (socket.readyState !== WebSocket.OPEN) return
     if (typeof raw !== 'string') return
     const message = parse(raw)
+    if (message?.type === 'phones') return this.relayPhones(socket, message)
     const pending = message && this.pending.get(message.id)
     // A Mac can only answer its own requests.
     if (!message || !pending || pending.sessionId !== attachment(socket)?.sessionId) return
@@ -405,11 +420,35 @@ export class GhosthandHub extends DurableObject<Env> {
     // A replacement socket of the same session keeps its requests.
     if (this.ctx.getWebSockets(sessionId).some((s) => s !== socket && s.readyState === WebSocket.OPEN)) return
     this.failSession(sessionId, 'the Mac disconnected')
+    this.clearPhones(sessionId)
     const registry = this.registry()
     const mac = registry[sessionId]
     if (!mac) return
     mac.lastSeenAt = Date.now()
     this.ctx.storage.kv.put('macs', registry)
+  }
+
+  /** A daemon sends its iPhones only when they change; the hub keeps the last list and passes it
+   *  to the other Macs. Never on a timer: every message wakes this Durable Object. */
+  private relayPhones(socket: WebSocket, { macName, phones }: { macName: string; phones: unknown[] }): void {
+    const sessionId = attachment(socket)?.sessionId
+    const mac = sessionId && this.registry()[sessionId]
+    if (!sessionId || !mac || !Array.isArray(phones)) return
+    this.ctx.storage.kv.put(phonesKey(sessionId), { macName: String(macName), phones } satisfies PhoneList)
+    this.broadcast(sessionId, { type: 'phones', mac: mac.slug, macName: String(macName), phones })
+  }
+
+  /** The Mac went offline or signed out: the others drop its iPhones. */
+  private clearPhones(sessionId: string): void {
+    const list = this.ctx.storage.kv.get<PhoneList>(phonesKey(sessionId))
+    const mac = this.registry()[sessionId]
+    if (!list) return
+    this.ctx.storage.kv.delete(phonesKey(sessionId))
+    if (mac) this.broadcast(sessionId, { type: 'phones', mac: mac.slug, macName: list.macName, phones: [] })
+  }
+
+  private broadcast(fromSessionId: string, message: DownstreamMessage): void {
+    for (const other of this.onlineMacs()) if (other.sessionId !== fromSessionId) send(other.socket, message)
   }
 
   /** Stops the request in the daemon too, which stops a running command. */
@@ -480,6 +519,8 @@ const tooLarge = () => problem({
   title: 'Request too large',
   detail: `Through the tunnel a request body is at most ${MAX_API_BODY / 1_000_000} MB. Use \`ghosthand upload\` for big files, or call the daemon on the Mac.`,
 })
+
+const phonesKey = (sessionId: string) => `phones:${sessionId}`
 
 function attachment(socket: WebSocket): Attachment | null {
   return socket.deserializeAttachment() as Attachment | null

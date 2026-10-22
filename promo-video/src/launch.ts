@@ -2,11 +2,11 @@
 // (src/launch-3d.ts), with HTML text on top, then the real agent demo, then the end card.
 // Pure function of time like src/video.ts: seek(t) sets the camera, meshes, screen and text from t.
 //
-//   0.0  hook title                       26.0  how it works: Bluetooth = mouse + keyboard, USB = screen
-//   3.4  01 a Mac (drops in)              36.5  05 CLI, MCP, API cards; camera pushes into the screen
-//   8.4  02 an iPhone (pops in)           42.5  real demo clip (demo-video/out/tiktok.mp4)
-//  13.0  03 USB cable                     57.1  end card
-//  18.0  04 unlock, trust, pair
+//   0.0  hook title                       16.2  how it works: Bluetooth = mouse + keyboard, USB = screen
+//   2.2  01 a Mac (drops in)              23.1  05 CLI, MCP, API cards; camera pushes into the screen
+//   5.2  02 an iPhone (pops in)           27.7  real demo clip at 2.2x (demo-video/out/tiktok.mp4)
+//   8.2  03 USB cable                     41.7  end card
+//  11.2  04 unlock, trust, pair
 
 import * as THREE from 'three'
 import logoSvg from '../../website/public/logo-ink.svg'
@@ -22,18 +22,22 @@ const H = 1080
 const { text: TEXT, accent: ACCENT, accentLight: ACCENT_LIGHT, muted: MUTED, surface: SURFACE, border: BORDER } = PALETTE
 
 // scene starts, every other time is relative to one of these
-const MAC_AT = 3.4
-const PHONE_AT = 8.4
-const USB_AT = 13
-const PAIR_AT = 18
-const HOW_AT = 26
-const USB_BEAT_AT = HOW_AT + 5
-const CONTROL_AT = 36.5
-const PUSH_AT = CONTROL_AT + 5.2
-const DEMO_AT = 42.5
-const DEMO_LEN = CLIPS.find((c) => c.name === 'demo')!.duration
+// each step stays on screen only long enough to read its text
+const MAC_AT = 2.2
+const PHONE_AT = MAC_AT + 3
+const USB_AT = PHONE_AT + 3
+const PAIR_AT = USB_AT + 3
+const HOW_AT = PAIR_AT + 5
+const USB_BEAT_AT = HOW_AT + 3.7
+const CONTROL_AT = USB_BEAT_AT + 3.2
+const PUSH_AT = CONTROL_AT + 3.8
+const DEMO_AT = PUSH_AT + 0.8
+const DEMO_CLIP = CLIPS.find((c) => c.name === 'demo')!
+/** The demo recording plays sped up, so the whole TikTok upload fits. */
+const DEMO_SPEED = 2.2
+const DEMO_LEN = DEMO_CLIP.duration / DEMO_SPEED
 const END_AT = DEMO_AT + DEMO_LEN - 0.4
-const DURATION = END_AT + 5
+const DURATION = END_AT + 4
 
 /** Left column x and the screen shift that keeps the 3D objects right of the text. */
 const TEXT_X = 150
@@ -245,11 +249,11 @@ async function init() {
     { t: USB_AT - 0.1, pos: [26, 12, 30], look: [8, 8.5, 1], shift: 360 },
     { t: USB_AT + 1.2, pos: [12, 30, 52], look: [0, 3, 4], fov: 30 },
     { t: PAIR_AT - 0.2, pos: [2, 26, 54], look: [0, 3, 4] },
-    { t: PAIR_AT + 1.0, pos: at(screenCenter, 34, -0.38), look: look(screenCenter), fov: 26, shift: 330 },
+    { t: PAIR_AT + 0.8, pos: at(screenCenter, 34, -0.38), look: look(screenCenter), fov: 26, shift: 330 },
     { t: HOW_AT - 0.3, pos: at(screenCenter, 31, -0.3), look: look(screenCenter), fov: 26, shift: 330 },
-    { t: HOW_AT + 1.2, pos: [4, 34, 56], look: [0, 6, 2], fov: 30, shift: 420 },
+    { t: HOW_AT + 0.9, pos: [4, 34, 56], look: [0, 6, 2], fov: 30, shift: 420 },
     { t: CONTROL_AT - 0.2, pos: [-4, 30, 58], look: [0, 6, 2], shift: 420 },
-    { t: CONTROL_AT + 1.2, pos: [6, 36, 70], look: [-1, 16, 0], shift: 400 },
+    { t: CONTROL_AT + 0.9, pos: [6, 36, 70], look: [-1, 16, 0], shift: 400 },
     { t: PUSH_AT, pos: [10, 34, 68], look: [-1, 16, 0], shift: 400 },
     { t: DEMO_AT - 0.1, pos: at(screenCenter, 6), look: look(screenCenter), fov: 30, shift: 0 },
     { t: END_AT, pos: [-24, 48, 84], look: [0, 27, 2], fov: 30, shift: 0 },
@@ -275,7 +279,7 @@ async function init() {
     world.mac.group.position.y = (1 - fall * fall) * 18
     const squash = t > land ? Math.exp(-(t - land) * 7) * Math.sin((t - land) * 22) : 0
     world.mac.group.scale.set(1 + squash * 0.08, 1 - squash * 0.14, 1 + squash * 0.08)
-    macMaterial.color.lerpColors(ledOff, ledOn, prog(t, MAC_AT + 1.4, 0.3))
+    macMaterial.color.lerpColors(ledOff, ledOn, prog(t, MAC_AT + 1.0, 0.3))
 
     // iPhone pops in on its stand with a half turn
     const pop = prog(t, PHONE_AT + 0.35, 0.7)
@@ -284,9 +288,9 @@ async function init() {
     world.phone.group.rotation.y = -0.32 - (1 - outCubic(pop)) * 2.4
 
     world.cable.update({
-      p: inOutCubic(prog(t, USB_AT + 0.7, 2.0)),
-      macIn: outCubic(prog(t, USB_AT + 0.3, 0.4)),
-      phoneIn: outBack(prog(t, USB_AT + 2.75, 0.3)),
+      p: inOutCubic(prog(t, USB_AT + 0.6, 1.5)),
+      macIn: outCubic(prog(t, USB_AT + 0.25, 0.35)),
+      phoneIn: outBack(prog(t, USB_AT + 2.1, 0.3)),
       flow: t > USB_BEAT_AT ? (t - USB_BEAT_AT) * 0.45 : 0,
       flowOpacity: shown(t, USB_BEAT_AT + 0.2, CONTROL_AT + 1, 0.4, 0.6),
     })
@@ -295,30 +299,31 @@ async function init() {
     world.render(t)
   }
   sfx('tap', MAC_AT + 0.75, 0.9)
-  sfx('result', MAC_AT + 1.4, 0.5)
+  sfx('result', MAC_AT + 1.0, 0.5)
   sfx('tap', PHONE_AT + 0.6, 0.7)
-  sfx('send', USB_AT + 0.7, 0.4)
-  sfx('tool', USB_AT + 3.0, 0.9)
+  sfx('send', USB_AT + 0.6, 0.4)
+  sfx('tool', USB_AT + 2.35, 0.9)
 
   // ---- iOS screen from t
   const PASSCODE = [0, 4, 8, 1, 5, 10]
-  const codeAt = (i: number) => PAIR_AT + 1.15 + i * 0.26
-  const trustAt = PAIR_AT + 3.3
-  const trustTap = trustAt + 0.95
-  const btAt = trustTap + 0.6
-  const pairAlert = btAt + 0.55
-  const pairTap = pairAlert + 1.0
-  const connectedAt = pairTap + 0.35
+  const codeAt = (i: number) => PAIR_AT + 0.8 + i * 0.18
+  const trustAt = PAIR_AT + 2.1
+  const trustTap = trustAt + 0.55
+  const btAt = trustTap + 0.4
+  const pairAlert = btAt + 0.35
+  const pairTap = pairAlert + 0.6
+  const connectedAt = pairTap + 0.3
   const tiktok = appCenter(8)
-  const mouseArrive = HOW_AT + 2.5
-  const typeAt = HOW_AT + 3.4
+  const mouseArrive = HOW_AT + 1.8
+  const typeAt = HOW_AT + 2.3
+  const TYPE_STEP = 0.12
   const TYPED = 'tiktok'
   function screenState(t: number): ScreenState {
-    if (t < PHONE_AT + 1.4) return { kind: 'off' }
-    if (t < PAIR_AT + 0.75) return { kind: 'lock', brightness: Math.round(outCubic(prog(t, PHONE_AT + 1.4, 0.5)) * 20) / 20 }
+    if (t < PHONE_AT + 1.0) return { kind: 'off' }
+    if (t < PAIR_AT + 0.6) return { kind: 'lock', brightness: Math.round(outCubic(prog(t, PHONE_AT + 1.0, 0.5)) * 20) / 20 }
     if (t < trustAt) {
       const i = PASSCODE.findLastIndex((_, k) => t >= codeAt(k))
-      const press = i < 0 ? 0 : Math.round(bump(t, codeAt(i), 0.24) * 10) / 10
+      const press = i < 0 ? 0 : Math.round(bump(t, codeAt(i), 0.18) * 10) / 10
       return { kind: 'passcode', filled: i + 1, pressed: i < 0 ? -1 : PASSCODE[i], press }
     }
     if (t < trustTap + 0.25) return { kind: 'trust', press: t > trustTap ? 1 : 0 }
@@ -329,21 +334,21 @@ async function init() {
       return { kind: 'bluetooth', alert: alertIn * (1 - alertOut), press: t > pairTap ? 1 : 0, connected: t > connectedAt }
     }
     // how it works: the Mac's mouse taps TikTok's icon, then its keyboard types
-    const move = inOutCubic(prog(t, HOW_AT + 1.4, mouseArrive - HOW_AT - 1.4))
+    const move = inOutCubic(prog(t, HOW_AT + 0.9, mouseArrive - HOW_AT - 0.9))
     const pointer = {
       x: Math.round(lerp(190, tiktok.x, move)),
       y: Math.round(lerp(470, tiktok.y, move)),
       press: Math.round(bump(t, mouseArrive + 0.1, 0.3) * 10) / 10,
-      opacity: Math.round(shown(t, HOW_AT + 1.2, typeAt, 0.3, 0.2) * 10) / 10,
+      opacity: Math.round(shown(t, HOW_AT + 0.8, typeAt, 0.3, 0.2) * 10) / 10,
     }
-    const typed = t > typeAt ? TYPED.slice(0, clamp(Math.floor((t - typeAt - 0.3) / 0.16), 0, TYPED.length)) : undefined
+    const typed = t > typeAt ? TYPED.slice(0, clamp(Math.floor((t - typeAt - 0.2) / TYPE_STEP), 0, TYPED.length)) : undefined
     return { kind: 'home', pointer, typed }
   }
   PASSCODE.forEach((_, i) => sfx(`key-${(i % 4) + 1}`, codeAt(i), 0.7))
   sfx('tap', trustTap, 0.8)
   sfx('tap', pairTap, 0.8)
   sfx('success', connectedAt, 0.6)
-  for (let i = 0; i < TYPED.length; i++) sfx(`key-${(i % 4) + 1}`, typeAt + 0.3 + i * 0.16, 0.5)
+  for (let i = 0; i < TYPED.length; i++) sfx(`key-${(i % 4) + 1}`, typeAt + 0.2 + i * TYPE_STEP, 0.5)
 
   // ---- tap ripples on the screen, projected from screen points
   const taps = [
@@ -375,9 +380,9 @@ async function init() {
     update3d,
     updateRipples,
     sceneHook(overlay),
-    textBlock(overlay, { kicker: 'Step 01', title: 'A <em>Mac.</em>', body: 'Any Mac. A Mac mini on a shelf|makes a great home for an agent.', tIn: MAC_AT + 0.5, tOut: PHONE_AT }),
-    textBlock(overlay, { kicker: 'Step 02', title: 'An <em>iPhone.</em>', body: 'A real one. No jailbreak,|no app to install on it.', tIn: PHONE_AT + 0.5, tOut: USB_AT }),
-    textBlock(overlay, { kicker: 'Step 03', title: 'Plug it <em>in.</em>', body: 'One USB cable. Use a data cable:|some cables only charge.', tIn: USB_AT + 0.5, tOut: PAIR_AT }),
+    textBlock(overlay, { kicker: 'Step 01', title: 'A <em>Mac.</em>', body: 'Any Mac. A Mac mini on a shelf|makes a great home for an agent.', tIn: MAC_AT + 0.4, tOut: PHONE_AT }),
+    textBlock(overlay, { kicker: 'Step 02', title: 'An <em>iPhone.</em>', body: 'A real one. No jailbreak,|no app to install on it.', tIn: PHONE_AT + 0.4, tOut: USB_AT }),
+    textBlock(overlay, { kicker: 'Step 03', title: 'Plug it <em>in.</em>', body: 'One USB cable. Use a data cable:|some cables only charge.', tIn: USB_AT + 0.4, tOut: PAIR_AT }),
     textBlock(overlay, {
       kicker: 'Step 04',
       title: 'Unlock, trust,|<em>pair.</em>',
@@ -386,12 +391,12 @@ async function init() {
         { label: 'Tap Trust on the iPhone', at: trustTap + 0.2 },
         { label: 'Pair the Mac in Bluetooth', at: connectedAt },
       ],
-      tIn: PAIR_AT + 0.5,
+      tIn: PAIR_AT + 0.4,
       tOut: HOW_AT + 0.1,
     }),
-    textBlock(overlay, { kicker: 'How it works', title: 'The Mac becomes|its <em>hands.</em>', body: 'Over Bluetooth, the Mac is the|iPhone’s mouse and keyboard.', tIn: HOW_AT + 0.6, tOut: USB_BEAT_AT }),
+    textBlock(overlay, { kicker: 'How it works', title: 'The Mac becomes|its <em>hands.</em>', body: 'Over Bluetooth, the Mac is the|iPhone’s mouse and keyboard.', tIn: HOW_AT + 0.4, tOut: USB_BEAT_AT }),
     textBlock(overlay, { kicker: 'How it works', title: 'The cable gives|it <em>eyes.</em>', body: 'Over USB, the agent sees|the screen, frame by frame.', tIn: USB_BEAT_AT + 0.1, tOut: CONTROL_AT }),
-    textBlock(overlay, { kicker: 'Step 05', title: 'Your agent|takes <em>over.</em>', body: 'Drive the iPhone from the CLI,|over MCP, or with the HTTP API.', tIn: CONTROL_AT + 0.4, tOut: PUSH_AT + 0.2 }),
+    textBlock(overlay, { kicker: 'Step 05', title: 'Your agent|takes <em>over.</em>', body: 'Drive the iPhone from the CLI,|over MCP, or with the HTTP API.', tIn: CONTROL_AT + 0.3, tOut: PUSH_AT + 0.2 }),
     sceneHow(overlay, world, { macTop, phoneTop, mouseArrive, typeAt }),
     sceneControl(overlay, world, macTop),
     nav(overlay, [
@@ -408,7 +413,7 @@ async function init() {
   sfx('send', HOW_AT + 1.2, 0.35)
   sfx('send', USB_BEAT_AT + 0.1, 0.35)
   sfx('send', PUSH_AT + 0.3, 0.5)
-  sounds.push({ src: CLIPS.find((c) => c.name === 'demo')!.src, at: DEMO_AT, from: 2.4, duration: DEMO_LEN, volume: 0.9 })
+  sounds.push({ src: DEMO_CLIP.src, at: DEMO_AT, from: DEMO_CLIP.start, duration: DEMO_CLIP.duration, tempo: DEMO_SPEED, volume: 0.9 })
   sfx('success', END_AT + 0.9, 0.5)
   await seek(0)
 }
@@ -423,7 +428,7 @@ function sceneHook(parent: HTMLElement): Update {
     </div>`)
   const tile = el.querySelector<HTMLElement>('.tile')!
   return (t) => {
-    revealLines(el, t, 0.35, MAC_AT + 0.2, 0.2)
+    revealLines(el, t, 0.3, MAC_AT + 0.2, 0.15)
     const p = outBack(prog(t, 0.1, 0.6))
     tile.style.transform = `scale(${p}) rotate(${(1 - p) * -12}deg)`
   }
@@ -439,7 +444,7 @@ function sceneHow(parent: HTMLElement, world: ReturnType<typeof createWorld>, o:
   const btNote = add(parent, `<div class="note hand"><small>Bluetooth</small>mouse + keyboard</div>`)
   const usbNote = add(parent, `<div class="note hand"><small>USB cable</small>the screen, live</div>`)
   const agent = add(parent, `<div class="badge" style="flex-direction:row-reverse">${ghostTile(64)}<span class="hand" style="font-size:40px">your agent</span></div>`)
-  const BT_AT = HOW_AT + 0.9
+  const BT_AT = HOW_AT + 0.6
   const curvePoints = Array.from({ length: 60 }, (_, i) => world.cable.curve.getPointAt(i / 59))
 
   /** Point on the quadratic arc between Mac and iPhone (screen px), u in 0..1. */
@@ -472,7 +477,7 @@ function sceneHow(parent: HTMLElement, world: ReturnType<typeof createWorld>, o:
       place(el, arcPoint(a, c, b, u))
       el.style.transform = `scale(${1 + 0.15 * bump(t, end, 0.3)})`
     }
-    travel(mouse, BT_AT + 0.5, o.mouseArrive)
+    travel(mouse, BT_AT + 0.3, o.mouseArrive)
     travel(keyboard, o.mouseArrive + 0.2, o.typeAt + 0.4)
 
     const mid = arcPoint(a, c, b, 0.5)
@@ -482,8 +487,8 @@ function sceneHow(parent: HTMLElement, world: ReturnType<typeof createWorld>, o:
     setVisible(arrows[0], shown(t, BT_AT + 0.8, CONTROL_AT, 0.3, 0.4))
 
     thumbs.forEach((th, i) => {
-      const start = USB_BEAT_AT + 0.6 + i * 1.1
-      const u = (t - start) / 1.6
+      const start = USB_BEAT_AT + 0.4 + i * 0.5
+      const u = (t - start) / 1.2
       const loop = ((u % 1) + 1) % 1
       const vis = t > start ? shown(t, start, CONTROL_AT, 0.2, 0.4) * Math.min(1, Math.sin(Math.PI * loop) * 3) : 0
       setVisible(th, vis)
@@ -522,7 +527,7 @@ function sceneControl(parent: HTMLElement, world: ReturnType<typeof createWorld>
   return (t) => {
     const m = world.project(macTop)
     CARDS.forEach((c, i) => {
-      const start = CONTROL_AT + 1.0 + i * 0.35
+      const start = CONTROL_AT + 0.6 + i * 0.25
       const p = outBack(prog(t, start, 0.6))
       const vis = shown(t, start, PUSH_AT + 0.5, 0.15, 0.4)
       const el = cards[i]
@@ -576,7 +581,7 @@ function sceneDemo(parent: HTMLElement, world: ReturnType<typeof createWorld>, s
     const r = open * 2300 * (1 - close)
     el.style.clipPath = `circle(${r}px at ${close > 0 ? W / 2 : c.x}px ${close > 0 ? H / 2 : c.y}px)`
     frame.style.transform = `scale(${lerp(0.94, 1, outCubic(prog(t, revealAt + 0.2, 0.8)))})`
-    const n = clamp(Math.floor((t - DEMO_AT) * CLIP_FPS), 0, frames() - 1)
+    const n = clamp(Math.floor((t - DEMO_AT) * CLIP_FPS * DEMO_SPEED), 0, frames() - 1)
     setImage(img, `clips/demo/${String(n + 1).padStart(5, '0')}.jpg`)
   }
 }

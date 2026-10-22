@@ -12,13 +12,13 @@ export const CLIPS = [
   { name: 'upload', src: '../demo-video/public/tiktok/phone.mp4', width: 420 },
   { name: 'warmup', src: '../demo-video/public/tiktok-warmup/phone.mp4', width: 420 },
   // full agent demo for the launch video; render it first in demo-video/ (see README)
-  { name: 'demo', src: '../demo-video/out/tiktok.mp4', width: 1920, start: 2.4, duration: 15 },
+  { name: 'demo', src: '../demo-video/out/tiktok.mp4', width: 1920, start: 3.4, duration: 31.6 },
 ] as const
 
 export type ClipName = (typeof CLIPS)[number]['name']
 
-/** One audio file mixed into the render at `at` seconds. `src` is relative to promo-video/. */
-export type Sound = { src: string; at: number; from?: number; duration?: number; volume?: number }
+/** One audio file mixed into the render at `at` seconds. `src` is relative to promo-video/. `tempo` speeds it up. */
+export type Sound = { src: string; at: number; from?: number; duration?: number; volume?: number; tempo?: number }
 
 declare global {
   interface Window {

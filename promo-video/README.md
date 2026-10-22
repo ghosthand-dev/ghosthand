@@ -5,7 +5,7 @@ Motion design videos rendered from plain HTML and WebGL. **No Remotion**: each e
 | Entry | Video | Length |
 | --- | --- | --- |
 | `src/video.ts` | bots (Grok, a dot) use real iPhones through ghosthand, flat 2D | 36 s |
-| `src/launch.ts` | launch: "Give your agent a phone", toon-shaded 3D setup steps, then the real agent demo | 62 s |
+| `src/launch.ts` | launch: "Give your agent a phone", toon-shaded 3D setup steps, then the real agent demo | 46 s |
 
 ```
 src/<entry>.ts ──esbuild──> one HTML page ──headless Chrome, N pages──> PNG per frame ──ffmpeg──> out/<entry>.mp4
@@ -17,8 +17,8 @@ src/<entry>.ts ──esbuild──> one HTML page ──headless Chrome, N pages
 
 ```bash
 pnpm tsx scripts/render.ts                              # out/video.mp4, 60 fps
-pnpm tsx scripts/render.ts --entry launch               # out/launch.mp4, 60 fps, about 18 min
-pnpm tsx scripts/render.ts --entry launch --fps 30      # draft, about 9 min
+pnpm tsx scripts/render.ts --entry launch               # out/launch.mp4, 60 fps, about 14 min
+pnpm tsx scripts/render.ts --entry launch --fps 30      # draft, about 7 min
 pnpm tsx scripts/render.ts --entry launch --stills 6,22 # PNGs in out/stills/ to check single frames
 pnpm tsx scripts/render.ts --entry launch --preview     # out/launch-preview.html with play button and scrubber
 ```
@@ -30,14 +30,16 @@ pnpm tsx scripts/render.ts --entry launch --preview     # out/launch-preview.htm
 | Time | Scene |
 | --- | --- |
 | 0.0 | hook title |
-| 3.4 | 01 a Mac mini drops in |
-| 8.4 | 02 an iPhone pops in on a stand, lock screen turns on |
-| 13.0 | 03 the USB cable draws from the Mac to the iPhone |
-| 18.0 | 04 close-up: passcode, Trust This Computer, Bluetooth pairing, checklist |
-| 26.0 | how it works: Bluetooth arc carries mouse + keyboard, USB cable carries screen frames |
-| 36.5 | 05 CLI, MCP and API cards fan out of the Mac |
-| 42.5 | circle reveal from the iPhone screen into the real demo |
-| 57.1 | end card |
+| 2.2 | 01 a Mac mini drops in |
+| 5.2 | 02 an iPhone pops in on a stand, lock screen turns on |
+| 8.2 | 03 the USB cable draws from the Mac to the iPhone |
+| 11.2 | 04 close-up: passcode, Trust This Computer, Bluetooth pairing, checklist |
+| 16.2 | how it works: Bluetooth arc carries mouse + keyboard, USB cable carries screen frames |
+| 23.1 | 05 CLI, MCP and API cards fan out of the Mac |
+| 27.7 | circle reveal from the iPhone screen into the real demo, played at 2.2x |
+| 41.7 | end card |
+
+**Pacing:** each step stays only long enough to read its text (about 3 s). Scene starts are chained constants at the top of `src/launch.ts`.
 
 - **`src/launch-3d.ts`**: models built from code (1 unit = 1 cm), `MeshToonMaterial` with a 4-step ramp, and an ink pass: Sobel edges on normals + depth draw dark outlines, silhouettes get a thin indigo rim, with line boil (8 fps wobble) and light grain.
 - **Dark theme**: `PALETTE` in `src/launch-3d.ts`. The accent is the website's primary `#4f46e5` (`website/docs.jsonc`); `accentLight` is used for small text on the dark background.

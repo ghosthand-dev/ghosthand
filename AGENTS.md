@@ -135,6 +135,6 @@ ghosthand docs-json <file> (main.swift: docsJSON) ──> website/scripts/genera
 
 # Demo videos
 
-`promo-video/` is a motion design promo rendered from plain HTML with headless Chrome (`seek(t)` per frame, no Remotion). Read `promo-video/README.md` first.
+`promo-video/` has motion design videos rendered from plain HTML and three.js with headless Chrome (`seek(t)` per frame, no Remotion): the 2D promo (`src/video.ts`) and the toon-shaded 3D launch video (`src/launch.ts`). Read `promo-video/README.md` first.
 
 `demo-video/` is a Remotion package for 16:9 promo videos: a ghosthand screen recording (left) next to an animated Claude Code style terminal (right). Record with `record start` plus a `log.jsonl` of every command, then `scripts/prepare.ts` speeds up the recording and writes `timeline.json`. Read `demo-video/README.md` first.

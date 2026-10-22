@@ -19,7 +19,7 @@ import {
 
 const W = 1920
 const H = 1080
-const { ink: INK, terra: TERRA, muted: MUTED } = PALETTE
+const { text: TEXT, accent: ACCENT, accentLight: ACCENT_LIGHT, muted: MUTED, surface: SURFACE, border: BORDER } = PALETTE
 
 // scene starts, every other time is relative to one of these
 const MAC_AT = 3.4
@@ -43,18 +43,18 @@ const TEXT_SHIFT = 300
 
 const CSS = /* css */ `
 * { box-sizing: border-box; margin: 0; padding: 0 }
-html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: ${PALETTE.paper} }
-#stage { position: relative; width: ${W}px; height: ${H}px; overflow: hidden; background: ${PALETTE.paper};
-  font-family: 'DM Sans Variable', sans-serif; color: ${INK}; -webkit-font-smoothing: antialiased }
+html, body { width: ${W}px; height: ${H}px; overflow: hidden; background: ${PALETTE.bg} }
+#stage { position: relative; width: ${W}px; height: ${H}px; overflow: hidden; background: ${PALETTE.bg};
+  font-family: 'DM Sans Variable', sans-serif; color: ${TEXT}; -webkit-font-smoothing: antialiased }
 .layer { position: absolute; inset: 0 }
 canvas { position: absolute; inset: 0; width: ${W}px; height: ${H}px }
 .serif { font-family: 'Fraunces Variable', serif; font-variation-settings: 'SOFT' 100, 'WONK' 0; letter-spacing: -0.02em }
-.serif em { font-style: italic; color: ${TERRA}; font-variation-settings: 'SOFT' 100, 'WONK' 1 }
-.hand { font-family: 'Caveat Variable', cursive; font-weight: 600; color: ${INK} }
+.serif em { font-style: italic; color: ${ACCENT_LIGHT}; font-variation-settings: 'SOFT' 100, 'WONK' 1 }
+.hand { font-family: 'Caveat Variable', cursive; font-weight: 600; color: ${TEXT} }
 .mono { font-family: 'JetBrains Mono Variable', monospace }
-.kicker { font-size: 17px; font-weight: 600; letter-spacing: 0.34em; text-transform: uppercase; color: ${TERRA};
+.kicker { font-size: 17px; font-weight: 600; letter-spacing: 0.34em; text-transform: uppercase; color: ${ACCENT_LIGHT};
   display: flex; align-items: center; gap: 16px }
-.kicker::before { content: ''; width: 34px; height: 2px; background: ${TERRA}; border-radius: 2px }
+.kicker::before { content: ''; width: 34px; height: 2px; background: ${ACCENT}; border-radius: 2px }
 .block { position: absolute; left: ${TEXT_X}px; top: 0; width: 640px }
 .block .title { font-size: 92px; line-height: 0.98; font-weight: 420; margin-top: 26px }
 .block .body { font-size: 25px; line-height: 1.45; color: ${MUTED}; margin-top: 28px; max-width: 520px }
@@ -62,55 +62,55 @@ canvas { position: absolute; inset: 0; width: ${W}px; height: ${H}px }
 .line > span { display: inline-block }
 .checks { margin-top: 34px; display: grid; gap: 16px }
 .check { display: flex; align-items: center; gap: 16px; font-size: 25px; font-weight: 500 }
-.box { width: 30px; height: 30px; border-radius: 9px; border: 2px solid ${INK}; display: grid; place-items: center; flex: none;
-  background: ${PALETTE.paperLight} }
+.box { width: 30px; height: 30px; border-radius: 9px; border: 2px solid ${PALETTE.dim}; display: grid; place-items: center; flex: none;
+  background: ${SURFACE} }
 .box svg { width: 20px; height: 20px }
 .nav { position: absolute; left: ${TEXT_X}px; bottom: 74px; display: flex; gap: 34px; font-size: 15px; font-weight: 600;
   letter-spacing: 0.22em; text-transform: uppercase; color: ${MUTED} }
 .nav div { position: relative; padding-bottom: 12px }
-.nav i { position: absolute; left: 0; bottom: 0; height: 2.5px; border-radius: 2px; background: ${TERRA} }
+.nav i { position: absolute; left: 0; bottom: 0; height: 2.5px; border-radius: 2px; background: ${ACCENT} }
 .note { position: absolute; font-size: 44px; line-height: 1; white-space: nowrap }
 .note small { display: block; font-family: 'DM Sans Variable'; font-size: 15px; font-weight: 600; letter-spacing: 0.24em;
-  text-transform: uppercase; color: ${TERRA}; margin-bottom: 8px }
-.card { position: absolute; padding: 20px 24px 22px; border-radius: 18px; background: ${PALETTE.paperLight};
-  border: 2px solid ${INK}; box-shadow: 0 18px 40px rgba(90, 50, 25, 0.14), 6px 6px 0 rgba(58, 42, 32, 0.9) }
-.card .tag { font-size: 14px; font-weight: 700; letter-spacing: 0.24em; color: ${TERRA}; display: flex; justify-content: space-between }
+  text-transform: uppercase; color: ${ACCENT_LIGHT}; margin-bottom: 8px }
+.card { position: absolute; padding: 20px 24px 22px; border-radius: 18px; background: ${SURFACE};
+  border: 1.5px solid ${BORDER}; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 6px 6px 0 ${ACCENT} }
+.card .tag { font-size: 14px; font-weight: 700; letter-spacing: 0.24em; color: ${ACCENT_LIGHT}; display: flex; justify-content: space-between }
 .card .tag span:last-child { color: ${MUTED}; letter-spacing: 0.06em; font-weight: 500; text-transform: none; font-size: 15px }
-.card pre { margin-top: 12px; font-size: 18px; line-height: 1.5; color: ${INK}; white-space: pre }
-.card pre b { color: ${TERRA}; font-weight: 600 }
+.card pre { margin-top: 12px; font-size: 18px; line-height: 1.5; color: ${TEXT}; white-space: pre }
+.card pre b { color: ${ACCENT_LIGHT}; font-weight: 600 }
 .ripple { position: absolute; width: 0; height: 0 }
-.ripple div { position: absolute; border-radius: 50%; border: 3px solid ${TERRA}; transform: translate(-50%, -50%) }
+.ripple div { position: absolute; border-radius: 50%; border: 3px solid ${ACCENT_LIGHT}; transform: translate(-50%, -50%) }
 .badge { position: absolute; display: flex; align-items: center; gap: 14px }
-.thumb { position: absolute; width: 36px; height: 62px; border-radius: 8px; border: 2px solid ${INK}; margin: -31px 0 0 -18px;
-  background: linear-gradient(#f7d7b0, #f0a77f 50%, #8f9a6c); box-shadow: 3px 3px 0 rgba(58, 42, 32, 0.85) }
-.travel { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 18px; background: ${PALETTE.paperLight};
-  border: 2px solid ${INK}; display: grid; place-items: center; box-shadow: 4px 4px 0 rgba(58, 42, 32, 0.85) }
-#demo { background: ${PALETTE.paper} }
+.thumb { position: absolute; width: 36px; height: 62px; border-radius: 8px; border: 1.5px solid ${BORDER}; margin: -31px 0 0 -18px;
+  background: linear-gradient(#1e1b4b, ${ACCENT} 55%, #a5b4fc); box-shadow: 3px 3px 0 ${ACCENT} }
+.travel { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 18px; background: ${SURFACE};
+  border: 1.5px solid ${BORDER}; display: grid; place-items: center; box-shadow: 4px 4px 0 ${ACCENT} }
+#demo { background: radial-gradient(ellipse at 50% 45%, ${PALETTE.bgGlow}, ${PALETTE.bg} 70%) }
 #demo .frame { position: absolute; left: ${(W - 1488) / 2}px; top: 170px; width: 1488px; height: 837px; border-radius: 26px; overflow: hidden;
-  border: 3px solid ${INK}; box-shadow: 0 30px 70px rgba(90, 50, 25, 0.22), 10px 10px 0 rgba(58, 42, 32, 0.9) }
+  border: 1.5px solid ${BORDER}; box-shadow: 0 40px 90px rgba(0, 0, 0, 0.6), 10px 10px 0 ${ACCENT} }
 #demo img { width: 100%; height: 100%; display: block }
 .end { position: absolute; left: 0; right: 0; top: 120px; text-align: center }
-.pill { display: inline-flex; align-items: center; gap: 14px; padding: 16px 30px; border-radius: 999px; border: 2px solid ${INK};
-  background: ${PALETTE.paperLight}; font-size: 28px; box-shadow: 5px 5px 0 rgba(58, 42, 32, 0.9) }
+.pill { display: inline-flex; align-items: center; gap: 14px; padding: 16px 30px; border-radius: 999px; border: 1.5px solid ${BORDER};
+  background: ${SURFACE}; font-size: 28px; box-shadow: 5px 5px 0 ${ACCENT} }
 `
 
 // ---------------------------------------------------------------- art
 
 const GHOST_PATH = logoSvg.match(/fill="url\(#ghost\)" d="([^"]+)"/)![1]
 
-/** Ghosthand ghost on a terracotta tile, `size` px. */
+/** Ghosthand ghost on the indigo logo tile, `size` px. */
 const ghostTile = (size: number) => `
   <svg width="${size}" height="${size}" viewBox="-1.1 -1.1 2.2 2.2">
-    <rect x="-1" y="-1" width="2" height="2" rx="0.46" fill="${TERRA}" stroke="${INK}" stroke-width="0.07"/>
-    <g transform="scale(0.0021) translate(-512 -531)"><path fill="#fffaf2" d="${GHOST_PATH}"/>
-      <ellipse cx="452" cy="478" rx="30" ry="40" fill="${INK}"/><ellipse cx="584" cy="478" rx="30" ry="40" fill="${INK}"/></g>
+    <rect x="-1" y="-1" width="2" height="2" rx="0.46" fill="${ACCENT}"/>
+    <g transform="scale(0.0021) translate(-512 -531)"><path fill="#ffffff" d="${GHOST_PATH}"/>
+      <ellipse cx="452" cy="478" rx="30" ry="40" fill="#26244f"/><ellipse cx="584" cy="478" rx="30" ry="40" fill="#26244f"/></g>
   </svg>`
 
-const CHECK = `<svg viewBox="0 0 20 20"><path d="M4 10.5 L8.5 15 L16 5.5" fill="none" stroke="${TERRA}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+const CHECK = `<svg viewBox="0 0 20 20"><path d="M4 10.5 L8.5 15 L16 5.5" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 
 const ICONS = {
-  mouse: `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="${INK}" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="6"/><path d="M12 2.5v6.5"/><path d="M6 9h12" opacity="0.4"/></svg>`,
-  keyboard: `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="${INK}" stroke-width="1.7" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>`,
+  mouse: `<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="${TEXT}" stroke-width="1.8" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="6"/><path d="M12 2.5v6.5"/><path d="M6 9h12" opacity="0.4"/></svg>`,
+  keyboard: `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="${TEXT}" stroke-width="1.7" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>`,
 }
 
 // ---------------------------------------------------------------- text helpers
@@ -158,7 +158,8 @@ function textBlock(stage: HTMLElement, s: Step): Update {
       path.style.strokeDasharray = '24'
       path.style.strokeDashoffset = String(24 * (1 - clamp(done)))
       boxes[i].style.transform = `scale(${1 + 0.18 * bump(t, c.at, 0.35)})`
-      boxes[i].style.background = t > c.at ? '#fbe3d6' : PALETTE.paperLight
+      boxes[i].style.background = t > c.at ? ACCENT : SURFACE
+      boxes[i].style.borderColor = t > c.at ? ACCENT : PALETTE.dim
     })
   }
 }
@@ -430,8 +431,8 @@ function sceneHook(parent: HTMLElement): Update {
 
 function sceneHow(parent: HTMLElement, world: ReturnType<typeof createWorld>, o: { macTop: THREE.Vector3; phoneTop: THREE.Vector3; mouseArrive: number; typeAt: number }): Update {
   const svg = svgEl(parent, 'svg', { width: W, height: H, style: 'position:absolute; inset:0; overflow:visible' }) as SVGSVGElement
-  const arc = svgEl(svg, 'path', { fill: 'none', stroke: TERRA, 'stroke-width': 4, 'stroke-linecap': 'round', 'stroke-dasharray': '2 14' })
-  const arrows = [0, 1].map(() => svgEl(svg, 'path', { fill: 'none', stroke: INK, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+  const arc = svgEl(svg, 'path', { fill: 'none', stroke: ACCENT_LIGHT, 'stroke-width': 4, 'stroke-linecap': 'round', 'stroke-dasharray': '2 14' })
+  const arrows = [0, 1].map(() => svgEl(svg, 'path', { fill: 'none', stroke: TEXT, 'stroke-width': 3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
   const mouse = add(parent, `<div class="travel">${ICONS.mouse}</div>`)
   const keyboard = add(parent, `<div class="travel">${ICONS.keyboard}</div>`)
   const thumbs = [0, 1, 2].map(() => add(parent, '<div class="thumb"></div>'))
@@ -514,7 +515,7 @@ function sceneControl(parent: HTMLElement, world: ReturnType<typeof createWorld>
     { tag: 'API', note: 'any language', code: '<b>POST</b> /v1/leases/42/tap\n{ "text": "TikTok" }', dx: 440, dy: -330 },
   ]
   const svg = svgEl(parent, 'svg', { width: W, height: H, style: 'position:absolute; inset:0; overflow:visible' }) as SVGSVGElement
-  const links = CARDS.map(() => svgEl(svg, 'path', { fill: 'none', stroke: INK, 'stroke-width': 2.5, 'stroke-dasharray': '3 9', 'stroke-linecap': 'round' }))
+  const links = CARDS.map(() => svgEl(svg, 'path', { fill: 'none', stroke: MUTED, 'stroke-width': 2.5, 'stroke-dasharray': '3 9', 'stroke-linecap': 'round' }))
   const cards = CARDS.map((c) =>
     add(parent, `<div class="card"><div class="tag"><span>${c.tag}</span><span>${c.note}</span></div><pre class="mono">${c.code}</pre></div>`),
   )
@@ -546,7 +547,7 @@ function nav(parent: HTMLElement, items: Array<[string, number]>): Update {
     items.forEach(([, start], i) => {
       const end = items[i + 1]?.[1] ?? PUSH_AT
       const active = t >= start && t < end
-      rows[i].style.color = active ? INK : t >= end ? '#b3a597' : MUTED
+      rows[i].style.color = active ? TEXT : t >= end ? PALETTE.dim : MUTED
       const bar = rows[i].querySelector('i')!
       bar.style.width = `${(t >= start ? clamp((t - start) / (end - start)) : 0) * 100}%`
       bar.style.opacity = active ? '1' : '0.35'
@@ -554,12 +555,12 @@ function nav(parent: HTMLElement, items: Array<[string, number]>): Update {
   }
 }
 
-/** Circle reveal from the iPhone screen into the real demo recording, framed on paper. */
+/** Circle reveal from the iPhone screen into the real demo recording, on the dark background. */
 function sceneDemo(parent: HTMLElement, world: ReturnType<typeof createWorld>, screenCenter: THREE.Vector3): Update {
   const el = add(parent, `
     <div id="demo" class="layer">
       <div class="hand" style="position:absolute; left:0; right:0; top:64px; text-align:center; font-size:56px">
-        a real run: <span style="color:${TERRA}">“upload this video to tiktok”</span></div>
+        a real run: <span style="color:${ACCENT_LIGHT}">“upload this video to tiktok”</span></div>
       <div class="frame"><img></div>
     </div>`)
   const img = el.querySelector('img')!
@@ -586,8 +587,8 @@ function sceneEnd(parent: HTMLElement): Update {
       <div class="tile" style="display:inline-block">${ghostTile(96)}</div>
       <div class="serif" style="font-size:128px; line-height:1; margin-top:24px">${lines('ghosthand')}</div>
       <div class="serif" style="font-size:44px; margin-top:18px; color:${MUTED}">${lines('Give your agent <em>a phone.</em>')}</div>
-      <div style="margin-top:44px"><span class="pill mono"><b style="color:${TERRA}">$</b> npx ghosthand setup</span></div>
-      <div style="margin-top:28px; font-size:22px; font-weight:600; letter-spacing:0.3em; color:${INK}">GHOSTHAND.DEV</div>
+      <div style="margin-top:44px"><span class="pill mono"><b style="color:${ACCENT_LIGHT}">$</b> npx ghosthand setup</span></div>
+      <div style="margin-top:28px; font-size:22px; font-weight:600; letter-spacing:0.3em; color:${TEXT}">GHOSTHAND.DEV</div>
     </div>`)
   const tile = el.querySelector<HTMLElement>('.tile')!
   const pill = el.querySelector<HTMLElement>('.pill')!.parentElement!

@@ -1,4 +1,4 @@
-// iOS screens on the 3D iPhone, drawn with Canvas 2D in a flat illustrated style.
+// iOS screens on the 3D iPhone (dark mode), drawn with Canvas 2D in a flat illustrated style.
 // Coordinates are iPhone SE points (375×667); the canvas is 2.4x for close-ups.
 
 export type ScreenState =
@@ -13,8 +13,11 @@ const PT_W = 375
 const PT_H = 667
 const SCALE = 2.4
 const FONT = '"DM Sans Variable", system-ui, sans-serif'
-const TERRA = '#d97757'
-const IOS_BLUE = '#0a7aff'
+const INDIGO = '#4f46e5'
+const IOS_BLUE = '#0a84ff'
+/** iOS dark mode table cell and secondary label colors. */
+const CELL = '#1c1c1e'
+const SECONDARY = '#8d8d93'
 
 export function createScreen() {
   const canvas = document.createElement('canvas')
@@ -68,19 +71,19 @@ function roundRect(ctx: Ctx, x: number, y: number, w: number, h: number, r: numb
   ctx.fill()
 }
 
-/** Warm sunset with hills: the wallpaper of every screen. */
+/** Indigo dusk with hills: the wallpaper of every screen. */
 function wallpaper(ctx: Ctx, { blur = 0, dim = 0 } = {}) {
   ctx.save()
   if (blur) ctx.filter = `blur(${blur}px)`
   const sky = ctx.createLinearGradient(0, 0, 0, PT_H)
-  sky.addColorStop(0, '#f7d7b0')
-  sky.addColorStop(0.45, '#f0a77f')
-  sky.addColorStop(1, '#c4614a')
+  sky.addColorStop(0, '#14123a')
+  sky.addColorStop(0.5, '#4f46e5')
+  sky.addColorStop(1, '#a5b4fc')
   ctx.fillStyle = sky
   ctx.fillRect(-40, -40, PT_W + 80, PT_H + 80)
-  ctx.fillStyle = '#fff1d8'
+  ctx.fillStyle = '#c7d2fe'
   ctx.beginPath()
-  ctx.arc(250, 300, 70, 0, Math.PI * 2)
+  ctx.arc(250, 300, 56, 0, Math.PI * 2)
   ctx.fill()
   const hill = (y: number, amp: number, color: string, phase: number) => {
     ctx.fillStyle = color
@@ -90,13 +93,13 @@ function wallpaper(ctx: Ctx, { blur = 0, dim = 0 } = {}) {
     ctx.lineTo(PT_W + 40, PT_H + 40)
     ctx.fill()
   }
-  hill(420, 22, '#e08a64', 0.4)
-  hill(480, 26, '#b9a07a', 2.1)
-  hill(545, 20, '#8f9a6c', 4)
-  hill(610, 14, '#6e7c55', 1.3)
+  hill(420, 22, '#6d63f0', 0.4)
+  hill(480, 26, '#3f37c9', 2.1)
+  hill(545, 20, '#2b2590', 4)
+  hill(610, 14, '#1b1760', 1.3)
   ctx.restore()
   if (dim) {
-    ctx.fillStyle = `rgba(20, 12, 8, ${dim})`
+    ctx.fillStyle = `rgba(6, 5, 16, ${dim})`
     ctx.fillRect(0, 0, PT_W, PT_H)
   }
 }
@@ -172,7 +175,7 @@ function passcode(ctx: Ctx, s: { filled: number; pressed: number; press: number 
 }
 
 const APPS = [
-  ['#f2b84b', 'Notes'], ['#6fbf73', 'Messages'], [TERRA, 'Photos'], ['#5aa1e3', 'Mail'],
+  ['#f2b84b', 'Notes'], ['#6fbf73', 'Messages'], [INDIGO, 'Photos'], ['#5aa1e3', 'Mail'],
   ['#9c7bd6', 'Podcasts'], ['#ee6b6e', 'Music'], ['#8d8a86', 'Settings'], ['#f29a4a', 'Books'],
   ['#3a3632', 'TikTok'], ['#e85d9a', 'Instagram'], ['#58c4c6', 'Maps'], ['#7f9a52', 'Wallet'],
   ['#f0c64e', 'Weather'], ['#5c78d6', 'Files'], ['#c9744f', 'Safari'], ['#61b58a', 'Phone'],
@@ -208,13 +211,13 @@ function home(ctx: Ctx, s: Extract<ScreenState, { kind: 'home' }>) {
     appIcon(ctx, x, y, color, i)
     text(ctx, name, x, y + 42, { size: 11, weight: 500 })
   })
-  roundRect(ctx, 10, 568, PT_W - 20, 90, 24, 'rgba(255, 244, 230, 0.4)')
+  roundRect(ctx, 10, 568, PT_W - 20, 90, 24, 'rgba(230, 232, 255, 0.28)')
   ;['#61b58a', '#5aa1e3', '#c9744f', '#ee6b6e'].forEach((c, i) => appIcon(ctx, 50 + i * 92, 613, c, i + 1))
 
   if (s.typed !== undefined) {
-    roundRect(ctx, 0, 0, PT_W, PT_H, 0, 'rgba(30, 20, 14, 0.35)')
-    roundRect(ctx, 16, 40, PT_W - 32, 38, 12, 'rgba(255, 248, 240, 0.92)')
-    text(ctx, s.typed || 'Search', 46, 59, { size: 16, color: s.typed ? '#1d1712' : '#8a7867', align: 'left' })
+    roundRect(ctx, 0, 0, PT_W, PT_H, 0, 'rgba(6, 5, 16, 0.45)')
+    roundRect(ctx, 16, 40, PT_W - 32, 38, 12, 'rgba(58, 58, 66, 0.92)')
+    text(ctx, s.typed || 'Search', 46, 59, { size: 16, color: s.typed ? '#ffffff' : '#98989f', align: 'left' })
   }
 
   if (s.pointer && s.pointer.opacity > 0) {
@@ -244,15 +247,15 @@ function alert(ctx: Ctx, { title, message, left, right, press, opacity }: { titl
   ctx.translate(PT_W / 2, PT_H / 2)
   ctx.scale(scale, scale)
   ctx.translate(-PT_W / 2, -PT_H / 2)
-  roundRect(ctx, x, y, w, h, 14, 'rgba(250, 247, 242, 0.97)')
-  text(ctx, title, PT_W / 2, y + 26, { size: 17, weight: 600, color: '#1d1712' })
-  message.forEach((line, i) => text(ctx, line, PT_W / 2, y + 50 + i * 17, { size: 13, color: '#1d1712' }))
+  roundRect(ctx, x, y, w, h, 14, 'rgba(44, 44, 48, 0.97)')
+  text(ctx, title, PT_W / 2, y + 26, { size: 17, weight: 600 })
+  message.forEach((line, i) => text(ctx, line, PT_W / 2, y + 50 + i * 17, { size: 13 }))
   const by = y + h - 44
-  ctx.fillStyle = 'rgba(60, 50, 40, 0.2)'
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)'
   ctx.fillRect(x, by, w, 0.7)
   ctx.fillRect(PT_W / 2, by, 0.7, 44)
   if (press > 0) {
-    ctx.fillStyle = `rgba(60, 50, 40, ${0.14 * press})`
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.14 * press})`
     ctx.fillRect(PT_W / 2, by, w / 2, 44)
   }
   text(ctx, left, x + w / 4, by + 22, { size: 17, color: IOS_BLUE })
@@ -276,13 +279,13 @@ function trust(ctx: Ctx, press: number) {
 }
 
 function bluetooth(ctx: Ctx, s: { alert: number; press: number; connected: boolean }) {
-  ctx.fillStyle = '#f2efea'
+  ctx.fillStyle = '#000000'
   ctx.fillRect(0, 0, PT_W, PT_H)
-  statusBar(ctx, '#1d1712')
+  statusBar(ctx)
   text(ctx, '‹ Settings', 10, 44, { size: 17, color: IOS_BLUE, align: 'left' })
-  text(ctx, 'Bluetooth', PT_W / 2, 44, { size: 17, weight: 600, color: '#1d1712' })
-  roundRect(ctx, 0, 84, PT_W, 46, 0, '#fffdfa')
-  text(ctx, 'Bluetooth', 16, 107, { size: 17, color: '#1d1712', align: 'left' })
+  text(ctx, 'Bluetooth', PT_W / 2, 44, { size: 17, weight: 600 })
+  roundRect(ctx, 0, 84, PT_W, 46, 0, CELL)
+  text(ctx, 'Bluetooth', 16, 107, { size: 17, align: 'left' })
   roundRect(ctx, PT_W - 67, 92, 51, 31, 15.5, '#34c759')
   ctx.beginPath()
   ctx.arc(PT_W - 31.5, 107.5, 13.5, 0, Math.PI * 2)
@@ -291,10 +294,10 @@ function bluetooth(ctx: Ctx, s: { alert: number; press: number; connected: boole
 
   let y = 160
   if (s.connected) {
-    text(ctx, 'MY DEVICES', 16, y, { size: 13, color: '#8a7f75', align: 'left' })
-    roundRect(ctx, 0, y + 14, PT_W, 46, 0, '#fffdfa')
-    text(ctx, 'Mac mini', 16, y + 37, { size: 17, color: '#1d1712', align: 'left' })
-    text(ctx, 'Connected', PT_W - 44, y + 37, { size: 17, color: '#8a7f75', align: 'right' })
+    text(ctx, 'MY DEVICES', 16, y, { size: 13, color: SECONDARY, align: 'left' })
+    roundRect(ctx, 0, y + 14, PT_W, 46, 0, CELL)
+    text(ctx, 'Mac mini', 16, y + 37, { size: 17, align: 'left' })
+    text(ctx, 'Connected', PT_W - 44, y + 37, { size: 17, color: SECONDARY, align: 'right' })
     ctx.beginPath()
     ctx.arc(PT_W - 24, y + 37, 9, 0, Math.PI * 2)
     ctx.strokeStyle = IOS_BLUE
@@ -303,9 +306,9 @@ function bluetooth(ctx: Ctx, s: { alert: number; press: number; connected: boole
     text(ctx, 'i', PT_W - 24, y + 37, { size: 12, weight: 700, color: IOS_BLUE })
     y += 90
   }
-  text(ctx, 'OTHER DEVICES', 16, y, { size: 13, color: '#8a7f75', align: 'left' })
-  roundRect(ctx, 0, y + 14, PT_W, 46, 0, '#fffdfa')
-  text(ctx, s.connected ? 'AirPods' : 'Mac mini', 16, y + 37, { size: 17, color: '#1d1712', align: 'left' })
+  text(ctx, 'OTHER DEVICES', 16, y, { size: 13, color: SECONDARY, align: 'left' })
+  roundRect(ctx, 0, y + 14, PT_W, 46, 0, CELL)
+  text(ctx, s.connected ? 'AirPods' : 'Mac mini', 16, y + 37, { size: 17, align: 'left' })
 
   if (s.alert > 0) {
     alert(ctx, {

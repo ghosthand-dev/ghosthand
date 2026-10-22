@@ -1,27 +1,31 @@
-// 3D world of the launch video: toon-shaded Mac mini, iPhone SE on a wooden stand, USB cable.
+// 3D world of the launch video: toon-shaded Mac mini, iPhone SE on a stand, USB cable, dark theme.
 // Models are built from code (1 unit = 1 cm). Frames go through an ink pass: Sobel edges on
-// normals and depth draw the outlines, then paper grain is added, like an illustration.
+// normals and depth draw dark outlines, silhouettes get a thin brand-color rim, then grain is added.
 //
 //   scene ──color pass──> colorRT ─┐
-//   scene ──normal pass──> normalRT + depth ─┴──> ink shader (outlines, wobble, grain) ──> canvas
+//   scene ──normal pass──> normalRT + depth ─┴──> ink shader (outlines, rim, wobble, grain) ──> canvas
 
 import * as THREE from 'three'
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
+/** Dark theme. `accent` is the website's primary color (website/docs.jsonc). */
 export const PALETTE = {
-  paper: '#f3eadb',
-  paperLight: '#fbf6ec',
-  ink: '#3a2a20',
-  terra: '#d97757',
-  terraDark: '#b85c3e',
-  sage: '#9cb08a',
-  mustard: '#e8b65a',
-  muted: '#8a7867',
-  alu: '#dcd8d2',
-  rubber: '#5a4b40',
-  glass: '#2a221d',
-  wood: '#d4a06a',
-  cable: '#fbf7f0',
+  bg: '#0c0b12',
+  bgGlow: '#191733',
+  surface: '#16151f',
+  border: '#2e2c42',
+  text: '#f1f0f8',
+  muted: '#8f8ca8',
+  dim: '#4d4a66',
+  accent: '#4f46e5',
+  /** Lighter brand tint (top of the logo tile gradient) for small text on the dark background. */
+  accentLight: '#7a73f7',
+  outline: '#06050b',
+  alu: '#a9a8b6',
+  rubber: '#26242f',
+  glass: '#0b0a10',
+  stand: '#565275',
+  cable: '#e8e7f1',
 }
 
 /** Objects on this layer get no outline (ground shadow, glowing beads). */
@@ -116,10 +120,10 @@ export const PHONE = { w: 6.73, h: 13.84, d: 0.73, screenW: 5.84, screenH: 10.38
 /** The iPhone leans back on its stand by this angle (radians). */
 const TILT = 0.2
 
-/** iPhone SE (2nd gen) on a small wooden stand. Screen faces +z. */
+/** iPhone SE (2nd gen) on a small stand. Screen faces +z. */
 function iphone(screenTexture: THREE.Texture) {
   const phone = new THREE.Group()
-  phone.add(mesh(slab({ w: PHONE.w, h: PHONE.h, depth: PHONE.d, r: 0.95, bevel: 0.22 }), toon(PALETTE.terra)))
+  phone.add(mesh(slab({ w: PHONE.w, h: PHONE.h, depth: PHONE.d, r: 0.95, bevel: 0.22 }), toon(PALETTE.accent)))
   phone.add(mesh(slab({ w: PHONE.w - 0.16, h: PHONE.h - 0.16, depth: 0.06, r: 0.88, bevel: 0.025 }), toon(PALETTE.glass), [0, 0, PHONE.d / 2 - 0.01]))
 
   const screen = new THREE.Mesh(
@@ -140,12 +144,12 @@ function iphone(screenTexture: THREE.Texture) {
 
   // stand: base plate, tilted back rest, two front lips the phone sits on (cable goes between them)
   const stand = new THREE.Group()
-  const wood = toon(PALETTE.wood)
-  stand.add(mesh(flatSlab({ w: 8.6, h: 6.2, depth: 0.7, r: 0.8, bevel: 0.18 }), wood, [0, 0.35, 0]))
-  const rest = mesh(slab({ w: 7.4, h: 10, depth: 0.7, r: 0.8, bevel: 0.18 }), wood, [0, 5.4, -0.55])
+  const standMaterial = toon(PALETTE.stand)
+  stand.add(mesh(flatSlab({ w: 8.6, h: 6.2, depth: 0.7, r: 0.8, bevel: 0.18 }), standMaterial, [0, 0.35, 0]))
+  const rest = mesh(slab({ w: 7.4, h: 10, depth: 0.7, r: 0.8, bevel: 0.18 }), standMaterial, [0, 5.4, -0.55])
   rest.rotation.x = -TILT
   stand.add(rest)
-  for (const x of [-2.6, 2.6]) stand.add(mesh(slab({ w: 1.6, h: 1.7, depth: 1.1, r: 0.35, bevel: 0.16 }), wood, [x, 1.35, 1.2]))
+  for (const x of [-2.6, 2.6]) stand.add(mesh(slab({ w: 1.6, h: 1.7, depth: 1.1, r: 0.35, bevel: 0.16 }), standMaterial, [x, 1.35, 1.2]))
 
   phone.position.set(0, 2.2 + PHONE.h / 2 * Math.cos(TILT), 1.2 - PHONE.h / 2 * Math.sin(TILT) - 0.35)
   phone.rotation.x = -TILT
@@ -179,12 +183,12 @@ export function createWorld({ canvas, width, height, screenTexture }: { canvas: 
   renderer.outputColorSpace = THREE.SRGBColorSpace
 
   const scene = new THREE.Scene()
-  scene.background = paperBackground()
+  scene.background = glowBackground()
   const camera = new THREE.PerspectiveCamera(30, width / height, 1, 600)
   camera.layers.enable(NO_INK)
 
-  scene.add(new THREE.HemisphereLight('#fff6e8', '#e7c9a8', 1.15))
-  const sun = new THREE.DirectionalLight('#fff1dc', 2.6)
+  scene.add(new THREE.HemisphereLight('#f2f2f8', '#2a2838', 1.0))
+  const sun = new THREE.DirectionalLight('#ffffff', 2.4)
   sun.position.set(-40, 50, 25)
   sun.castShadow = true
   sun.shadow.mapSize.set(4096, 4096)
@@ -197,7 +201,7 @@ export function createWorld({ canvas, width, height, screenTexture }: { canvas: 
   sun.shadow.normalBias = 0.02
   scene.add(sun)
 
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ color: '#7a4a2c', opacity: 0.16 }))
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ color: '#000000', opacity: 0.45 }))
   ground.receiveShadow = true
   ground.layers.set(NO_INK)
   scene.add(ground)
@@ -227,7 +231,8 @@ export function createWorld({ canvas, width, height, screenTexture }: { canvas: 
       far: { value: camera.far },
       lineW: { value: 2.6 },
       seed: { value: 0 },
-      inkColor: { value: new THREE.Color(PALETTE.ink) },
+      inkColor: { value: new THREE.Color(PALETTE.outline) },
+      rimColor: { value: new THREE.Color(PALETTE.accentLight) },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -277,15 +282,15 @@ export function createWorld({ canvas, width, height, screenTexture }: { canvas: 
   return { renderer, scene, camera, mac, phone, cable, render, project }
 }
 
-/** Warm paper with a lighter center, drawn once as the scene background. */
-function paperBackground() {
+/** Dark background with a soft indigo glow in the center, drawn once as the scene background. */
+function glowBackground() {
   const c = document.createElement('canvas')
   c.width = 960
   c.height = 540
   const ctx = c.getContext('2d')!
   const g = ctx.createRadialGradient(480, 230, 40, 480, 270, 620)
-  g.addColorStop(0, PALETTE.paperLight)
-  g.addColorStop(1, PALETTE.paper)
+  g.addColorStop(0, PALETTE.bgGlow)
+  g.addColorStop(1, PALETTE.bg)
   ctx.fillStyle = g
   ctx.fillRect(0, 0, c.width, c.height)
   const tex = new THREE.CanvasTexture(c)
@@ -304,6 +309,7 @@ const INK_FRAGMENT = /* glsl */ `
   uniform float lineW;
   uniform float seed;
   uniform vec3 inkColor;
+  uniform vec3 rimColor;
   varying vec2 vUv;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -334,13 +340,14 @@ const INK_FRAGMENT = /* glsl */ `
       normalEdge = max(normalEdge, length(n.rgb - n0.rgb));
       coverEdge = max(coverEdge, abs(n.a - n0.a));
     }
-    float edge = max(max(smoothstep(0.012, 0.03, depthEdge), smoothstep(0.32, 0.55, normalEdge)), coverEdge);
+    float edge = max(smoothstep(0.012, 0.03, depthEdge), smoothstep(0.32, 0.55, normalEdge));
 
     vec3 col = texture2D(tColor, vUv).rgb;
     float grain = noise(p * 0.55) * 0.6 + noise(p * 0.11) * 0.4;
-    float fiber = noise(p * vec2(0.012, 0.22));
-    col *= 1.0 - 0.05 * (grain - 0.5) - 0.025 * (fiber - 0.5);
+    col += 0.01 * (grain - 0.5);
     col = mix(col, inkColor, edge * 0.92);
+    // silhouette against the dark background: a thin lit rim in the brand color
+    col = mix(col, rimColor, coverEdge * 0.9);
     gl_FragColor = vec4(col, 1.0);
     #include <colorspace_fragment>
   }
@@ -382,7 +389,7 @@ function createCable({ scene, mac, phone }: { scene: THREE.Scene; mac: ReturnTyp
   const phonePlug = plug('lightning')
   scene.add(macPlug, phonePlug)
 
-  const glowMaterial = new THREE.MeshBasicMaterial({ color: PALETTE.terra, toneMapped: false })
+  const glowMaterial = new THREE.MeshBasicMaterial({ color: PALETTE.accentLight, toneMapped: false })
   const beads = Array.from({ length: 7 }, () => {
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), glowMaterial)
     b.layers.set(NO_INK)

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.0
+
+1. **SIM info in `ghosthand info`**, over USB, also while locked. It shows the physical SIM tray and one line per SIM iOS reads (physical or eSIM) with its carrier bundle and MCC/MNC:
+
+   ```bash
+   ghosthand info -l 42
+   # sim tray: SIM card in
+   # sim line 2: Vodafone_Ho_it, physical SIM, MCC 222 MNC 10
+   ```
+
+   `sim lines: none read` means iOS reads no SIM. ICCID and IMSI are never read out. Also in `--json` and the `info` MCP tool.
+
+2. **The control plane shows the iPhones of your other Macs**, view only, grouped under each Mac's name. Their screen shows "visible only on <Mac>". The lists update when they change, with no polling.
+
+3. **Update notice in the CLI.** When npm has a newer ghosthand, the CLI prints once: `ghosthand 0.11.0 is out, this CLI is 0.10.0. Update with npx ghosthand@latest` (or `npm install -g ghosthand@latest` for global installs). The daemon checks npm at most once per hour, in the background.
+
+4. **Setup window stays on its iPhone.** After one iPhone finished setup, the window sometimes switched to another ready iPhone, so **Copy prompt** named the wrong one. The ready screen now has a **Set up <name>** button when another iPhone still needs setup, and the window comes to the front when an agent runs `ghosthand setup`.
+
+5. **Empty states in the control plane are centered** ("No iPhone connected", daemon errors, loading).
+
 ## 0.9.0
 
 1. **Tap and type on an iPhone from the control plane.** Hover the screen and click **Take Control**. A click on the screen is a tap there, a drag is a swipe with the same start, end and duration; the Mac keyboard types into the iPhone: text, arrows, backspace and shortcuts like ⌘A. ⌘V types the Mac clipboard as text. Esc or **Release Control** under the screen stops. It needs no lease, so it works also while an agent holds the iPhone (new app-only routes `POST /v1/phones/{phone}/tap`, `/swipe`, `/key` and `/type`, unix socket only). In Bluetooth mode a tap or swipe turns AssistiveTouch on; Release Control turns it off again if no lease holds the iPhone (new route `POST /v1/phones/{phone}/release`); if the app quits without it, it goes off 60 s after the last input.

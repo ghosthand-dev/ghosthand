@@ -9,7 +9,10 @@
 import logoSvg from '../../website/public/logo-ink.svg'
 import uploadTimeline from '../../demo-video/public/tiktok/timeline.json'
 import warmupTimeline from '../../demo-video/public/tiktok-warmup/timeline.json'
-import { CLIP_FPS, type ClipName } from './clips.ts'
+import {
+  add, bump, clamp, CLIP_FPS, inOutCubic, lerp, outBack, outCubic, prog, random, setImage, setVisible, shown, svgEl, waitDecodes,
+  type ClipName, type Update,
+} from './shared.ts'
 
 export const W = 1920
 export const H = 1080
@@ -30,71 +33,12 @@ const SHAPES_AT = NET_AT + 9.35
 const LOGO_AT = SHAPES_AT + 2.7
 export const DURATION = LOGO_AT + 4.15
 
-// ---------------------------------------------------------------- math
-
-const clamp = (x: number, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, x))
-const lerp = (a: number, b: number, p: number) => a + (b - a) * p
-const prog = (t: number, start: number, dur: number) => clamp((t - start) / dur)
-const outCubic = (p: number) => 1 - (1 - p) ** 3
-const inOutCubic = (p: number) => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2)
-const outBack = (p: number) => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2
-/** Opacity of something shown from tIn to tOut. */
-const shown = (t: number, tIn: number, tOut: number, fadeIn = 0.3, fadeOut = 0.25) =>
-  Math.min(prog(t, tIn, fadeIn), 1 - prog(t, tOut - fadeOut, fadeOut))
-/** 0 -> 1 -> 0 hump that lasts `dur` seconds after `at`. */
-const bump = (t: number, at: number, dur: number) => {
-  const x = (t - at) / dur
-  return x > 0 && x < 1 ? Math.sin(Math.PI * x) : 0
-}
 const SPINNER = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
 const spinner = (t: number) => SPINNER[Math.floor(t * 12) % SPINNER.length]
-
-function random(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0
-    let x = Math.imul(a ^ (a >>> 15), a | 1)
-    x ^= x + Math.imul(x ^ (x >>> 7), x | 61)
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296
-  }
-}
 
 /** Rounded square centered on 0,0. */
 const square = (half: number, rx: number, attrs = '') =>
   `<rect x="${-half}" y="${-half}" width="${half * 2}" height="${half * 2}" rx="${rx}" ${attrs}/>`
-
-// ---------------------------------------------------------------- dom
-
-type Update = (t: number) => void
-
-function add<T extends Element = HTMLElement>(parent: Element, html: string): T {
-  const tpl = document.createElement('template')
-  tpl.innerHTML = html.trim()
-  const el = tpl.content.firstElementChild as T
-  parent.appendChild(el)
-  return el
-}
-
-function svgEl(parent: Element, tag: string, attrs: Record<string, string | number> = {}) {
-  const el = document.createElementNS('http://www.w3.org/2000/svg', tag)
-  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v))
-  parent.appendChild(el)
-  return el
-}
-
-function setVisible(el: HTMLElement | SVGElement, opacity: number) {
-  el.style.display = opacity <= 0.001 ? 'none' : ''
-  el.style.opacity = String(opacity)
-}
-
-/** Image decodes started by the current seek(); seek() waits for them. */
-let pendingDecodes: Array<Promise<void>> = []
-
-function setImage(img: HTMLImageElement, src: string) {
-  if (img.getAttribute('src') === src) return
-  img.setAttribute('src', src)
-  pendingDecodes.push(img.decode().catch(() => {}))
-}
 
 // ---------------------------------------------------------------- art
 // Everything is drawn in unit coordinates (radius 1) and scaled by icon().
@@ -944,16 +888,8 @@ async function init() {
 }
 
 export async function seek(t: number) {
-  pendingDecodes = []
   for (const u of updates) u(t)
-  await Promise.all(pendingDecodes)
+  await waitDecodes()
 }
 
-declare global {
-  interface Window {
-    video: { ready: Promise<void>; seek: (t: number) => Promise<void>; duration: number }
-    /** Frame count per clip, set by scripts/render.ts. */
-    clipFrames: Record<ClipName, number>
-  }
-}
 window.video = { ready: init(), seek, duration: DURATION }

@@ -31,7 +31,7 @@ pnpm tsx scripts/render.ts --entry launch --preview     # out/launch-preview.htm
 | --- | --- |
 | 0.0 | hook title |
 | 3.4 | 01 a Mac mini drops in |
-| 8.4 | 02 an iPhone pops in on a wooden stand, lock screen turns on |
+| 8.4 | 02 an iPhone pops in on a stand, lock screen turns on |
 | 13.0 | 03 the USB cable draws from the Mac to the iPhone |
 | 18.0 | 04 close-up: passcode, Trust This Computer, Bluetooth pairing, checklist |
 | 26.0 | how it works: Bluetooth arc carries mouse + keyboard, USB cable carries screen frames |
@@ -39,7 +39,8 @@ pnpm tsx scripts/render.ts --entry launch --preview     # out/launch-preview.htm
 | 42.5 | circle reveal from the iPhone screen into the real demo |
 | 57.1 | end card |
 
-- **`src/launch-3d.ts`**: models built from code (1 unit = 1 cm), `MeshToonMaterial` with a 4-step ramp, and an ink pass: Sobel edges on normals + depth draw the outlines, with line boil (8 fps wobble) and paper grain.
+- **`src/launch-3d.ts`**: models built from code (1 unit = 1 cm), `MeshToonMaterial` with a 4-step ramp, and an ink pass: Sobel edges on normals + depth draw dark outlines, silhouettes get a thin indigo rim, with line boil (8 fps wobble) and light grain.
+- **Dark theme**: `PALETTE` in `src/launch-3d.ts`. The accent is the website's primary `#4f46e5` (`website/docs.jsonc`); `accentLight` is used for small text on the dark background.
 - **`src/launch-screens.ts`**: iOS screens drawn with Canvas 2D in iPhone SE points, used as the screen texture.
 - **`src/launch.ts`**: timeline, camera keyframes (`cameraRig`), HTML text and overlays positioned with `world.project()`, sounds.
 - **Text left, objects right**: `camera.setViewOffset` shifts the 3D frame right by `shift` px, so the text column never covers the models.

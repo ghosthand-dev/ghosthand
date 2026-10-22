@@ -120,6 +120,12 @@ acquire ──> Account.authorizeLease() ──GET /api/cli/account──> plan 
 - Orgs: identity (sessions, OAuth tokens) belongs to the user; the plan, the trial (`org.createdAt`) and the Mac hub (`getHub(orgId)`) belong to the org. A signup hook creates a personal org with `org_id = user.id`. Always resolve it with `getPersonalOrg(userId)` (through `org_member`); never pass a user id as an org id, or team orgs break later.
 - Website: `db/` has the D1 schema (drizzle). Stripe rows store their Stripe account id; today the account is shared with Playwriter (sigillo project `website` in the `ghosthand` org).
 
+# Testing UI changes (dashboard and setup windows)
+
+An open dashboard or setup window keeps running its old code after `swift build`. Running `ghosthand dashboard` again only brings that old window to the front (`dashboard` and `setup` share one process through `~/.ghosthand/app.lock`). To see the new build, tell the user to quit the window with ⌘Q, then run `ghosthand dashboard` again: it installs the new binary into `~/Applications/Ghosthand.app` and opens a new window.
+
+To check a screen without the user's window, render a mock to PNG: `ghosthand dashboard --foreground --mock no-phone --snapshot out.png` (scenes in `dashboard --help`).
+
 # CLI and MCP docs (website)
 
 The website's CLI and MCP tabs are generated from the binary, never written by hand:

@@ -24,7 +24,7 @@
 
 import { DurableObject, env } from 'cloudflare:workers'
 import { createResourceServerChallenge } from '@better-auth/oauth-provider'
-import { getAuth, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent, verifyApiToken } from './db.ts'
+import { getAuth, getCallerUserId, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent } from './db.ts'
 import {
   macSlug,
   mcpCacheKey,
@@ -115,7 +115,7 @@ async function handleApiRequest(request: Request): Promise<Response> {
   if (request.headers.has('origin') || request.headers.has('sec-fetch-site')) {
     return problem({ status: 403, code: 'permission-denied', title: 'Permission denied', detail: 'Browser requests are not allowed; call the API from a script.' })
   }
-  const userId = (await getSessionStrict(request))?.userId ?? (await verifyApiToken(request))
+  const userId = await getCallerUserId(request)
   if (!userId) {
     return problem({
       status: 401,

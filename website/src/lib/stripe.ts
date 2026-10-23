@@ -50,9 +50,7 @@ export async function getOrCreateStripeCustomer({ org, email, accountId }: { org
  * subscription (any account, any live status), otherwise a new Checkout.
  */
 export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org; email: string; returnUrl: string }): Promise<string> {
-  const db = getDb()
-  const subs = await db.query.subscription.findMany({ where: { orgId: org.orgId }, orderBy: { createdAt: 'desc' } })
-  const live = subs.find((s) => isExistingStatus(s.status))
+  const live = org.subscriptions.find((s) => isExistingStatus(s.status))
   if (live) return portalUrl({ accountId: live.stripeAccountId, customerId: live.stripeCustomerId, returnUrl })
 
   const accountId = checkoutAccountId()

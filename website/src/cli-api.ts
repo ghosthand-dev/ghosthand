@@ -18,7 +18,7 @@ import { Spiceflow, json } from 'spiceflow'
 import { APIError } from 'better-auth/api'
 import { UI_MESSAGE_STREAM_HEADERS, validateUIMessages } from 'ai'
 import { z } from 'zod'
-import { getAuth, getBaseUrl, getPersonalOrg, getSessionStrict, verifyApiToken } from './db.ts'
+import { getAuth, getBaseUrl, getCallerUserId, getPersonalOrg, getSessionStrict } from './db.ts'
 import { entitlementFor } from './lib/billing.ts'
 import { createUpload } from './uploads.ts'
 import { getTask, TASK_LEASE_PATTERN } from './task.ts'
@@ -36,9 +36,9 @@ function parseTaskId(id: string): string {
   return parsed.data
 }
 
-/** The Mac's session, or an API token of a script: the org of the caller, with an active plan. */
-async function taskOrg(request: Request): Promise<string> {
-  const userId = (await getSessionStrict(request))?.userId ?? (await verifyApiToken(request))
+/** The Mac's session, or an API token of a script: the caller and its org, with an active plan. */
+async function requirePlan(request: Request): Promise<{ userId: string; orgId: string }> {
+  const userId = await getCallerUserId(request)
   if (!userId) throw json({ message: 'unauthorized' }, { status: 401 })
   const org = await getPersonalOrg(userId)
   const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
@@ -46,7 +46,7 @@ async function taskOrg(request: Request): Promise<string> {
     const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
     throw json({ message: `${entitlement.notice ?? 'This ghosthand account has no active plan.'} Subscribe: ${subscribeUrl}` }, { status: 402 })
   }
-  return org.orgId
+  return { userId, orgId: org.orgId }
 }
 
 export const cliApp = new Spiceflow({ basePath: '/api/cli' })
@@ -130,14 +130,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     query: z.object({ name: z.string().min(1).max(255) }),
     async handler({ request, query }) {
       // The Mac's session, or an API token from a script on another computer: the file never touches the Mac.
-      const userId = (await getSessionStrict(request))?.userId ?? (await verifyApiToken(request))
-      if (!userId) throw json({ message: 'unauthorized' }, { status: 401 })
-      const org = await getPersonalOrg(userId)
-      const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
-      if (!entitlement.allowed) {
-        const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
-        throw json({ message: `${entitlement.notice ?? 'This ghosthand account has no active plan.'} Subscribe: ${subscribeUrl}` }, { status: 402 })
-      }
+      const { userId } = await requirePlan(request)
       return createUpload({ request, name: query.name, userId })
     },
   })
@@ -184,7 +177,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       phone: TaskPhone.optional(),
     }),
     async handler({ request }) {
-      const orgId = await taskOrg(request)
+      const { orgId } = await requirePlan(request)
       const body = await request.json()
       const [message] = await validateUIMessages({ messages: [body.messages.at(-1)] }).catch((cause) => {
         throw json({ message: `invalid message: ${cause instanceof Error ? cause.message : cause}` }, { status: 400 })
@@ -205,7 +198,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     detail: { hide: true },
     query: z.object({ from: z.coerce.number().int().min(0).optional(), message: z.string().optional() }),
     async handler({ request, params, query }) {
-      const orgId = await taskOrg(request)
+      const { orgId } = await requirePlan(request)
       const stream = await getTask({ orgId, taskId: parseTaskId(params.id) }).resume({ from: query.from, messageId: query.message })
       if (stream === 'gone') throw json({ message: 'a newer turn of this task replaced that stream' }, { status: 410 })
       if (!stream) return new Response(null, { status: HTTP_NO_CONTENT })
@@ -217,7 +210,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     path: '/tasks/:id',
     detail: { hide: true },
     async handler({ request, params }) {
-      const orgId = await taskOrg(request)
+      const { orgId } = await requirePlan(request)
       return { messages: await getTask({ orgId, taskId: parseTaskId(params.id) }).messages() }
     },
   })
@@ -226,7 +219,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     path: '/tasks/:id/abort',
     detail: { hide: true },
     async handler({ request, params }) {
-      const orgId = await taskOrg(request)
+      const { orgId } = await requirePlan(request)
       return { aborted: await getTask({ orgId, taskId: parseTaskId(params.id) }).abort() }
     },
   })

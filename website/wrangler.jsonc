@@ -10,6 +10,9 @@
   "routes": [
     { "pattern": "ghosthand.dev", "custom_domain": true }
   ],
+  // A request makes several sequential D1 round trips (session, org, tokens): run the Worker
+  // near the D1 primary. Only the fetch handler moves; Durable Objects and static assets do not.
+  "placement": { "mode": "smart" },
   // Prerendered pages (`rendering: static`) are read from build assets through this binding.
   "assets": { "binding": "ASSETS" },
   "d1_databases": [
@@ -58,6 +61,7 @@
       "routes": [
         { "pattern": "preview.ghosthand.dev", "custom_domain": true }
       ],
+      "placement": { "mode": "smart" },
       "d1_databases": [
         {
           "binding": "DB",

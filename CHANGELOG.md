@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0
+
+1. **New `ghosthand task` command: do a task in plain words.** A fast agent on ghosthand.dev reads the screen with OCR and taps, swipes, scrolls and types until the task is done, then answers. Progress goes to stderr, the answer to stdout, then the task id:
+
+   ```bash
+   ghosthand task -l 42 "open Settings > General > About and tell me the iOS version"
+   ghosthand task -l 42 --resume tsk_8f2k3x9a1b2c "now go back to the Home Screen"
+   ```
+
+   `--resume <id>` continues a task with its history; without a prompt it follows the running turn. The agent knows the iPhone's name, model, iOS version, language and region. It never pays, buys, deletes data or types passwords unless the prompt asks exactly that. Also as the MCP tool `task` and the route `POST /v1/leases/{lease}/task`. Needs a signed-in Mac.
+
+2. **Agent chat in the control plane.** A chat column next to the selected iPhone (toggle it with the sidebar button) runs `task` on that iPhone. Each prompt takes a lease labeled "Control plane chat", shows each tool call as one line, and releases the lease when the agent answers or you click Stop. The next prompt continues the same task; the pencil button starts a new one.
+
+3. **Lease ids always carry their Mac.** `acquire` prints `studio:42` also for an iPhone on this Mac, so the id works from every Mac of the account. `list` always groups iPhones under `mac <slug>:` (`this Mac:` while signed out). The plain `42` still works on its own Mac.
+
+4. **The Mac no longer sleeps while the daemon runs.** An idle Mac went into dark wake and USB screen capture stopped. The daemon now keeps idle sleep off, like `caffeinate -i`. Sleep with the lid closed still needs an external display.
+
+5. **Other Macs' iPhones show right after a daemon restart.** The first `list` after a restart no longer misses them; it waits for the ghosthand.dev connection.
+
 ## 0.10.0
 
 1. **SIM info in `ghosthand info`**, over USB, also while locked. It shows the physical SIM tray and one line per SIM iOS reads (physical or eSIM) with its carrier bundle and MCC/MNC:

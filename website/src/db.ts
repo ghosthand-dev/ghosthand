@@ -147,10 +147,13 @@ async function readSession({ headers, disableCookieCache }: { headers: Headers; 
   }
 }
 
-/** The user id behind `Authorization: Bearer ghk_...`, or null. */
-export async function verifyApiToken(request: Pick<Request, 'headers'>): Promise<string | null> {
+/**
+ * The caller's user id: an API token (`Bearer ghk_...`) of a script, else a Mac's session.
+ * One D1 lookup: the bearer plugin would look up a ghk_ token as a session first. Errors throw.
+ */
+export async function getCallerUserId(request: Pick<Request, 'headers'>): Promise<string | null> {
   const key = request.headers.get('authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1]
-  if (!key?.startsWith('ghk_')) return null
+  if (!key?.startsWith('ghk_')) return (await getSessionStrict(request))?.userId ?? null
   const result = await getAuth().api.verifyApiKey({ body: { key } })
   return result.valid ? (result.key?.referenceId ?? null) : null
 }
@@ -161,7 +164,7 @@ export async function requireSession(request: Pick<Request, 'headers'>): Promise
   return session
 }
 
-export type Org = typeof schema.org.$inferSelect
+export type Org = Awaited<ReturnType<typeof getPersonalOrg>>
 
 /** Signup hook: the personal org has org_id = user.id, so a retry is a no-op. */
 async function createPersonalOrg(user: { id: string; name: string; email: string; createdAt: Date }): Promise<void> {

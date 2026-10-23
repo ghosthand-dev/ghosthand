@@ -201,6 +201,25 @@ test('dashboard sign-out retries hub cleanup after the session row is already go
   socket.close()
 })
 
+test('the HTTP API accepts a session or a live API token', async () => {
+  const identity = await session()
+  const macs = (token: string) => runtime.worker.fetch('/macs', { headers: { authorization: `Bearer ${token}` } })
+  const created = await runtime.worker.fetch('/api/cli/tokens', {
+    method: 'POST', headers: { authorization: `Bearer ${identity.session.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'script' }),
+  })
+  const apiToken = await created.json() as { id: string; token: string }
+  expect(apiToken.token.startsWith('ghk_')).toBe(true)
+  expect((await macs(identity.session.token)).status).toBe(200)
+  expect((await macs(apiToken.token)).status).toBe(200)
+  expect((await macs('ghk_not-a-token')).status).toBe(401)
+  const deleted = await runtime.worker.fetch(`/api/cli/tokens/${apiToken.id}`, {
+    method: 'DELETE', headers: { authorization: `Bearer ${identity.session.token}` },
+  })
+  expect(deleted.status).toBe(200)
+  expect((await macs(apiToken.token)).status).toBe(401)
+})
+
 test('MCP requires its audience and an unexpired, session-bound access token', async () => {
   const identity = await session()
   const grant = await oauth({ identity })

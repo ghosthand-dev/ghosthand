@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand CLI reference"
 sidebarTitle: "Overview"
-description: "Every ghosthand 0.10.0 command, option and example, generated from the CLI help."
+description: "Every ghosthand 0.11.0 command, option and example, generated from the CLI help."
 ---
 
 The **ghosthand** CLI controls an iPhone through the daemon on your Mac. Every command is

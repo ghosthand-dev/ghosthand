@@ -3,9 +3,10 @@
 // Pure function of time like src/video.ts: seek(t) sets the camera, meshes, screen and text from t.
 //
 //   0.0  hook title                       16.2  how it works: Bluetooth = mouse + keyboard, USB = screen
-//   2.2  01 a Mac (drops in)              23.1  05 CLI, MCP, API cards; camera pushes into the screen
-//   5.2  02 an iPhone (pops in)           27.7  real demo clip at 2.2x (demo-video/out/tiktok.mp4)
-//   8.2  03 USB cable                     41.7  end card
+//   2.2  01 a Mac (drops in, spinning)    23.1  05 CLI, MCP, API cards
+//   5.2  02 an iPhone (pops in, spinning) 26.9  camera flies a full circle around the iPhone into its screen
+//   8.2  03 USB cable (camera chases it)  28.6  real demo clip at 2.2x (demo-video/out/tiktok.mp4)
+//                                         42.6  end card on a slow turntable
 //  11.2  04 unlock, trust, pair
 
 import * as THREE from 'three'
@@ -31,13 +32,15 @@ const HOW_AT = PAIR_AT + 5
 const USB_BEAT_AT = HOW_AT + 3.7
 const CONTROL_AT = USB_BEAT_AT + 3.2
 const PUSH_AT = CONTROL_AT + 3.8
-const DEMO_AT = PUSH_AT + 0.8
+const DEMO_AT = PUSH_AT + 1.7
 const DEMO_CLIP = CLIPS.find((c) => c.name === 'demo')!
 /** The demo recording plays sped up, so the whole TikTok upload fits. */
 const DEMO_SPEED = 2.2
 const DEMO_LEN = DEMO_CLIP.duration / DEMO_SPEED
 const END_AT = DEMO_AT + DEMO_LEN - 0.4
 const DURATION = END_AT + 4
+/** How much of the USB cable is drawn at t. */
+const cableP = (t: number) => inOutCubic(prog(t, USB_AT + 0.6, 1.5))
 
 /** Left column x and the screen shift that keeps the 3D objects right of the text. */
 const TEXT_X = 150
@@ -183,20 +186,58 @@ function arrowPath(from: { x: number; y: number }, to: { x: number; y: number },
 // ---------------------------------------------------------------- camera
 
 type Vec = [number, number, number]
-type Shot = { t: number; pos: Vec; look: Vec; fov?: number; shift?: number }
+/**
+ * Camera key in orbit form: the camera sits `r` away from `target`, at azimuth `az` (radians around y,
+ * 0 = in front, +z) and elevation `el`. Azimuth is not wrapped, so going from 0 to 2π flies a full circle.
+ */
+type Shot = { t: number; target: Vec; r: number; az: number; el: number; fov?: number; shift?: number }
+
+/**
+ * Monotone cubic spline (Fritsch–Carlson) through keys at times `ts`: the camera never stops at a key
+ * and never overshoots between two keys, so a held shot stays held.
+ */
+function spline(ts: number[], ys: number[]) {
+  const n = ts.length
+  const d = ts.slice(0, -1).map((t, i) => (ys[i + 1] - ys[i]) / (ts[i + 1] - t))
+  const m = ts.map((_, i) => {
+    if (i === 0) return d[0]
+    if (i === n - 1) return d[n - 2]
+    if (d[i - 1] * d[i] <= 0) return 0
+    return Math.sign(d[i]) * Math.min((Math.abs(d[i - 1]) + Math.abs(d[i])) / 2, 3 * Math.min(Math.abs(d[i - 1]), Math.abs(d[i])))
+  })
+  return (t: number) => {
+    if (t <= ts[0]) return ys[0]
+    if (t >= ts[n - 1]) return ys[n - 1]
+    const i = ts.findIndex((k) => k > t) - 1
+    const h = ts[i + 1] - ts[i]
+    const u = (t - ts[i]) / h
+    const u2 = u * u
+    const u3 = u2 * u
+    return (2 * u3 - 3 * u2 + 1) * ys[i] + (u3 - 2 * u2 + u) * h * m[i] + (-2 * u3 + 3 * u2) * ys[i + 1] + (u3 - u2) * h * m[i + 1]
+  }
+}
 
 function cameraRig(shots: Shot[]) {
+  const ts = shots.map((s) => s.t)
+  const channel = (get: (s: Shot) => number) => spline(ts, shots.map(get))
+  const tx = channel((s) => s.target[0])
+  const ty = channel((s) => s.target[1])
+  const tz = channel((s) => s.target[2])
+  const r = channel((s) => s.r)
+  const az = channel((s) => s.az)
+  const el = channel((s) => s.el)
+  const fov = channel((s) => s.fov ?? 30)
+  const shift = channel((s) => s.shift ?? TEXT_SHIFT)
   const pos = new THREE.Vector3()
   const look = new THREE.Vector3()
   return (t: number) => {
-    let i = shots.findIndex((s) => s.t > t)
-    if (i === -1) i = shots.length
-    const a = shots[Math.max(0, i - 1)]
-    const b = shots[Math.min(shots.length - 1, i)]
-    const p = a === b ? 0 : inOutCubic(prog(t, a.t, b.t - a.t))
-    pos.set(lerp(a.pos[0], b.pos[0], p), lerp(a.pos[1], b.pos[1], p), lerp(a.pos[2], b.pos[2], p))
-    look.set(lerp(a.look[0], b.look[0], p), lerp(a.look[1], b.look[1], p), lerp(a.look[2], b.look[2], p))
-    return { pos, look, fov: lerp(a.fov ?? 30, b.fov ?? 30, p), shift: lerp(a.shift ?? TEXT_SHIFT, b.shift ?? TEXT_SHIFT, p) }
+    // slow hand-held drift so no shot is ever frozen
+    const a = az(t) + 0.025 * Math.sin(t * 0.7) + 0.01 * Math.sin(t * 1.9 + 1)
+    const e = el(t) + 0.015 * Math.sin(t * 0.9 + 2)
+    const d = r(t)
+    look.set(tx(t), ty(t), tz(t))
+    pos.set(look.x + d * Math.sin(a) * Math.cos(e), look.y + d * Math.sin(e), look.z + d * Math.cos(a) * Math.cos(e))
+    return { pos, look, fov: fov(t), shift: shift(t) }
   }
 }
 
@@ -224,6 +265,8 @@ async function init() {
   screenTexture.anisotropy = 8
   const canvas = add<HTMLCanvasElement>(stage, '<canvas></canvas>')
   const world = createWorld({ canvas, width: W, height: H, screenTexture })
+  // dark scrim behind the text column while the camera flies close and objects pass behind the text
+  const scrim = add(stage, `<div class="layer" style="background: linear-gradient(90deg, ${PALETTE.bg} 0%, ${PALETTE.bg}e6 30%, ${PALETTE.bg}00 52%)"></div>`)
   const overlay = add(stage, '<div class="layer"></div>')
 
   // world positions the camera and the overlay follow
@@ -232,32 +275,49 @@ async function init() {
   const screenNormal = new THREE.Vector3(0, 0, 1).transformDirection(world.phone.screen.matrixWorld)
   const screenPoint = (x: number, y: number) =>
     world.phone.screen.localToWorld(new THREE.Vector3((x / SCREEN_POINTS.w - 0.5) * PHONE.screenW, (0.5 - y / SCREEN_POINTS.h) * PHONE.screenH, 0))
-  /** Camera position `d` in front of `v` along the screen normal, turned around the y axis by `yaw`. */
-  const at = (v: THREE.Vector3, d: number, yaw = 0): Vec => {
-    const n = screenNormal.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw)
-    return [v.x + n.x * d, v.y + n.y * d, v.z + n.z * d]
-  }
-  const look = (v: THREE.Vector3): Vec => [v.x, v.y, v.z]
+  const vec = (v: THREE.Vector3): Vec => [v.x, v.y, v.z]
+  // the screen's facing direction as orbit angles
+  const SCREEN_AZ = Math.atan2(screenNormal.x, screenNormal.z)
+  const SCREEN_EL = Math.asin(screenNormal.y)
   const macTop = world.mac.group.localToWorld(new THREE.Vector3(0, 5.6, 0))
   const phoneTop = world.phone.phone.localToWorld(new THREE.Vector3(0, PHONE.h / 2 + 0.8, 0))
+  const MAC: Vec = [-10, 2.5, 0]
+  const PHONE_MID: Vec = [8, 8.5, 1]
+  const SETUP: Vec = [0, 6, 2]
+  // the camera rides along with the growing cable end
+  const cableAt = (t: number) => vec(world.cable.curve.getPointAt(cableP(t)))
+  const SPIN = Math.PI * 2
 
   const rig = cameraRig([
-    { t: 0, pos: [14, 30, 44], look: [-10, 2, 0], fov: 26 },
-    { t: MAC_AT + 0.4, pos: [12, 20, 36], look: [-10, 2.5, 0] },
-    { t: PHONE_AT - 0.2, pos: [-2, 15, 37], look: [-9, 3, 0] },
-    { t: PHONE_AT + 1.2, pos: [30, 14, 27], look: [8, 8.5, 1], shift: 360 },
-    { t: USB_AT - 0.1, pos: [26, 12, 30], look: [8, 8.5, 1], shift: 360 },
-    { t: USB_AT + 1.2, pos: [12, 30, 52], look: [0, 3, 4], fov: 30 },
-    { t: PAIR_AT - 0.2, pos: [2, 26, 54], look: [0, 3, 4] },
-    { t: PAIR_AT + 0.8, pos: at(screenCenter, 34, -0.38), look: look(screenCenter), fov: 26, shift: 330 },
-    { t: HOW_AT - 0.3, pos: at(screenCenter, 31, -0.3), look: look(screenCenter), fov: 26, shift: 330 },
-    { t: HOW_AT + 0.9, pos: [4, 34, 56], look: [0, 6, 2], fov: 30, shift: 420 },
-    { t: CONTROL_AT - 0.2, pos: [-4, 30, 58], look: [0, 6, 2], shift: 420 },
-    { t: CONTROL_AT + 0.9, pos: [6, 36, 70], look: [-1, 16, 0], shift: 400 },
-    { t: PUSH_AT, pos: [10, 34, 68], look: [-1, 16, 0], shift: 400 },
-    { t: DEMO_AT - 0.1, pos: at(screenCenter, 6), look: look(screenCenter), fov: 30, shift: 0 },
-    { t: END_AT, pos: [-24, 48, 84], look: [0, 27, 2], fov: 30, shift: 0 },
-    { t: DURATION, pos: [-8, 46, 90], look: [0, 28, 2], fov: 30, shift: 0 },
+    // hook: a spiral down from high above onto the empty floor
+    { t: 0, target: MAC, r: 80, az: -2.2, el: 1.05, fov: 26 },
+    { t: MAC_AT, target: MAC, r: 52, az: -0.9, el: 0.5, fov: 28 },
+    // 01: orbit the Mac as it drops in spinning
+    { t: MAC_AT + 1.4, target: MAC, r: 42, az: 0.1, el: 0.36 },
+    { t: PHONE_AT - 0.3, target: MAC, r: 40, az: 0.6, el: 0.3 },
+    // 02: fly across to the iPhone and swing around it
+    { t: PHONE_AT + 0.9, target: PHONE_MID, r: 44, az: 1.1, el: 0.2, shift: 360 },
+    { t: USB_AT - 0.1, target: PHONE_MID, r: 40, az: 0.7, el: 0.24, shift: 360 },
+    // 03: chase the cable from the Mac's port to the iPhone
+    { t: USB_AT + 0.6, target: cableAt(USB_AT + 0.6), r: 40, az: 1.0, el: 0.5, shift: 380 },
+    { t: USB_AT + 1.35, target: cableAt(USB_AT + 1.35), r: 38, az: 1.2, el: 0.46, shift: 380 },
+    { t: USB_AT + 2.1, target: vec(world.cable.phonePort), r: 32, az: 1.3, el: 0.36, shift: 360 },
+    // 04: tilt up from the port to the screen, then a slow push in
+    { t: PAIR_AT + 0.8, target: vec(screenCenter), r: 34, az: SCREEN_AZ - 0.45, el: SCREEN_EL + 0.05, fov: 26, shift: 330 },
+    { t: HOW_AT - 0.3, target: vec(screenCenter), r: 30, az: SCREEN_AZ - 0.2, el: SCREEN_EL + 0.02, fov: 26, shift: 330 },
+    // how it works: wide, slowly circling the whole setup
+    { t: HOW_AT + 1.0, target: SETUP, r: 60, az: -0.35, el: 0.48, fov: 30, shift: 420 },
+    { t: CONTROL_AT - 0.2, target: SETUP, r: 58, az: 0.3, el: 0.42, shift: 420 },
+    // 05: crane up for the cards
+    { t: CONTROL_AT + 0.9, target: [-1, 16, 0], r: 72, az: 0.2, el: 0.28, shift: 400 },
+    { t: PUSH_AT, target: [-1, 16, 0], r: 70, az: 0.35, el: 0.3, shift: 400 },
+    // fly a full circle around the iPhone while diving into its screen
+    { t: PUSH_AT + 0.9, target: vec(screenCenter), r: 38, az: SCREEN_AZ + SPIN * 0.55, el: 0.4, shift: 120 },
+    { t: DEMO_AT - 0.1, target: vec(screenCenter), r: 6, az: SCREEN_AZ + SPIN, el: SCREEN_EL, fov: 30, shift: 0 },
+    // hidden behind the demo; the end card opens on a slow turntable
+    { t: DEMO_AT + 0.6, target: [0, 27, 2], r: 88, az: SCREEN_AZ + SPIN - 0.5, el: 0.24, shift: 0 },
+    { t: END_AT, target: [0, 27, 2], r: 88, az: SCREEN_AZ + SPIN - 0.5, el: 0.24, shift: 0 },
+    { t: DURATION, target: [0, 28, 2], r: 92, az: SCREEN_AZ + SPIN + 0.9, el: 0.22, shift: 0 },
   ])
 
   // ---- 3D state from t
@@ -279,16 +339,17 @@ async function init() {
     world.mac.group.position.y = (1 - fall * fall) * 18
     const squash = t > land ? Math.exp(-(t - land) * 7) * Math.sin((t - land) * 22) : 0
     world.mac.group.scale.set(1 + squash * 0.08, 1 - squash * 0.14, 1 + squash * 0.08)
+    world.mac.group.rotation.y = -(1 - outCubic(prog(t, MAC_AT + 0.25, 1.1))) * Math.PI * 2
     macMaterial.color.lerpColors(ledOff, ledOn, prog(t, MAC_AT + 1.0, 0.3))
 
     // iPhone pops in on its stand with a half turn
     const pop = prog(t, PHONE_AT + 0.35, 0.7)
     world.phone.group.visible = pop > 0
     world.phone.group.scale.setScalar(Math.max(0.001, outBack(pop)))
-    world.phone.group.rotation.y = -0.32 - (1 - outCubic(pop)) * 2.4
+    world.phone.group.rotation.y = -0.32 - (1 - outCubic(prog(t, PHONE_AT + 0.35, 1.1))) * Math.PI * 2
 
     world.cable.update({
-      p: inOutCubic(prog(t, USB_AT + 0.6, 1.5)),
+      p: cableP(t),
       macIn: outCubic(prog(t, USB_AT + 0.25, 0.35)),
       phoneIn: outBack(prog(t, USB_AT + 2.1, 0.3)),
       flow: t > USB_BEAT_AT ? (t - USB_BEAT_AT) * 0.45 : 0,
@@ -379,6 +440,7 @@ async function init() {
   updates = [
     update3d,
     updateRipples,
+    (t) => setVisible(scrim, shown(t, USB_AT, HOW_AT + 0.9, 0.5, 0.8)),
     sceneHook(overlay),
     textBlock(overlay, { kicker: 'Step 01', title: 'A <em>Mac.</em>', body: 'Any Mac. A Mac mini on a shelf|makes a great home for an agent.', tIn: MAC_AT + 0.4, tOut: PHONE_AT }),
     textBlock(overlay, { kicker: 'Step 02', title: 'An <em>iPhone.</em>', body: 'A real one. No jailbreak,|no app to install on it.', tIn: PHONE_AT + 0.4, tOut: USB_AT }),

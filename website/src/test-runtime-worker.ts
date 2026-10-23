@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers'
 import { getAuth } from './db.ts'
 import { GhosthandHub, getHub, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
+import { GhosthandTask, getTask } from './task.ts'
 import { uploadsApp } from './uploads.ts'
 import { runAction } from 'spiceflow/testing'
 import { signOutMac } from './actions.tsx'
@@ -23,6 +24,24 @@ export class TestHub extends GhosthandHub {
   }
 }
 
+export class TestTask extends GhosthandTask {
+  async fetch(request: Request): Promise<Response> {
+    switch (new URL(request.url).pathname) {
+      // The real alarm, without waiting for its wall-clock time.
+      case '/__test/task/alarm':
+        await this.alarm()
+        return Response.json({ meta: this.ctx.storage.kv.get('meta') ?? null })
+      // Stored keys, to check that chunks are written in batches.
+      case '/__test/task/keys':
+        return Response.json([...this.ctx.storage.kv.list()].map(([key]) => key))
+      // Resets the object like a deploy or crash: the running turn stops, storage stays.
+      case '/__test/task/crash':
+        this.ctx.abort('test restart')
+    }
+    return new Response(null, { status: 404 })
+  }
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
@@ -36,6 +55,9 @@ export default {
       if (!user) return new Response(null, { status: 404 })
       const session = await context.internalAdapter.createSession(user.id)
       return Response.json({ user, session })
+    }
+    if (url.pathname.startsWith('/__test/task/')) {
+      return getTask({ orgId: url.searchParams.get('org')!, taskId: url.searchParams.get('task')! }).fetch(request)
     }
     if (url.pathname === '/__test/expire') {
       return getHub(url.searchParams.get('org')!).fetch(request)

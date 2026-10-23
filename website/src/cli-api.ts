@@ -9,16 +9,45 @@
 //          ── DELETE /api/cli/tokens/:id ─▶ revokes an API token       (Bearer token)
 //          ── POST /api/cli/upload ───────▶ R2 file + share page URL   (Bearer session or API token, uploads.ts)
 //          script ─ POST /api/cli/upload ─▶ same, straight from another computer with an API token
+//          ── POST /api/cli/tasks ──────────▶ phone task, AI SDK UI message stream (task.ts)
+//          ── GET  /api/cli/tasks/:id/stream ▶ the running turn again, or 204
+//          ── GET  /api/cli/tasks/:id ───────▶ the task's messages
+//          ── POST /api/cli/tasks/:id/abort ─▶ stops the running turn
 
 import { Spiceflow, json } from 'spiceflow'
 import { APIError } from 'better-auth/api'
+import { UI_MESSAGE_STREAM_HEADERS, validateUIMessages } from 'ai'
 import { z } from 'zod'
 import { getAuth, getBaseUrl, getPersonalOrg, getSessionStrict, verifyApiToken } from './db.ts'
 import { entitlementFor } from './lib/billing.ts'
 import { createUpload } from './uploads.ts'
+import { getTask, TASK_LEASE_PATTERN } from './task.ts'
+import { TaskPhone } from './task-agent.ts'
 
 const CLIENT_ID = 'ghosthand'
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
+const HTTP_NO_CONTENT = 204
+/** Chosen by the client, like an AI SDK chat id. Scoped to the org in getTask. */
+const taskId = z.string().regex(/^[A-Za-z0-9_-]{8,64}$/)
+
+function parseTaskId(id: string): string {
+  const parsed = taskId.safeParse(id)
+  if (!parsed.success) throw json({ message: 'invalid task id' }, { status: 400 })
+  return parsed.data
+}
+
+/** The Mac's session, or an API token of a script: the org of the caller, with an active plan. */
+async function taskOrg(request: Request): Promise<string> {
+  const userId = (await getSessionStrict(request))?.userId ?? (await verifyApiToken(request))
+  if (!userId) throw json({ message: 'unauthorized' }, { status: 401 })
+  const org = await getPersonalOrg(userId)
+  const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
+  if (!entitlement.allowed) {
+    const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
+    throw json({ message: `${entitlement.notice ?? 'This ghosthand account has no active plan.'} Subscribe: ${subscribeUrl}` }, { status: 402 })
+  }
+  return org.orgId
+}
 
 export const cliApp = new Spiceflow({ basePath: '/api/cli' })
   .route({
@@ -139,6 +168,66 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
         throw cause
       })
       return { ok: true }
+    },
+  })
+  // AI SDK chat transport shape: `id` is the chat (task), the last message is the new prompt.
+  // The task keeps its own history, so earlier messages in the body are ignored.
+  .route({
+    method: 'POST',
+    path: '/tasks',
+    detail: { hide: true },
+    request: z.object({
+      id: taskId,
+      messages: z.array(z.unknown()).min(1),
+      lease: z.string().regex(TASK_LEASE_PATTERN, 'lease must carry its Mac, e.g. studio:42'),
+      // Ours, not AI SDK: the leased iPhone, added to the system prompt.
+      phone: TaskPhone.optional(),
+    }),
+    async handler({ request }) {
+      const orgId = await taskOrg(request)
+      const body = await request.json()
+      const [message] = await validateUIMessages({ messages: [body.messages.at(-1)] }).catch((cause) => {
+        throw json({ message: `invalid message: ${cause instanceof Error ? cause.message : cause}` }, { status: 400 })
+      })
+      if (message!.role !== 'user') throw json({ message: 'the last message must be a user message' }, { status: 400 })
+      const stream = await getTask({ orgId, taskId: body.id }).send({ orgId, lease: body.lease, phone: body.phone, message: message! })
+      if (stream === 'busy') {
+        throw json({ message: `task ${body.id} is running: follow it with GET /api/cli/tasks/${body.id}/stream, or stop it with POST /api/cli/tasks/${body.id}/abort` }, { status: 409 })
+      }
+      return new Response(stream, { headers: UI_MESSAGE_STREAM_HEADERS })
+    },
+  })
+  // AI SDK resume (`GET {api}/{id}/stream`, 204 when no turn runs). `from` and `message` are
+  // ours: a client that lost the stream after `from` chunks of message `message` gets the rest.
+  .route({
+    method: 'GET',
+    path: '/tasks/:id/stream',
+    detail: { hide: true },
+    query: z.object({ from: z.coerce.number().int().min(0).optional(), message: z.string().optional() }),
+    async handler({ request, params, query }) {
+      const orgId = await taskOrg(request)
+      const stream = await getTask({ orgId, taskId: parseTaskId(params.id) }).resume({ from: query.from, messageId: query.message })
+      if (stream === 'gone') throw json({ message: 'a newer turn of this task replaced that stream' }, { status: 410 })
+      if (!stream) return new Response(null, { status: HTTP_NO_CONTENT })
+      return new Response(stream, { headers: UI_MESSAGE_STREAM_HEADERS })
+    },
+  })
+  .route({
+    method: 'GET',
+    path: '/tasks/:id',
+    detail: { hide: true },
+    async handler({ request, params }) {
+      const orgId = await taskOrg(request)
+      return { messages: await getTask({ orgId, taskId: parseTaskId(params.id) }).messages() }
+    },
+  })
+  .route({
+    method: 'POST',
+    path: '/tasks/:id/abort',
+    detail: { hide: true },
+    async handler({ request, params }) {
+      const orgId = await taskOrg(request)
+      return { aborted: await getTask({ orgId, taskId: parseTaskId(params.id) }).abort() }
     },
   })
   .route({

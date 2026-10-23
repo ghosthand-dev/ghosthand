@@ -315,6 +315,18 @@ export class GhosthandHub extends DurableObject<Env> {
       return problem({ status: 404, code: 'not-found', title: 'Not found', detail: 'Use /macs/<mac>/v1/<route>, e.g. /macs/studio/v1/devices. `GET /macs` lists your Macs.' })
     }
     const [, slug, path] = match
+    return this.forwardApi({ slug: slug!, request, path: path! + url.search })
+  }
+
+  /** One daemon API request (`/v1/...`) on Mac `slug`, for the tools of a task (task.ts).
+   *  Called over RPC with a Request the Worker built, after it checked the account. */
+  async daemonFetch(slug: string, request: Request): Promise<Response> {
+    await this.refreshExpiredSessions()
+    const url = new URL(request.url)
+    return this.forwardApi({ slug, request, path: url.pathname + url.search })
+  }
+
+  private async forwardApi({ slug, request, path }: { slug: string; request: Request; path: string }): Promise<Response> {
     if (Number(request.headers.get('content-length')) > MAX_API_BODY) return tooLarge()
     const hasBody = request.method !== 'GET' && request.method !== 'HEAD'
     const body = hasBody ? await readBounded(request, MAX_API_BODY) : null
@@ -330,7 +342,7 @@ export class GhosthandHub extends DurableObject<Env> {
         detail: online.length ? `Mac ${slug} is offline. Online: ${online.join(', ')}.` : `Mac ${slug} is offline, and no other Mac of this account is online.`,
       })
     }
-    return this.dispatch({ slug: slug!, request, method: request.method, path: path! + url.search, body, fail: apiFail })
+    return this.dispatch({ slug, request, method: request.method, path, body, fail: apiFail })
   }
 
   /** Sends one request to a Mac; resolves with its streamed response. */

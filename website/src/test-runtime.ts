@@ -15,6 +15,8 @@ export async function startTestRuntime() {
       BETTER_AUTH_SECRET: 'local-security-regression-test-secret-only',
       GOOGLE_CLIENT_ID: 'local-test',
       GOOGLE_CLIENT_SECRET: 'local-test',
+      // Task tests call the real model through Vercel AI Gateway: run them with `sigillo run`.
+      AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY ?? '',
     },
     d1_databases: [{
       binding: 'DB', database_name: 'security-test', database_id: 'local-test',
@@ -22,8 +24,13 @@ export async function startTestRuntime() {
       migrations_pattern: path.resolve(root, '../db/drizzle/*/migration.sql'),
     }],
     r2_buckets: [{ binding: 'UPLOADS', bucket_name: 'security-test' }],
-    durable_objects: { bindings: [{ name: 'GHOSTHAND_HUB', class_name: 'TestHub' }] },
-    migrations: [{ tag: 'v1', new_sqlite_classes: ['TestHub'] }],
+    durable_objects: {
+      bindings: [
+        { name: 'GHOSTHAND_HUB', class_name: 'TestHub' },
+        { name: 'GHOSTHAND_TASK', class_name: 'TestTask' },
+      ],
+    },
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['TestHub', 'TestTask'] }],
   }
   const server = createTestHarness({ root, workers: [{ config }] })
   try {

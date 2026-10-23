@@ -1,7 +1,7 @@
 # Device access
 
 - `.passcode` is stale. Never read, print, upload, or commit its contents. Use only a user-confirmed Sigillo `IPHONE_PASSCODE` if unlocking is needed; never print secrets or put them in command arguments.
-- Take a lease first: `.build/debug/ghosthand acquire --label <session id> --reason "<task>"` prints a short ID, e.g. `42`. Pass `-l 42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `GHOSTHAND_LEASE`.
+- Take a lease first: `.build/debug/ghosthand acquire --label <session id> --reason "<task>"` prints a short ID with its Mac, e.g. `studio:42` (examples below write `42`). Pass `-l studio:42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `GHOSTHAND_LEASE`.
 - Always pass `--reason` with your task. If another session holds it, acquire fails and shows its reason and last command: give up or tell the user, or run `ghosthand wait --reason "<task>" --timeout 600`. Never `--force`. The label is only display text; it does not resume a lease. Leave the phone unlocked and run `ghosthand release -l 42` when done.
 - Do not delete or restore `state.db`: its persistent counter prevents old lease IDs from controlling new leases. Lease numbers are coordination IDs, not remote authentication; the tunnel requires an API token.
 - For secret text, pipe directly to `ghosthand type -l 42 --stdin`. One final LF or CRLF is removed; other whitespace is preserved. Validate focus first, and never repeat input automatically after a verification timeout.
@@ -37,7 +37,7 @@ The CLI only talks to its local daemon (no `--url`). On the unix socket, `LeaseR
 CLI ──daemon.sock──> daemon (laptop) ──/macs/studio/v1/..., session token──> hub ──WS──> daemon (studio)
 ```
 
-- **Lease ids:** `42` for a phone acquired on the unix socket of its own Mac; `<mac>:<n>` for every lease taken through the hub (MCP, tunnel REST, other Macs). Every daemon accepts its own prefix and strips it (`LeaseTarget`).
+- **Always more than one Mac:** every lease is `<mac>:<n>` while the Mac has a slug (only a signed-out Mac returns `42`), `list` always groups iPhones under `mac <slug>:`, and the control plane always shows each phone's Mac. Every daemon accepts its own prefix and strips it (`LeaseTarget`); the plain `42` still works on its own Mac. The slug stays while the tunnel reconnects (cleared on account change), and the first requests after a daemon start wait for it (`Tunnel.waitConnected`).
 - Remote phones of a daemon without `mac` in `/v1/devices` (older version) are skipped: its leases would come back without the prefix and hit the wrong Mac.
 - **Never send tunnel messages on a timer.** Every message wakes the hub Durable Object, which costs wake time and money. Send only when something changed (e.g. `phones`: the daemon checks locally, sends on change, the hub relays and stores it). The 30 s ping is the only exception: the edge answers it without waking the DO.
 - **Periodic daemon work goes in `Controller.startUpkeep`** (one 2 s timer, `controller.swift`). Add a step there, at a multiple of its tick, instead of a new timer or sleep loop. Left out on purpose: the startup screen capture restarts (`daemon.swift`, tested 5.5 s timing), the Bluetooth stack tick (`bluetooth-hid.swift`), per-request SSE pings and the tunnel ping.

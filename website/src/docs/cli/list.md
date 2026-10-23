@@ -16,13 +16,14 @@ Also takes the [global options](/docs/cli/overview#global-options).
 ## Details
 
 Only iPhones on a USB cable are listed; a phone near the Mac over Bluetooth or
-Wi-Fi is not (macOS gives its screen only over USB). Each line:
+Wi-Fi is not (macOS gives its screen only over USB). The iPhones are grouped by Mac,
+always under a `mac <slug>:` header (`this Mac:` while signed out). Each line:
   &lt;id&gt;  &lt;name&gt;  &lt;model&gt; iOS &lt;version&gt;  &lt;phone number&gt;  [locked]  (bluetooth &lt;state&gt;, &lt;pointer&gt; pointer)
 - id: stable on its Mac (same after rename, iOS update, cable replug). Pass it to `acquire -d`.
 - Other Macs: while this Mac is signed in, list also shows the iPhones of every other
-  online Mac of the account, under a `mac <slug>:` header. `acquire -d <id>` takes one
-  on its Mac and prints a lease like studio:42; every command then works from here.
-  A Mac that does not answer is a warning; a Mac without iPhones is not listed.
+  online Mac of the account. `acquire -d <id>` takes one on its Mac and prints a lease
+  like studio:42; every command then works from here. `daemon status` shows this
+  Mac's slug. A Mac that does not answer is a warning; a Mac without iPhones is not listed.
 - phone number: read from the SIM over USB. Missing without a SIM, but also when the
   carrier did not write it to the SIM: check `ghosthand info` for the SIM state.
 - [locked]: unlock with `ghosthand unlock` before screenshots or input.

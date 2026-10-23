@@ -31,18 +31,18 @@ file, photo, app, info, logs, restart, shutdown) needs a lease and runs on its
 iPhone; list and `random list` do not. -d picks the iPhone here only.
 - Always pass --reason with the task you need the iPhone for. Other agents read it
   to decide if they wait or give up.
-- stdout is only the lease ID, e.g. 42. Pass -l 42 on every device command.
+- stdout is only the lease ID with the Mac of the iPhone, e.g. studio:42 (`42` only
+  while this Mac is signed out). Pass it exactly so on every device command.
   Tool-call environments may not persist. Do not rely on an exported lease.
-- An iPhone on another Mac of the account (see `list`) gives an ID with its Mac,
-  e.g. studio:42. Pass it exactly so; this Mac's daemon sends each command there
-  through ghosthand.dev. Without -d, a Mac with no iPhone takes the account's only one.
+- The ID works from every Mac of the account: for an iPhone on another Mac (see
+  `list`), this Mac's daemon sends each command there through ghosthand.dev.
+  Without -d, a Mac with no iPhone takes the account's only one.
 - IDs increase in state.db and are never reused there. Do not delete or restore
   state.db: that resets the counter. --label is only display text, not proof of
   ownership; acquiring again with the same label does not resume an active lease.
 - Lease numbers are not authentication. The tunnel needs an account token.
-- Over MCP the id always carries the Mac, e.g. studio:42: pass it exactly as acquire returned it.
 - The lease ends by itself after --idle-timeout seconds without a command, so a
-  crashed agent never blocks the phone. Run `ghosthand release -l 42` when done.
+  crashed agent never blocks the phone. Run `ghosthand release -l studio:42` when done.
 - acquire turns AssistiveTouch on over USB (the pointer for tap and swipe) if it
   is off; release turns it off again.
 - Busy: acquire fails at once and shows the label, its reason, when it was
@@ -54,8 +54,8 @@ iPhone; list and `random list` do not. -d picks the iPhone here only.
 ## Examples
 
 ```bash
-$ ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --label ses_123 --reason "reply to Anna in Messages"  # prints e.g. 42
-$ ghosthand screenshot -l 42 -o s.png
+$ ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --label ses_123 --reason "reply to Anna in Messages"  # prints e.g. studio:42
+$ ghosthand screenshot -l studio:42 -o s.png
 ```
 
 ## MCP tool

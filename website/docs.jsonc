@@ -120,6 +120,13 @@
             ]
           },
           {
+            "group": "Tasks",
+            "icon": "lucide:bot",
+            "pages": [
+              "docs/cli/task"
+            ]
+          },
+          {
             "group": "iPhone",
             "icon": "lucide:smartphone",
             "pages": [

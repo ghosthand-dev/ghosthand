@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand CLI reference"
 sidebarTitle: "Overview"
-description: "Every ghosthand 0.9.0 command, option and example, generated from the CLI help."
+description: "Every ghosthand 0.10.0 command, option and example, generated from the CLI help."
 ---
 
 The **ghosthand** CLI controls an iPhone through the daemon on your Mac. Every command is
@@ -70,6 +70,12 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`scroll`](/docs/cli/scroll) | Scroll with the Bluetooth mouse wheel over a point (default: screen center). Use this to scroll web pages and lists; one tick is about 100 points |
 | [`key`](/docs/cli/key) | Press a key on the Bluetooth keyboard: home (Home Screen), enter, backspace, esc, arrows, volumeup. cmd+space opens Spotlight to open apps |
 | [`type`](/docs/cli/type) | Type text on the Bluetooth keyboard (US-ASCII) |
+
+### Tasks
+
+| Command | What it does |
+| --- | --- |
+| [`task`](/docs/cli/task) | Do a task in plain words: a fast agent on ghosthand.dev reads the screen with OCR and taps until it is done, then answers |
 
 ### iPhone
 

@@ -120,6 +120,24 @@ acquire ──> Account.authorizeLease() ──GET /api/cli/account──> plan 
 - Orgs: identity (sessions, OAuth tokens) belongs to the user; the plan, the trial (`org.createdAt`) and the Mac hub (`getHub(orgId)`) belong to the org. A signup hook creates a personal org with `org_id = user.id`. Always resolve it with `getPersonalOrg(userId)` (through `org_member`); never pass a user id as an org id, or team orgs break later.
 - Website: `db/` has the D1 schema (drizzle). Stripe rows store their Stripe account id; today the account is shared with Playwriter (sigillo project `website` in the `ghosthand` org).
 
+# Phone tasks (agent on ghosthand.dev)
+
+`ghosthand task -l 42 "open the TikTok likes tab"` (also MCP `task`, `POST /v1/leases/{lease}/task`) runs a fast agent on the website. The daemon only starts the turn and passes the AI SDK UI message stream through unchanged.
+
+```
+daemon (task.swift) ──POST /api/cli/tasks {id, lease: "<mac>:42", messages}, session token──> GhosthandTask DO (website/src/task.ts)
+   ◀── SSE `data: <UIMessageChunk>` ... `data: [DONE]` ──────────────────────────────────────  │ streamText (task-agent.ts)
+                                                                                                │ tools: openapi-fetch over hub.daemonFetch
+this or another Mac's daemon /v1/leases/<mac>:42/tap?screentext=true <──WS── GhosthandHub <───┘
+```
+
+- **Model:** Vercel AI Gateway (`AI_GATEWAY_API_KEY` in Sigillo), `deepseek/deepseek-v4.1-flash` with reasoning off, `zai/glm-5.3-flash` as fallback. Measure a change with `website/scripts/task-bench.ts` against a real iPhone before switching.
+- **Tools are a subset of the MCP tools** (`screentext`, `tap`, `swipe`, `scroll`, `key`, `type`): same names, arguments and descriptions, read from `website/mcp-tools.json`, minus `lease`, `mac`, `scale`, `screenshot`, `screentext`. A test fails when they drift. They call the daemon REST API, typed from `openapi.yaml` (`website/src/generated/daemon-api.ts`, written by `pnpm generate-docs`). Every input asks for `screentext`, so one model step is one action.
+- **One DO per task**, named `<orgId>:<taskId>`. Rows written are billed (setAlarm and deletes too), so chunks stay in memory and are stored in batches: one row before each tool call (a phone action may follow) and one at the end of the turn. The heartbeat alarm is set once per turn and re-armed only by the alarm. `GET .../stream` follows a running turn (AI SDK resume), `?from=<n>&message=<id>` gives a reconnecting client the rest. A deploy or crash stops a turn; the alarm (or the next resume) continues it and marks unfinished tool calls as interrupted. One day after the last turn the alarm calls `deleteAll()`.
+- **Phone context:** each turn sends the leased iPhone (`TaskPhone`: name, model, iOS, language, region), read by `taskTarget` over USB or, for another Mac's lease, from that Mac's `info` route. It goes at the end of the system prompt, so the cached prefix stays the same.
+- **Control plane chat** (`chat-panel.swift`): one chat per iPhone; each prompt is acquire, the same `POST /v1/leases/{lease}/task` stream, release. Text shows when its part ends (no streaming text); tool calls are one monospaced line each (`taskToolLabel`, shared with the CLI progress). Check the design with `ghosthand dashboard --foreground --mock chat --snapshot out.png`.
+- **Tests:** `website/src/task.test.ts` runs the real model against a scripted Mac (`sigillo run -- pnpm test`).
+
 # Testing UI changes (dashboard and setup windows)
 
 An open dashboard or setup window keeps running its old code after `swift build`. Running `ghosthand dashboard` again only brings that old window to the front (`dashboard` and `setup` share one process through `~/.ghosthand/app.lock`). To see the new build, tell the user to quit the window with ⌘Q, then run `ghosthand dashboard` again: it installs the new binary into `~/Applications/Ghosthand.app` and opens a new window.

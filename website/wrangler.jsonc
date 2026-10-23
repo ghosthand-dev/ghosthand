@@ -25,13 +25,21 @@
   // wrangler r2 bucket lifecycle add <bucket> expire-1-day --expire-days 1
   "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" }],
   "durable_objects": {
-    "bindings": [{ "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" }]
+    "bindings": [
+      { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },
+      { "name": "GHOSTHAND_TASK", "class_name": "GhosthandTask" }
+    ]
   },
   // hub-v1: per-tunnel-id DOs replaced by one per user (tunnel.ts); old tunnel state is dropped.
+  // task-v1: one object per phone task (task.ts), deleted one day after its last activity.
   "migrations": [
     { "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] },
-    { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] }
+    { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] },
+    { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] }
   ],
+  // A task turn is one invocation with no incoming messages: tool results and model streams
+  // all count against one CPU budget (default 30 s).
+  "limits": { "cpu_ms": 300000 },
   "secrets": {
     "required": [
       "BETTER_AUTH_SECRET",
@@ -40,7 +48,8 @@
       "GOOGLE_CLIENT_SECRET",
       "STRIPE_ACCOUNT_ID",
       "STRIPE_SECRET_KEY",
-      "STRIPE_WEBHOOK_SECRET"
+      "STRIPE_WEBHOOK_SECRET",
+      "AI_GATEWAY_API_KEY"
     ]
   },
   "env": {
@@ -60,12 +69,17 @@
       ],
       "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads-preview" }],
       "durable_objects": {
-        "bindings": [{ "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" }]
+        "bindings": [
+          { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },
+          { "name": "GHOSTHAND_TASK", "class_name": "GhosthandTask" }
+        ]
       },
       "migrations": [
         { "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] },
-        { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] }
+        { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] },
+        { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] }
       ],
+      "limits": { "cpu_ms": 300000 },
       "secrets": {
         "required": [
           "BETTER_AUTH_SECRET",
@@ -74,7 +88,8 @@
           "GOOGLE_CLIENT_SECRET",
           "STRIPE_ACCOUNT_ID",
           "STRIPE_SECRET_KEY",
-          "STRIPE_WEBHOOK_SECRET"
+          "STRIPE_WEBHOOK_SECRET",
+          "AI_GATEWAY_API_KEY"
         ]
       }
     }

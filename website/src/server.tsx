@@ -266,6 +266,7 @@ declare module 'spiceflow/react' {
 }
 
 export { GhosthandHub } from './tunnel.ts'
+export { GhosthandTask } from './task.ts'
 
 export default {
   fetch(request: Request): Promise<Response> {

@@ -4,6 +4,7 @@
 //   ghosthand docs-json ──> tmp JSON ──┬─> src/docs/cli/*.md        (CLI tab pages)         
 //                                      ├─> docs.jsonc               (between the cli-pages markers)
 //                                      └─> mcp-tools.json           (MCP tab, read by holocron)
+//   Sources/ghosthand/openapi.yaml ──> src/generated/daemon-api.ts  (types of the task tools)
 //
 // Run: pnpm --filter ghosthand-website generate-docs  (builds the Swift binary first)
 import { execFileSync } from 'node:child_process'
@@ -44,6 +45,7 @@ const groups: { group: string; icon: string; commands: string[] }[] = [
     icon: 'lucide:pointer',
     commands: ['tap', 'double-tap', 'triple-tap', 'hold', 'swipe', 'hold-drag', 'scroll', 'key', 'type'],
   },
+  { group: 'Tasks', icon: 'lucide:bot', commands: ['task'] },
   {
     group: 'iPhone',
     icon: 'lucide:smartphone',
@@ -258,3 +260,14 @@ log('updated docs.jsonc navigation')
 const mcpPath = path.join(websiteDir, 'mcp-tools.json')
 fs.writeFileSync(mcpPath, JSON.stringify({ serverUrl: manual.mcp.serverUrl, tools: manual.mcp.tools }, null, 2) + '\n')
 log(`wrote mcp-tools.json (${manual.mcp.tools.length} tools)`)
+
+// ── 6. daemon API types for the task tools (src/task-agent.ts) ─────
+// openapi-typescript needs the TypeScript 5 compiler API; this package uses TypeScript 7.
+// TODO: install openapi-typescript as a devDependency once it supports TypeScript 7.
+
+const apiTypesPath = path.join(websiteDir, 'src/generated/daemon-api.ts')
+execFileSync('pnpm', [
+  'dlx', '--package', 'openapi-typescript@7.13.0', '--package', 'typescript@5.9',
+  'openapi-typescript', path.join(rootDir, 'Sources/ghosthand/openapi.yaml'), '-o', apiTypesPath,
+], { cwd: websiteDir, stdio: ['ignore', 'ignore', 'inherit'] })
+log('wrote src/generated/daemon-api.ts')

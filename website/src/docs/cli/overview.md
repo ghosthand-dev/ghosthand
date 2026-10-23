@@ -19,7 +19,7 @@ npx ghosthand --help
 Take a lease, act, read the screen, release. Commands that use an iPhone need the lease with `-l`.
 
 1. `ghosthand list` (which iPhones, locked, leased by whom)  
-   `ghosthand acquire -d <id> --label <session id> --reason "<task>"` (prints e.g. 42)
+   `ghosthand acquire -d <id> --label <session id> --reason "<task>"` (prints e.g. studio:42 (42 below))
 2. `ghosthand screentext -l 42` (read text and boxes (cheap, no image))  
    `ghosthand screenshot -l 42 -o s.png` (or look at the screen (~500 tokens))
 3. `ghosthand tap -l 42 --text "Label" --screenshot s.png --screentext`  
@@ -33,7 +33,7 @@ The full rules are in the [agent manual](#agent-manual).
 
 | Option | Description |
 | --- | --- |
-| `-l, --lease [id]` | Lease id from `ghosthand acquire` (or GHOSTHAND_LEASE), e.g. 42, or studio:42 for an iPhone on Mac studio. Every command that uses an iPhone needs it and runs on its iPhone |
+| `-l, --lease [id]` | Lease id from `ghosthand acquire` (or GHOSTHAND_LEASE) with its Mac, e.g. studio:42 for an iPhone on Mac studio. Every command that uses an iPhone needs it and runs on its iPhone |
 | `-h, --help` | Display this message |
 | `-v, --version` | Display version number |
 

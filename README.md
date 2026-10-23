@@ -395,7 +395,7 @@ Tested on an XR (iOS 18.7) and an SE2 (iOS 18.6) with ho. SIMs.
 ## CLI
 
 > [!NOTE]
-> **Every command except `list` needs a lease**, so two agents never use the same iPhone at once. `ghosthand acquire --reason "<task>"` prints an id like `42`; pass `-l 42` to every command and run `ghosthand release -l 42` at the end. The examples in this README leave out `-l` to stay short. See [Leases](#leases-one-agent-per-iphone).
+> **Every command except `list` needs a lease**, so two agents never use the same iPhone at once. `ghosthand acquire --reason "<task>"` prints an id with its Mac, like `studio:42`; pass `-l studio:42` to every command and run `ghosthand release -l studio:42` at the end. The examples in this README write `-l 42` or leave out `-l` to stay short. See [Leases](#leases-one-agent-per-iphone).
 
 **Grouped commands use a subcommand**: `file`, `photo`, `app`, `record`, `setup`, `account`, `daemon` (`ghosthand file push`, `ghosthand record stop`). `setup` and `account` also run alone. MCP tool names join the words with `-` (`file-push`).
 
@@ -693,7 +693,7 @@ ghosthand restart -l 42      # ask the user first
 **Every command that uses an iPhone needs a lease.** Two agents on one Mac can no longer tap the same phone at the same time. `list` needs none.
 
 ```bash
-ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --label ses_123 --reason "reply to Anna"  # prints 42
+ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F --label ses_123 --reason "reply to Anna"  # prints studio:42 (42 below)
 ghosthand tap -l 42 207 448    # runs on the lease's iPhone; no -d
 ghosthand release -l 42
 ```
@@ -716,7 +716,7 @@ agent B:       decides: give up / tell the user, or
 - **IDs increase in SQLite** and are not reused after expiry, force, release or a daemon restart. Do not delete or restore `state.db`.
 - **`--label` is only display text**, e.g. your agent session id, so others can find who holds the phone. It is not checked, not unique, and an acquire with the same label does not resume an active lease.
 - **Lease numbers are coordination IDs, not authentication.** The tunnel needs an API token. Anyone with daemon access can acquire or force leases.
-- **Lease ids carry their Mac when it is another one:** `42` for an iPhone on this Mac, `studio:42` for an iPhone on Mac `studio` (see [Several Macs](#several-macs-one-list)). Remote MCP and the tunnel URL always return `studio:42`.
+- **Lease ids always carry their Mac:** `studio:42` for an iPhone on Mac `studio`, also when it is this Mac, so the id works from every Mac of the account (see [Several Macs](#several-macs-one-list)). Only a signed-out Mac returns a plain `42`; `42` also works on its own Mac.
 - Leases live in the `lease` table of `state.db`, so they survive a daemon restart (a rebuild restarts it).
 
 ## Coordinates: screen points
@@ -806,11 +806,12 @@ The setup window shows the choice for iPhones with Developer Mode on. For others
 
 ```bash
 ghosthand list
-# 7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth connected, absolute pointer)
-# 42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth connected, relative pointer)
+# mac studio:
+#   7EF219AD-...  Morse's iPhone  iPhone XR (iPhone11,8) iOS 18.7  (bluetooth connected, absolute pointer)
+#   42B874EC-...  Test iPhone     iPhone 6s (iPhone8,1) iOS 15.8.4  (bluetooth connected, relative pointer)
 
-ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F  # prints e.g. 42
-ghosthand acquire -d "Test iPhone"                         # prints e.g. 43
+ghosthand acquire -d 7EF219AD-69B4-423E-B8C4-4F4A6140822F  # prints e.g. studio:42 (42 below)
+ghosthand acquire -d "Test iPhone"                         # prints e.g. studio:43
 ghosthand screenshot -l 42 -o a.png
 ghosthand tap -l 43 206 332
 ghosthand release -l 42
@@ -896,8 +897,9 @@ sudo scutil --set LocalHostName "lab-mac-1"   # optional: network name, no space
 **Only USB-connected iPhones appear.** `list` gets devices from macOS's QuickTime screen-capture device list, not from a Bluetooth scan. Keep the USB cable attached and trust the Mac once. A Bluetooth-only phone is not listed. Camera permission is required on the Mac; neither a Bluetooth connection nor AssistiveTouch is required just to list a phone. Missing permissions tell the agent to open `ghosthand setup` and poll `setup status` until ready, without showing a system dialog.
 
 ```text
-7EF219AD-69B4-423E-B8C4-4F4A6140822F  Morse’s iPhone (2)  iPhone XR (iPhone11,8) iOS 18.7.10  (bluetooth connected, absolute pointer)
-   USB capture ID                        name                model and iOS (USB)                   Bluetooth link, pointer mode
+mac studio:                                the Mac with the cable (`this Mac:` while signed out)
+  7EF219AD-69B4-423E-B8C4-4F4A6140822F  Morse’s iPhone (2)  iPhone XR (iPhone11,8) iOS 18.7.10  (bluetooth connected, absolute pointer)
+     USB capture ID                        name                model and iOS (USB)                   Bluetooth link, pointer mode
 ```
 
 **The ID is stable.** It is the USB screen-capture ID, not the Apple UDID. On the same Mac, the XR kept `7EF219AD-…` after a rename, an iOS update, and a cable replug (tested). Save it and pass it with `-d`. Not tested across different Macs.

@@ -127,8 +127,9 @@ export class GhosthandTask extends DurableObject<Env> {
     })
     try {
       const result = streamText({
-        ...taskStreamOptions({ apiKey: this.env.AI_GATEWAY_API_KEY, daemon, lease: meta.lease, phone: meta.phone }),
-        messages: await convertToModelMessages(history, { ignoreIncompleteToolCalls: true }),
+        ...options,
+        // With the tools, old screenshots in the history tell the model they were not kept.
+        messages: await convertToModelMessages(history, { tools: options.tools, ignoreIncompleteToolCalls: true }),
         abortSignal: signal,
       })
       const stream = result.toUIMessageStream({
@@ -144,6 +145,7 @@ export class GhosthandTask extends DurableObject<Env> {
       this.push({ type: 'error', errorText: error instanceof Error ? error.message : String(error) })
     } finally {
       this.endTurn()
+      const options = taskStreamOptions({ apiKey: this.env.AI_GATEWAY_API_KEY, daemon, lease: meta.lease, phone: meta.phone })
     }
   }
 

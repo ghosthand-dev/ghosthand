@@ -20,7 +20,7 @@ const SCREENS: Record<string, string[]> = {
   general: ['General', 'About', 'Software Update'],
   about: ['About', 'Name', 'Morse iPhone'],
 }
-const TAPS: Record<string, Record<string, string>> = { settings: { General: 'general' }, general: { About: 'about' } }
+const TAPS: Record<string, Record<string, string>> = { home: { Settings: 'settings' }, settings: { General: 'general' }, general: { About: 'about' } }
 
 type DaemonRequest = { type: 'request'; id: string; method: string; path: string; body: string | null }
 
@@ -97,7 +97,7 @@ function testTask({ orgId, taskId, action }: { orgId: string; taskId: string; ac
   return runtime.worker.fetch(`/__test/task/${action}?org=${orgId}&task=${taskId}`).catch(() => null)
 }
 
-test('task tools are MCP tools: same names and arguments, without lease, mac, scale, screenshot, screentext', () => {
+test('task tools are MCP tools: same names and arguments, without lease, mac, scale, screenshot, screentext, waitText, timeoutMs', () => {
   const names = Object.keys(TASK_TOOL_INPUTS) as TaskToolName[]
   const shapes = names.map((name) => {
     const mcp = taskToolSchema(name).inputSchema
@@ -107,12 +107,13 @@ test('task tools are MCP tools: same names and arguments, without lease, mac, sc
   for (const { mcp, ours } of shapes) expect(ours).toEqual(mcp)
   expect(Object.fromEntries(shapes.map(({ name, mcp }) => [name, mcp[0]!.join(' ')]))).toMatchInlineSnapshot(`
     {
-      "key": "key language timeoutMs waitText",
+      "key": "key language",
+      "screenshot": "native settle",
       "screentext": "language settle",
-      "scroll": "direction language ticks timeoutMs waitText x y",
-      "swipe": "durationMs language timeoutMs waitText x1 x2 y1 y2",
-      "tap": "index language text timeoutMs waitText x y",
-      "type": "enter language text timeoutMs waitText",
+      "scroll": "direction language ticks x y",
+      "swipe": "durationMs language x1 x2 y1 y2",
+      "tap": "index language text x y",
+      "type": "enter language text",
     }
   `)
 })

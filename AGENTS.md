@@ -131,8 +131,8 @@ daemon (task.swift) ──POST /api/cli/tasks {id, lease: "<mac>:42", messages},
 this or another Mac's daemon /v1/leases/<mac>:42/tap?screentext=true <──WS── GhosthandHub <───┘
 ```
 
-- **Model:** Vercel AI Gateway (`AI_GATEWAY_API_KEY` in Sigillo), `deepseek/deepseek-v4.1-flash` with reasoning off, `zai/glm-5.3-flash` as fallback. Measure a change with `website/scripts/task-bench.ts` against a real iPhone before switching.
-- **Tools are a subset of the MCP tools** (`screentext`, `tap`, `swipe`, `scroll`, `key`, `type`): same names, arguments and descriptions, read from `website/mcp-tools.json`, minus `lease`, `mac`, `scale`, `screenshot`, `screentext`. A test fails when they drift. They call the daemon REST API, typed from `openapi.yaml` (`website/src/generated/daemon-api.ts`, written by `pnpm generate-docs`). Every input asks for `screentext`, so one model step is one action.
+- **Model:** Vercel AI Gateway (`AI_GATEWAY_API_KEY` in Sigillo), `anthropic/claude-haiku-5.5` with reasoning off and gateway `caching: 'auto'` (Anthropic caches only with breakpoints), `zai/glm-5.3-flash` as fallback. A new prompt to a running task aborts its turn and starts at once (no 409). Measure a change with `website/scripts/task-bench.ts` against a real iPhone before switching.
+- **Tools are a subset of the MCP tools** (`screentext`, `screenshot`, `tap`, `swipe`, `scroll`, `key`, `type`): same names, arguments and descriptions, read from `website/mcp-tools.json`, minus `lease`, `mac`, `scale`, `screenshot`, `screentext`, `waitText`, `timeoutMs` (the input arguments). Screenshot bytes go only to the model (`toModelOutput`), never into the UI stream; history from earlier turns says the image was not kept. A test fails when they drift. No `waitText`: the model cannot know the next screen's text; each action returns the settled screen (`settledFrame`: up to 600 ms for a reaction, then still for 150 ms, at most ~2.6 s). They call the daemon REST API, typed from `openapi.yaml` (`website/src/generated/daemon-api.ts`, written by `pnpm generate-docs`). Every input asks for `screentext`, so one model step is one action.
 - **One DO per task**, named `<orgId>:<taskId>`. Rows written are billed (setAlarm and deletes too), so chunks stay in memory and are stored in batches: one row before each tool call (a phone action may follow) and one at the end of the turn. The heartbeat alarm is set once per turn and re-armed only by the alarm. `GET .../stream` follows a running turn (AI SDK resume), `?from=<n>&message=<id>` gives a reconnecting client the rest. A deploy or crash stops a turn; the alarm (or the next resume) continues it and marks unfinished tool calls as interrupted. One day after the last turn the alarm calls `deleteAll()`.
 - **Phone context:** each turn sends the leased iPhone (`TaskPhone`: name, model, iOS, language, region), read by `taskTarget` over USB or, for another Mac's lease, from that Mac's `info` route. It goes at the end of the system prompt, so the cached prefix stays the same.
 - **Control plane chat** (`chat-panel.swift`): one chat per iPhone; each prompt is acquire, the same `POST /v1/leases/{lease}/task` stream, release. Text shows when its part ends (no streaming text); tool calls are one monospaced line each (`taskToolLabel`, shared with the CLI progress). Check the design with `ghosthand dashboard --foreground --mock chat --snapshot out.png`.
@@ -140,9 +140,33 @@ this or another Mac's daemon /v1/leases/<mac>:42/tap?screentext=true <──WS�
 
 # Testing UI changes (dashboard and setup windows)
 
-An open dashboard or setup window keeps running its old code after `swift build`. Running `ghosthand dashboard` again only brings that old window to the front (`dashboard` and `setup` share one process through `~/.ghosthand/app.lock`). To see the new build, tell the user to quit the window with ⌘Q, then run `ghosthand dashboard` again: it installs the new binary into `~/Applications/Ghosthand.app` and opens a new window.
+`dashboard` and `setup` share one process through `~/.ghosthand/app.lock`. After `swift build`, the next CLI command installs the new binary into `~/Applications/Ghosthand.app` (with the daemon restart). The open window sees the new `GhosthandSourceBuildID` within a second and opens the new bundle with the same window, between chat turns and outside Take Control (`relaunchIfReplaced` in `setup-app.swift`). It must: a process whose bundle was replaced fails `codesign -v <pid>`, and macOS Accessibility then refuses it (`kAXErrorAPIDisabled`), so cua-driver sees no window.
+
+Drive the real window without taking the user's focus:
+
+```bash
+ghosthand dashboard --background          # opens behind the user's windows, no activation
+cua-driver get_window_state '{"pid":<pid>,"window_id":<id>,"screenshot_out_file":"/tmp/d.png"}'
+```
+
+Background accessibility actions work (`type_text`, `click` with an `element_token`). Controls have identifiers in `tree_markdown`: `chat-input`, `chat-send` (Send or Stop), `chat-new`, `chat-toggle`, `chat-suggestion`, `phone-<udid>` rows, `phone-screen` (action Take Control). Never use foreground delivery.
 
 To check a screen without the user's window, render a mock to PNG: `ghosthand dashboard --foreground --mock no-phone --snapshot out.png` (scenes in `dashboard --help`).
+
+# Errors and product analytics (Strada)
+
+Both the daemon and the website report to the Strada project `ghosthand` (`strada issues list -p ghosthand`), as services `ghosthand-daemon` and `ghosthand-website`. Load the `strada` skill before touching it.
+
+```
+daemon: strada.swift (Swift port of @strada.sh/sdk) <── telemetry.swift: capture, events, hourly usage, crash reports
+website: @strada.sh/sdk <── src/telemetry.ts: initStrada, typed trackEvent, reportErrors
+```
+
+- **Errors handled inline must still be reported**: `captureException` (website) or `Telemetry.capture` (daemon), with a `handler` or `route` tag. Never swallow one with only `console.error` or `daemonLog`.
+- Do not capture errors you rethrow on the website: Spiceflow records them on the request span (its `tracer`), and `/mcp`, `/macs`, `/tunnel/*` run inside `startSpan` (server.tsx). Durable Object alarms and WebSocket messages go through `reportErrors`.
+- In the daemon, API and MCP errors go to Strada only when they are `internal-error` or `recording-failed` (`Telemetry.captureIfUnexpected`): the other codes are expected answers.
+- **Product events are typed**: add them to `WebsiteEvents` (telemetry.ts) or `Telemetry.Event` (telemetry.swift), never `track()` with a free string. Properties are ids, counts, names and booleans: never prompts, typed text, screen text or tokens. Update the Telemetry section of website/src/docs/privacy.mdx when what is sent changes.
+- The daemon never ships a Strada token (ingest is anonymous); `STRADA_TOKEN` is a website secret in Sigillo.
 
 # CLI and MCP docs (website)
 

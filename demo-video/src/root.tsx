@@ -16,18 +16,18 @@ const defaults: Omit<AgentDemoProps, 'timeline' | 'plan'> = {
   phoneLabel: 'Your real iPhone',
 }
 
+const tiktokPlan: PlanItem[] = [
+  { text: 'Open TikTok', from: 'Opening TikTok' },
+  { text: 'Pick the video from Photos', from: 'Creating a new TikTok post' },
+  { text: 'Write the caption', from: 'Opening the caption editor' },
+  { text: 'Post it publicly', from: 'Publishing the video' },
+  { text: 'Check the post is live', from: 'Checking the uploaded video' },
+]
+
 const demos: { id: string; timeline: Timeline; plan: PlanItem[] }[] = [
-  {
-    id: 'tiktok',
-    timeline: tiktok,
-    plan: [
-      { text: 'Open TikTok', from: 'Opening TikTok' },
-      { text: 'Pick the video from Photos', from: 'Creating a new TikTok post' },
-      { text: 'Write the caption', from: 'Opening the caption editor' },
-      { text: 'Post it publicly', from: 'Publishing the video' },
-      { text: 'Check the post is live', from: 'Checking the uploaded video' },
-    ],
-  },
+  { id: 'tiktok', timeline: tiktok, plan: tiktokPlan },
+  // same run with the prompt typed in the launch video intro (promo-video/src/launch.ts)
+  { id: 'tiktok-launch', timeline: { ...tiktok, prompt: "upload this video to tiktok using the app (so we don't get shadowbanned)" }, plan: tiktokPlan },
   {
     id: 'tiktok-warmup',
     timeline: tiktokWarmup,

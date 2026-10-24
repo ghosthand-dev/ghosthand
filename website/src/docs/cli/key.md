@@ -25,7 +25,7 @@ Also takes the [global options](/docs/cli/overview#global-options).
 
 ## Details
 
-Keys: home, menu, enter, backspace (or delete), forwarddelete, esc, tab, space, up, down,
+Keys: home, enter, backspace (or delete), forwarddelete, esc, tab, space, up, down,
 left, right, pageup, pagedown, end, volumeup, volumedown, playpause, and
 combos like cmd+a, shift+tab. Modifiers: cmd, shift, alt (option), ctrl, fn (Globe).
 fn alone is a Globe tap. Keys in a combo go down in order: tab+h holds tab, then h.
@@ -56,11 +56,11 @@ fn alone is a Globe tap. Keys in a combo go down in order: tab+h holds tab, then
 - fn+h only types "h": the iPhone was paired with an older ghosthand whose report
   map dropped fn. Forget the Mac on the iPhone and pair again (`ghosthand forget --help`).
 - No `key mute`: the Mute key is a toggle. Use `ghosthand mute` / `unmute`.
-- home clicks mouse button 3, which AssistiveTouch must map to Home once: Settings &gt;
-  Accessibility &gt; Touch &gt; AssistiveTouch &gt; Devices &gt; (this Mac) &gt; Customize Additional
-  Buttons &gt; press `key home` &gt; Home. Unmapped, it does nothing: use fn+h or menu
-  (the keyboard Home keys). Press it again if an app was still opening.
+- home is the keyboard Home key (HID consumer Menu): no AssistiveTouch setup. Leaving
+  an app opened from Spotlight shows Spotlight again; press home once more for the
+  Home Screen. Press it again if an app was still opening.
 - No verified global Back key. esc sends Escape, not a guaranteed navigation Back.
+- pagedown/pageup scroll Safari pages after a tap on the text, not app lists (Settings).
 - enter sends a message in Messages when the text field has focus.
 - XCTest mode: home, volumeup, volumedown, enter, backspace, tab, space, and shortcuts
   with cmd, shift, ctrl, alt (cmd+space opens Spotlight; cmd+a, cmd+c, cmd+v work in

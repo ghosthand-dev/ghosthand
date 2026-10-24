@@ -158,11 +158,9 @@ did not change the result with the setting on. The setting was turned back on af
 **Nothing remote closed it.** SE2, iOS 18.6.2, Safari `id.apple.com` two-factor page after
 Allow. `screenshot --native` was all black (4 of 4). No effect: `key esc`, `key enter` (2x),
 `key home`, `fn+h`, lock + unlock, and AssistiveTouch menu > Home (2x; the menu opened over
-the alert). AssistiveTouch Home is the action `key home` maps to mouse button 3, so that mapping
-would not help here. Ask the user to tap OK on the phone.
+the alert). Ask the user to tap OK on the phone.
 
-`key home` now clicks that button 3 (mapped once in AssistiveTouch > Devices). It went Home
-from Settings and Safari (2 of 2); it was not retested on this alert.
+`key home` now sends HID consumer Menu (the keyboard Home key); it was not retested on this alert.
 
 ### Apple password confirmation, October 20
 

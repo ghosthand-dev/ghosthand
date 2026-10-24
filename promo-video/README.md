@@ -5,7 +5,7 @@ Motion design videos rendered from plain HTML and WebGL. **No Remotion**: each e
 | Entry | Video | Length |
 | --- | --- | --- |
 | `src/video.ts` | bots (Grok, a dot) use real iPhones through ghosthand, flat 2D | 36 s |
-| `src/launch.ts` | launch: "Give your agent a phone", toon-shaded 3D setup steps, then the real agent demo | 47 s |
+| `src/launch.ts` | launch: Claude Code prompt, fly to the iPhone, the real agent demo, then toon-shaded 3D setup steps | 53 s |
 
 ```
 src/<entry>.ts ──esbuild──> one HTML page ──headless Chrome, N pages──> PNG per frame ──ffmpeg──> out/<entry>.mp4
@@ -23,29 +23,34 @@ pnpm tsx scripts/render.ts --entry launch --stills 6,22 # PNGs in out/stills/ to
 pnpm tsx scripts/render.ts --entry launch --preview     # out/launch-preview.html with play button and scrubber
 ```
 
-`launch` plays `demo-video/out/tiktok.mp4`: render it first in `demo-video/` (see its README).
+`launch` plays `demo-video/out/tiktok-launch.mp4` (the TikTok run with the intro's prompt). Render it first in `demo-video/`: `pnpm exec remotion render src/root.tsx tiktok-launch out/tiktok-launch.mp4`.
 
 ## Launch video
 
 | Time | Scene |
 | --- | --- |
-| 0.0 | hook title |
-| 2.2 | 01 a Mac mini drops in spinning, the camera orbits it |
-| 5.2 | 02 the camera flies to the iPhone, which pops in spinning; lock screen turns on |
-| 8.2 | 03 the USB cable draws from the Mac to the iPhone, the camera chases its end |
-| 11.2 | 04 close-up: passcode, Trust This Computer, Bluetooth pairing, checklist |
-| 16.2 | how it works: Bluetooth arc carries mouse + keyboard, USB cable carries screen frames |
-| 23.1 | 05 CLI, MCP and API cards fan out of the Mac |
-| 26.9 | the camera flies a full circle around the iPhone and dives into its screen |
-| 28.6 | circle reveal from the iPhone screen into the real demo, played at 2.2x |
-| 42.6 | end card on a slow turntable |
+| 0.0 | Claude Code in a macOS terminal; the camera pushes in while the prompt is typed |
+| 3.7 | enter: the agent leases the iPhone (`ghosthand acquire`) |
+| 4.7 | the window falls away, the blurred 3D world comes into focus, one ease-out camera fly to the plugged-in iPhone |
+| 8.4 | the camera dives into the iPhone screen |
+| 9.5 | circle reveal into the real demo, full frame, played at 2.2x |
+| 22.6 | how it works: quick title card that zooms from left to right (ease-out) |
+| 24.2 | 01 a Mac mini drops in spinning, the camera orbits it |
+| 27.3 | 02 the camera flies to the iPhone, which pops in spinning; lock screen turns on |
+| 30.5 | 03 the USB cable draws from the Mac to the iPhone, the camera chases its end |
+| 33.6 | 04 close-up: passcode, Trust This Computer, Bluetooth pairing, checklist |
+| 38.9 | how it works: Bluetooth arc carries mouse + keyboard, USB cable carries screen frames |
+| 45.7 | 05 CLI, MCP and API cards fan out of the Mac |
+| 49.4 | the camera cranes up, end card on a slow turntable |
 
-**Pacing:** each step stays only long enough to read its text (about 3 s). Scene starts are chained constants at the top of `src/launch.ts`.
+**Music:** `assets/launch-music.mp3` is the Udio song [Dried Leaves, Lost Dreams](https://www.udio.com/songs/aZ8xPNm46ZGpbrCYNuesGx), cut from 19.80 s (first bar of its loud part). librosa found 114.2 BPM, so `BEAT = 0.5253` and every scene start is `beats(n)` after another one. If you change the track, measure the grid again and update `BEAT`.
+
+**Pacing:** each step stays only long enough to read its text (about 3 s). Scene starts are chained constants at the top of `src/launch.ts`. Part 1 shows the finished setup: the 3D state reads the clock of part 2 at `HOW_AT` until `HOOK_AT`.
 
 - **`src/launch-3d.ts`**: models built from code (1 unit = 1 cm), `MeshToonMaterial` with a 4-step ramp, and an ink pass: Sobel edges on normals + depth draw dark outlines, silhouettes get a thin indigo rim, with line boil (8 fps wobble) and light grain.
 - **Dark theme**: `PALETTE` in `src/launch-3d.ts`. The accent is the website's primary `#4f46e5` (`website/docs.jsonc`); `accentLight` is used for small text on the dark background.
 - **`src/launch-screens.ts`**: iOS screens drawn with Canvas 2D in iPhone SE points, used as the screen texture.
-- **`src/launch.ts`**: timeline, camera keys in orbit form (target, distance, azimuth, elevation) joined by a monotone cubic spline (`cameraRig`), so the camera never stops at a key; azimuth is not wrapped, so 0 → 2π flies a full circle, HTML text and overlays positioned with `world.project()`, sounds.
+- **`src/launch.ts`**: timeline, camera keys in orbit form (target, distance, azimuth, elevation) joined by a monotone cubic spline (`cameraRig`), so the camera never stops at a key; azimuth is not wrapped, so 0 → 2π flies a full circle. The intro fly is a second rig whose keys sit on an eased 0..1 axis (`outQuart`), so the whole move decelerates. HTML text and overlays positioned with `world.project()`, sounds.
 - **Text left, objects right**: `camera.setViewOffset` shifts the 3D frame right by `shift` px, so the text column never covers the models.
 - **Sounds** are the synthesized `demo-video/public/sfx/*.wav` plus the demo clip's own audio, mixed by ffmpeg from `window.video.sounds`.
 

@@ -11,14 +11,18 @@ export const CLIPS = [
   // iPhone screen recordings in the promo's phone mockup
   { name: 'upload', src: '../demo-video/public/tiktok/phone.mp4', width: 420 },
   { name: 'warmup', src: '../demo-video/public/tiktok-warmup/phone.mp4', width: 420 },
-  // full agent demo for the launch video; render it first in demo-video/ (see README)
-  { name: 'demo', src: '../demo-video/out/tiktok.mp4', width: 1920, start: 3.4, duration: 31.6 },
+  // full agent demo for the launch video, from the split view to before its end card;
+  // render it first in demo-video/: pnpm exec remotion render src/root.tsx tiktok-launch out/tiktok-launch.mp4
+  { name: 'demo', src: '../demo-video/out/tiktok-launch.mp4', width: 1920, start: 7.8, duration: 30.2 },
 ] as const
 
 export type ClipName = (typeof CLIPS)[number]['name']
 
-/** One audio file mixed into the render at `at` seconds. `src` is relative to promo-video/. `tempo` speeds it up. */
-export type Sound = { src: string; at: number; from?: number; duration?: number; volume?: number; tempo?: number }
+/**
+ * One audio file mixed into the render at `at` seconds. `src` is relative to promo-video/. `tempo` speeds it up.
+ * `fadeOut` fades the last seconds of `duration`.
+ */
+export type Sound = { src: string; at: number; from?: number; duration?: number; volume?: number; tempo?: number; fadeOut?: number }
 
 declare global {
   interface Window {
@@ -34,6 +38,8 @@ export const clamp = (x: number, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, x)
 export const lerp = (a: number, b: number, p: number) => a + (b - a) * p
 export const prog = (t: number, start: number, dur: number) => clamp((t - start) / dur)
 export const outCubic = (p: number) => 1 - (1 - p) ** 3
+export const outQuart = (p: number) => 1 - (1 - p) ** 4
+export const inCubic = (p: number) => p ** 3
 export const inOutCubic = (p: number) => (p < 0.5 ? 4 * p ** 3 : 1 - (-2 * p + 2) ** 3 / 2)
 export const outBack = (p: number) => 1 + 2.70158 * (p - 1) ** 3 + 1.70158 * (p - 1) ** 2
 /** Opacity of something shown from tIn to tOut. */

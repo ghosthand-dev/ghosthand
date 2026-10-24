@@ -137,7 +137,8 @@ function audioArgs({ sounds, duration }: { sounds: Sound[]; duration: number }) 
   const chains = sounds.map((s, i) => {
     const ms = Math.round(s.at * 1000)
     const tempo = s.tempo ? `atempo=${s.tempo},` : ''
-    return `[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,${tempo}volume=${s.volume ?? 1},adelay=${ms}|${ms}[a${i}]`
+    const fade = s.fadeOut && s.duration ? `afade=t=out:st=${s.duration - s.fadeOut}:d=${s.fadeOut},` : ''
+    return `[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo,${tempo}${fade}volume=${s.volume ?? 1},adelay=${ms}|${ms}[a${i}]`
   })
   const mix = `${sounds.map((_, i) => `[a${i}]`).join('')}amix=inputs=${sounds.length}:normalize=0,atrim=0:${duration}[aout]`
   return [...inputs, '-filter_complex', [...chains, mix].join(';'), '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k']

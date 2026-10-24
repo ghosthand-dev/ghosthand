@@ -1,50 +1,74 @@
-// Launch video: "Give your agent a phone". A step-by-step setup in a toon-shaded 3D world
-// (src/launch-3d.ts), with HTML text on top, then the real agent demo, then the end card.
+// Launch video: "Give your agent a phone". Part 1 shows the agent at work: a prompt typed in
+// Claude Code, a camera fly over the plugged-in iPhone, then the real demo. Part 2 is how it works:
+// the setup steps in a toon-shaded 3D world (src/launch-3d.ts) with HTML text on top, then the end card.
 // Pure function of time like src/video.ts: seek(t) sets the camera, meshes, screen and text from t.
 //
-//   0.0  hook title                       16.2  how it works: Bluetooth = mouse + keyboard, USB = screen
-//   2.2  01 a Mac (drops in, spinning)    23.1  05 CLI, MCP, API cards
-//   5.2  02 an iPhone (pops in, spinning) 26.9  camera flies a full circle around the iPhone into its screen
-//   8.2  03 USB cable (camera chases it)  28.6  real demo clip at 2.2x (demo-video/out/tiktok.mp4)
-//                                         42.6  end card on a slow turntable
-//  11.2  04 unlock, trust, pair
+//   part 1                                         part 2
+//    0.0  Claude Code, the prompt is typed          22.6  quick title card, zooms left to right
+//    4.7  terminal falls away, camera flies to the  24.2  01 a Mac  27.3  02 an iPhone  30.5  03 USB
+//         plugged-in iPhone (one ease-out move)     33.6  04 unlock, trust, pair
+//    8.4  camera dives into the iPhone screen       38.9  how it works: Bluetooth = hands, USB = eyes
+//    9.5  real demo clip at 2.2x, full frame        45.7  05 CLI, MCP, API cards
+//         (demo-video/out/tiktok-launch.mp4)        49.4  end card on a slow turntable (53.6 s total)
+//   Every scene start is on a beat of the music (BEAT below).
 
 import * as THREE from 'three'
 import logoSvg from '../../website/public/logo-ink.svg'
 import { createWorld, PALETTE, PHONE } from './launch-3d.ts'
 import { appCenter, createScreen, keyCenter, PAIR_BUTTON, SCREEN_POINTS, TRUST_BUTTON, type ScreenState } from './launch-screens.ts'
 import {
-  add, bump, clamp, CLIP_FPS, CLIPS, inOutCubic, lerp, outBack, outCubic, prog, setImage, setVisible, shown, svgEl, waitDecodes,
-  type Sound, type Update,
+  add, bump, clamp, CLIP_FPS, CLIPS, inCubic, inOutCubic, lerp, outBack, outCubic, outQuart, prog, setImage, setVisible, shown, svgEl,
+  waitDecodes, type Sound, type Update,
 } from './shared.ts'
 
 const W = 1920
 const H = 1080
 const { text: TEXT, accent: ACCENT, accentLight: ACCENT_LIGHT, muted: MUTED, surface: SURFACE, border: BORDER } = PALETTE
 
-// scene starts, every other time is relative to one of these
-// each step stays on screen only long enough to read its text
-const MAC_AT = 2.2
-const PHONE_AT = MAC_AT + 3
-const USB_AT = PHONE_AT + 3
-const PAIR_AT = USB_AT + 3
-const HOW_AT = PAIR_AT + 5
-const USB_BEAT_AT = HOW_AT + 3.7
-const CONTROL_AT = USB_BEAT_AT + 3.2
-const PUSH_AT = CONTROL_AT + 3.8
-const DEMO_AT = PUSH_AT + 1.7
+// Music: assets/launch-music.mp3 is the Udio song "Dried Leaves, Lost Dreams"
+// (https://www.udio.com/songs/aZ8xPNm46ZGpbrCYNuesGx) cut from 19.80 s, the first bar of its loud part.
+// librosa beat tracking: 114.2 BPM, so the file starts on a downbeat and beat n is at n * BEAT.
+const BEAT = 0.5253
+const beats = (n: number) => n * BEAT
+const nearestBeat = (t: number) => Math.round(t / BEAT) * BEAT
+
+// scene starts and cuts land on beats; every other time is relative to one of these
+// part 1: the agent at work. Same prompt as the demo-video composition `tiktok-launch`.
+const PROMPT = "upload this video to tiktok using the app (so we don't get shadowbanned)"
+const TYPE_AT = beats(1)
+const ENTER_AT = beats(7)
+/** Typing speed that ends the prompt just before enter. */
+const TYPE_CPS = PROMPT.length / (ENTER_AT - TYPE_AT - 0.25)
+const FLY_AT = ENTER_AT + beats(2)
+const FLY_END = FLY_AT + beats(6)
+const FLY_LEN = FLY_END - FLY_AT
+const DIVE_AT = FLY_END + beats(1)
+const DEMO_AT = DIVE_AT + beats(2)
 const DEMO_CLIP = CLIPS.find((c) => c.name === 'demo')!
 /** The demo recording plays sped up, so the whole TikTok upload fits. */
 const DEMO_SPEED = 2.2
 const DEMO_LEN = DEMO_CLIP.duration / DEMO_SPEED
-const END_AT = DEMO_AT + DEMO_LEN - 0.4
-const DURATION = END_AT + 4
+// part 2: how it works. Each step stays on screen only long enough to read its text.
+const HOOK_AT = nearestBeat(DEMO_AT + DEMO_LEN - 0.4)
+const MAC_AT = HOOK_AT + beats(3)
+const PHONE_AT = MAC_AT + beats(6)
+const USB_AT = PHONE_AT + beats(6)
+const PAIR_AT = USB_AT + beats(6)
+const HOW_AT = PAIR_AT + beats(10)
+const USB_BEAT_AT = HOW_AT + beats(7)
+const CONTROL_AT = USB_BEAT_AT + beats(6)
+const END_AT = CONTROL_AT + beats(7)
+const DURATION = END_AT + beats(8)
 /** How much of the USB cable is drawn at t. */
 const cableP = (t: number) => inOutCubic(prog(t, USB_AT + 0.6, 1.5))
 
 /** Left column x and the screen shift that keeps the 3D objects right of the text. */
 const TEXT_X = 150
 const TEXT_SHIFT = 300
+
+/** Claude Code window of the intro, centered, and its colors (same as demo-video/src/terminal.tsx). */
+const TERM = { w: 1240, h: 580, x: (W - 1240) / 2, y: (H - 580) / 2 }
+const CC = { window: '#1b1a19', chrome: '#252321', border: 'rgba(255, 255, 255, 0.09)', text: '#ece9e4', dim: '#8f8a83', faint: '#5c5853', claude: '#d97757', green: '#5fc27a' }
 
 // ---------------------------------------------------------------- styles
 
@@ -92,13 +116,31 @@ canvas { position: absolute; inset: 0; width: ${W}px; height: ${H}px }
   background: linear-gradient(#1e1b4b, ${ACCENT} 55%, #a5b4fc); box-shadow: 3px 3px 0 ${ACCENT} }
 .travel { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 18px; background: ${SURFACE};
   border: 1.5px solid ${BORDER}; display: grid; place-items: center; box-shadow: 4px 4px 0 ${ACCENT} }
-#demo { background: radial-gradient(ellipse at 50% 45%, ${PALETTE.bgGlow}, ${PALETTE.bg} 70%) }
-#demo .frame { position: absolute; left: ${(W - 1488) / 2}px; top: 170px; width: 1488px; height: 837px; border-radius: 26px; overflow: hidden;
-  border: 1.5px solid ${BORDER}; box-shadow: 0 40px 90px rgba(0, 0, 0, 0.6), 10px 10px 0 ${ACCENT} }
+#demo { background: ${PALETTE.bg} }
+#demo .frame { position: absolute; inset: 0; overflow: hidden }
 #demo img { width: 100%; height: 100%; display: block }
 .end { position: absolute; left: 0; right: 0; top: 120px; text-align: center }
 .pill { display: inline-flex; align-items: center; gap: 14px; padding: 16px 30px; border-radius: 999px; border: 1.5px solid ${BORDER};
   background: ${SURFACE}; font-size: 28px; box-shadow: 5px 5px 0 ${ACCENT} }
+.term-wrap { position: absolute; inset: 0; perspective: 2200px; perspective-origin: 50% 50% }
+.term-cam { position: absolute; left: 0; top: 0; width: ${W}px; height: ${H}px; transform-origin: 0 0 }
+.term { position: absolute; left: ${TERM.x}px; top: ${TERM.y}px; width: ${TERM.w}px; height: ${TERM.h}px; border-radius: 18px; overflow: hidden;
+  background: ${CC.window}; border: 1px solid ${CC.border}; color: ${CC.text}; font-size: 22px; line-height: 34px;
+  box-shadow: 0 50px 140px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 160px rgba(79, 70, 229, 0.18) }
+.term-bar { height: 54px; background: ${CC.chrome}; border-bottom: 1px solid ${CC.border}; display: flex; align-items: center; gap: 10px;
+  padding-left: 22px; position: relative }
+.term-bar i { width: 16px; height: 16px; border-radius: 50% }
+.term-bar span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 17px; font-weight: 600; color: ${CC.dim} }
+.term-body { padding: 28px 36px }
+.welcome, .grow, .input { white-space: pre }
+.welcome { display: inline-block; border: 1.5px solid ${CC.claude}; border-radius: 10px; padding: 12px 26px 12px 20px }
+.cc { color: ${CC.claude} }
+.dim { color: ${CC.dim} }
+.faint { color: ${CC.faint} }
+.grow { overflow: hidden }
+.user-row { background: rgba(255, 255, 255, 0.06); color: ${CC.dim}; padding-left: 13px }
+.input { border: 1px solid ${CC.faint}; border-radius: 10px; padding: 10px 13px }
+.caret { display: inline-block; width: 13.2px; height: 28px; vertical-align: -6px; background: ${CC.text} }
 `
 
 // ---------------------------------------------------------------- art
@@ -230,14 +272,15 @@ function cameraRig(shots: Shot[]) {
   const shift = channel((s) => s.shift ?? TEXT_SHIFT)
   const pos = new THREE.Vector3()
   const look = new THREE.Vector3()
-  return (t: number) => {
+  /** `k` is the time on the key axis (an eased 0..1 for the intro fly), `t` the video time for the drift. */
+  return (k: number, t = k) => {
     // slow hand-held drift so no shot is ever frozen
-    const a = az(t) + 0.025 * Math.sin(t * 0.7) + 0.01 * Math.sin(t * 1.9 + 1)
-    const e = el(t) + 0.015 * Math.sin(t * 0.9 + 2)
-    const d = r(t)
-    look.set(tx(t), ty(t), tz(t))
+    const a = az(k) + 0.025 * Math.sin(t * 0.7) + 0.01 * Math.sin(t * 1.9 + 1)
+    const e = el(k) + 0.015 * Math.sin(t * 0.9 + 2)
+    const d = r(k)
+    look.set(tx(k), ty(k), tz(k))
     pos.set(look.x + d * Math.sin(a) * Math.cos(e), look.y + d * Math.sin(e), look.z + d * Math.cos(a) * Math.cos(e))
-    return { pos, look, fov: fov(t), shift: shift(t) }
+    return { pos, look, fov: fov(k), shift: shift(k) }
   }
 }
 
@@ -286,11 +329,27 @@ async function init() {
   const SETUP: Vec = [0, 6, 2]
   // the camera rides along with the growing cable end
   const cableAt = (t: number) => vec(world.cable.curve.getPointAt(cableP(t)))
-  const SPIN = Math.PI * 2
+
+  // part 1: one ease-out fly from high behind the Mac, along the cable, to the front of the iPhone.
+  // Keys are on an eased 0..1 axis, so the whole move decelerates into the last shot.
+  const flyEnd: Shot = { t: 1, target: [screenCenter.x, screenCenter.y - 1.5, screenCenter.z], r: 36, az: SCREEN_AZ - 0.42, el: 0.12, fov: 28, shift: 330 }
+  const introRig = cameraRig([
+    { t: 0, target: SETUP, r: 125, az: -2.6, el: 0.95, fov: 26, shift: 0 },
+    { t: 0.45, target: [-3, 4, 4], r: 50, az: -1.3, el: 0.3, fov: 28, shift: 160 },
+    flyEnd,
+  ])
+  const hookStart: Omit<Shot, 't'> = { target: MAC, r: 80, az: -2.2, el: 1.05, fov: 26, shift: TEXT_SHIFT }
+  const diveEnd: Omit<Shot, 't'> = { target: vec(screenCenter), r: 6, az: SCREEN_AZ, el: SCREEN_EL, fov: 30, shift: 0 }
 
   const rig = cameraRig([
-    // hook: a spiral down from high above onto the empty floor
-    { t: 0, target: MAC, r: 80, az: -2.2, el: 1.05, fov: 26 },
+    // part 1: hold the fly's last shot, then dive into the screen
+    { ...flyEnd, t: FLY_END },
+    { ...flyEnd, t: DIVE_AT },
+    { ...diveEnd, t: DEMO_AT - 0.1 },
+    { ...diveEnd, t: DEMO_AT + 0.5 },
+    // hidden behind the demo: jump to the hook, a spiral down from high above onto the empty floor
+    { ...hookStart, t: DEMO_AT + 0.9 },
+    { ...hookStart, t: HOOK_AT },
     { t: MAC_AT, target: MAC, r: 52, az: -0.9, el: 0.5, fov: 28 },
     // 01: orbit the Mac as it drops in spinning
     { t: MAC_AT + 1.4, target: MAC, r: 42, az: 0.1, el: 0.36 },
@@ -310,53 +369,53 @@ async function init() {
     { t: CONTROL_AT - 0.2, target: SETUP, r: 58, az: 0.3, el: 0.42, shift: 420 },
     // 05: crane up for the cards
     { t: CONTROL_AT + 0.9, target: [-1, 16, 0], r: 72, az: 0.2, el: 0.28, shift: 400 },
-    { t: PUSH_AT, target: [-1, 16, 0], r: 70, az: 0.35, el: 0.3, shift: 400 },
-    // fly a full circle around the iPhone while diving into its screen
-    { t: PUSH_AT + 0.9, target: vec(screenCenter), r: 38, az: SCREEN_AZ + SPIN * 0.55, el: 0.4, shift: 120 },
-    { t: DEMO_AT - 0.1, target: vec(screenCenter), r: 6, az: SCREEN_AZ + SPIN, el: SCREEN_EL, fov: 30, shift: 0 },
-    // hidden behind the demo; the end card opens on a slow turntable
-    { t: DEMO_AT + 0.6, target: [0, 27, 2], r: 88, az: SCREEN_AZ + SPIN - 0.5, el: 0.24, shift: 0 },
-    { t: END_AT, target: [0, 27, 2], r: 88, az: SCREEN_AZ + SPIN - 0.5, el: 0.24, shift: 0 },
-    { t: DURATION, target: [0, 28, 2], r: 92, az: SCREEN_AZ + SPIN + 0.9, el: 0.22, shift: 0 },
+    { t: END_AT, target: [-1, 16, 0], r: 70, az: 0.35, el: 0.3, shift: 400 },
+    // crane up over the setup; the end card sits above it on a slow turntable
+    { t: END_AT + 1.3, target: [0, 19, 2], r: 108, az: 1.0, el: 0.24, shift: 0 },
+    { t: DURATION, target: [0, 20, 2], r: 112, az: 2.2, el: 0.22, shift: 0 },
   ])
+  const camera = (t: number) => (t < FLY_END ? introRig(outQuart(prog(t, FLY_AT, FLY_LEN)), t) : rig(t))
 
   // ---- 3D state from t
   const ledOff = new THREE.Color('#6d635b')
   const ledOn = new THREE.Color('#fff4d6')
   const macMaterial = world.mac.led.material
   const update3d: Update = (t) => {
-    const cam = rig(t)
+    const cam = camera(t)
     world.camera.position.copy(cam.pos)
     world.camera.lookAt(cam.look)
     world.camera.fov = cam.fov
     world.camera.setViewOffset(W, H, -cam.shift, 0, W, H)
     world.camera.updateProjectionMatrix()
 
+    // part 1 shows the finished setup (as it is when "how it works" starts); part 2 builds it step by step
+    const s = t < HOOK_AT ? HOW_AT : t
+
     // Mac drops in and squashes on landing
-    const fall = prog(t, MAC_AT + 0.25, 0.5)
+    const fall = prog(s, MAC_AT + 0.25, 0.5)
     const land = MAC_AT + 0.75
-    world.mac.group.visible = t > MAC_AT + 0.25
+    world.mac.group.visible = s > MAC_AT + 0.25
     world.mac.group.position.y = (1 - fall * fall) * 18
-    const squash = t > land ? Math.exp(-(t - land) * 7) * Math.sin((t - land) * 22) : 0
+    const squash = s > land ? Math.exp(-(s - land) * 7) * Math.sin((s - land) * 22) : 0
     world.mac.group.scale.set(1 + squash * 0.08, 1 - squash * 0.14, 1 + squash * 0.08)
-    world.mac.group.rotation.y = -(1 - outCubic(prog(t, MAC_AT + 0.25, 1.1))) * Math.PI * 2
-    macMaterial.color.lerpColors(ledOff, ledOn, prog(t, MAC_AT + 1.0, 0.3))
+    world.mac.group.rotation.y = -(1 - outCubic(prog(s, MAC_AT + 0.25, 1.1))) * Math.PI * 2
+    macMaterial.color.lerpColors(ledOff, ledOn, prog(s, MAC_AT + 1.0, 0.3))
 
     // iPhone pops in on its stand with a half turn
-    const pop = prog(t, PHONE_AT + 0.35, 0.7)
+    const pop = prog(s, PHONE_AT + 0.35, 0.7)
     world.phone.group.visible = pop > 0
     world.phone.group.scale.setScalar(Math.max(0.001, outBack(pop)))
-    world.phone.group.rotation.y = -0.32 - (1 - outCubic(prog(t, PHONE_AT + 0.35, 1.1))) * Math.PI * 2
+    world.phone.group.rotation.y = -0.32 - (1 - outCubic(prog(s, PHONE_AT + 0.35, 1.1))) * Math.PI * 2
 
     world.cable.update({
-      p: cableP(t),
-      macIn: outCubic(prog(t, USB_AT + 0.25, 0.35)),
-      phoneIn: outBack(prog(t, USB_AT + 2.1, 0.3)),
-      flow: t > USB_BEAT_AT ? (t - USB_BEAT_AT) * 0.45 : 0,
-      flowOpacity: shown(t, USB_BEAT_AT + 0.2, CONTROL_AT + 1, 0.4, 0.6),
+      p: cableP(s),
+      macIn: outCubic(prog(s, USB_AT + 0.25, 0.35)),
+      phoneIn: outBack(prog(s, USB_AT + 2.1, 0.3)),
+      flow: s > USB_BEAT_AT ? (s - USB_BEAT_AT) * 0.45 : 0,
+      flowOpacity: shown(s, USB_BEAT_AT + 0.2, CONTROL_AT + 1, 0.4, 0.6),
     })
 
-    if (screen.draw(screenState(t))) screenTexture.needsUpdate = true
+    if (screen.draw(screenState(s))) screenTexture.needsUpdate = true
     world.render(t)
   }
   sfx('tap', MAC_AT + 0.75, 0.9)
@@ -440,7 +499,8 @@ async function init() {
   updates = [
     update3d,
     updateRipples,
-    (t) => setVisible(scrim, shown(t, USB_AT, HOW_AT + 0.9, 0.5, 0.8)),
+    (t) => setVisible(scrim, Math.max(shown(t, FLY_AT + 1.2, DIVE_AT + 0.4, 0.6, 0.5), shown(t, USB_AT, HOW_AT + 0.9, 0.5, 0.8))),
+    textBlock(overlay, { kicker: 'Meet ghosthand', title: 'Your agent, on a|<em>real iPhone.</em>', body: 'Plugged into your Mac.|It taps, types and swipes like you.', tIn: FLY_AT + 1.3, tOut: DIVE_AT + 0.25 }),
     sceneHook(overlay),
     textBlock(overlay, { kicker: 'Step 01', title: 'A <em>Mac.</em>', body: 'Any Mac. A Mac mini on a shelf|makes a great home for an agent.', tIn: MAC_AT + 0.4, tOut: PHONE_AT }),
     textBlock(overlay, { kicker: 'Step 02', title: 'An <em>iPhone.</em>', body: 'A real one. No jailbreak,|no app to install on it.', tIn: PHONE_AT + 0.4, tOut: USB_AT }),
@@ -458,7 +518,7 @@ async function init() {
     }),
     textBlock(overlay, { kicker: 'How it works', title: 'The Mac becomes|its <em>hands.</em>', body: 'Over Bluetooth, the Mac is the|iPhone’s mouse and keyboard.', tIn: HOW_AT + 0.4, tOut: USB_BEAT_AT }),
     textBlock(overlay, { kicker: 'How it works', title: 'The cable gives|it <em>eyes.</em>', body: 'Over USB, the agent sees|the screen, frame by frame.', tIn: USB_BEAT_AT + 0.1, tOut: CONTROL_AT }),
-    textBlock(overlay, { kicker: 'Step 05', title: 'Your agent|takes <em>over.</em>', body: 'Drive the iPhone from the CLI,|over MCP, or with the HTTP API.', tIn: CONTROL_AT + 0.3, tOut: PUSH_AT + 0.2 }),
+    textBlock(overlay, { kicker: 'Step 05', title: 'Your agent|takes <em>over.</em>', body: 'Drive the iPhone from the CLI,|over MCP, or with the HTTP API.', tIn: CONTROL_AT + 0.3, tOut: END_AT + 0.2 }),
     sceneHow(overlay, world, { macTop, phoneTop, mouseArrive, typeAt }),
     sceneControl(overlay, world, macTop),
     nav(overlay, [
@@ -471,28 +531,104 @@ async function init() {
     ]),
     sceneDemo(stage, world, screenCenter),
     sceneEnd(stage),
+    sceneTerminal(stage, canvas),
   ]
+  sfx('send', FLY_AT, 0.5)
+  sfx('send', DIVE_AT + 0.3, 0.5)
   sfx('send', HOW_AT + 1.2, 0.35)
   sfx('send', USB_BEAT_AT + 0.1, 0.35)
-  sfx('send', PUSH_AT + 0.3, 0.5)
   sounds.push({ src: DEMO_CLIP.src, at: DEMO_AT, from: DEMO_CLIP.start, duration: DEMO_CLIP.duration, tempo: DEMO_SPEED, volume: 0.9 })
   sfx('success', END_AT + 0.9, 0.5)
+  sounds.push({ src: 'assets/launch-music.mp3', at: 0, duration: DURATION, volume: 0.55, fadeOut: beats(6) })
   await seek(0)
 }
 
-/** Centered title before the first step. */
-function sceneHook(parent: HTMLElement): Update {
-  const el = add(parent, `
-    <div style="position:absolute; left:0; right:0; top:330px; text-align:center">
-      <div class="tile" style="display:inline-block">${ghostTile(84)}</div>
-      <div class="serif" style="font-size:132px; line-height:1; margin-top:34px; font-weight:400">${lines('Give your agent <em>a phone.</em>')}</div>
-      <div class="hand" style="font-size:46px; margin-top:26px; color:${MUTED}">${lines('a real iPhone, in five steps')}</div>
-    </div>`)
-  const tile = el.querySelector<HTMLElement>('.tile')!
+/**
+ * Part 1 opener: Claude Code in a macOS terminal. The camera pushes in on the input box while the
+ * prompt is typed, the agent takes the iPhone, then the window falls away and the blurred 3D world
+ * behind it comes into focus.
+ */
+function sceneTerminal(parent: HTMLElement, canvas: HTMLCanvasElement): Update {
+  const SPINNER = ['·', '✢', '✳', '✶', '✻', '✽', '✻', '✶', '✳', '✢']
+  const gap = '<div style="height:16px"></div>'
+  const wrap = add(parent, `
+    <div class="term-wrap"><div class="term-cam"><div class="term mono">
+      <div class="term-bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span style="font-family:'DM Sans Variable'">claude — ~/ghosthand</span></div>
+      <div class="term-body">
+        <div class="welcome"><span class="cc">✻</span> Welcome to <b>Claude Code</b>!${'\n\n'}<span class="dim">  /help for help, /status for your current setup${'\n\n'}  cwd: /Users/tommy/ghosthand</span></div>
+        <div class="grow">${gap}<div class="user-row">&gt; ${PROMPT}</div></div>
+        <div class="grow">${gap}<div><span class="dot">⏺</span> <b>Bash</b>(ghosthand acquire --reason "upload to tiktok")</div></div>
+        <div class="grow"><div class="dim">  ⎿  studio:42 · iPhone SE · leased</div></div>
+        <div class="grow">${gap}<div class="cc"><span class="glyph"></span> Thinking… <span class="dim">(esc to interrupt)</span></div></div>
+        <div style="height:22px"></div>
+        <div class="input"><span class="dim">&gt; </span><span class="typed"></span><span class="caret"></span></div>
+        <div class="faint" style="font-size:18px; padding:4px 14px">? for shortcuts</div>
+      </div>
+    </div></div></div>`)
+  const cam = wrap.querySelector<HTMLElement>('.term-cam')!
+  const input = wrap.querySelector<HTMLElement>('.input')!
+  const typed = wrap.querySelector<HTMLElement>('.typed')!
+  const caret = wrap.querySelector<HTMLElement>('.caret')!
+  const dot = wrap.querySelector<HTMLElement>('.dot')!
+  const glyph = wrap.querySelector<HTMLElement>('.glyph')!
+  const rows = [...wrap.querySelectorAll<HTMLElement>('.grow')]
+  const rowH = rows.map((r) => r.offsetHeight)
+  // user message, tool call, tool result, spinner (below the others while the agent works)
+  const rowAt = [ENTER_AT + 0.05, ENTER_AT + 0.45, ENTER_AT + 0.8, ENTER_AT + 0.15]
+  const TOOL_DONE = ENTER_AT + 0.8
+
+  for (let i = 0; i < PROMPT.length; i++) {
+    if (PROMPT[i] === ' ' && i % 2 === 0) continue
+    sfx(`key-${((i * 3) % 4) + 1}`, TYPE_AT + (i + 0.5) / TYPE_CPS, 0.45)
+  }
+  sfx('key-1', ENTER_AT, 0.9)
+  sfx('send', ENTER_AT + 0.05, 0.6)
+  sfx('tool', ENTER_AT + 0.45, 0.5)
+  sfx('result', TOOL_DONE, 0.4)
+
   return (t) => {
-    revealLines(el, t, 0.3, MAC_AT + 0.2, 0.15)
-    const p = outBack(prog(t, 0.1, 0.6))
-    tile.style.transform = `scale(${p}) rotate(${(1 - p) * -12}deg)`
+    rows.forEach((row, i) => {
+      const g = outCubic(prog(t, rowAt[i], 0.3))
+      row.style.height = `${rowH[i] * g}px`
+      row.style.opacity = String(Math.min(1, g * 1.4))
+    })
+    const typing = t > TYPE_AT && t < ENTER_AT
+    typed.textContent = t < ENTER_AT ? PROMPT.slice(0, clamp(Math.floor((t - TYPE_AT) * TYPE_CPS), 0, PROMPT.length)) : ''
+    caret.style.opacity = typing || Math.floor(t * 2) % 2 === 0 ? '1' : '0'
+    const running = t < TOOL_DONE
+    dot.style.color = running ? CC.dim : CC.green
+    dot.style.opacity = String(running ? 0.35 + 0.65 * Math.abs(Math.sin(t * Math.PI * 2.2)) : 1)
+    glyph.textContent = SPINNER[Math.floor(t * 9) % SPINNER.length]
+
+    // camera: a tilted wide shot pushes in on the input box and follows it down as rows appear
+    const inputY = TERM.y + input.offsetTop + input.offsetHeight / 2
+    const z = lerp(0.94, 1.42, outCubic(prog(t, 0, ENTER_AT + 0.8)))
+    const fy = lerp(H / 2, inputY, outCubic(prog(t, 0.1, ENTER_AT)))
+    const tilt = 1 - outCubic(prog(t, 0, 2.8))
+    // then the window falls back and away as the camera leaves for the 3D world
+    const away = inCubic(prog(t, FLY_AT - 0.25, 0.75))
+    cam.style.transform = `translate(${W / 2}px, ${H / 2}px) translateZ(${-away * 1800}px) rotateX(${tilt * 12 + away * 34}deg) ` +
+      `rotateY(${tilt * -16}deg) scale(${z}) translate(${-W / 2}px, ${-fy}px)`
+    setVisible(wrap, (1 - prog(t, FLY_AT - 0.25, 0.55)) * outCubic(prog(t, 0, 0.4)))
+    // the 3D world behind the window comes into focus
+    const focus = outCubic(prog(t, FLY_AT - 0.25, 1.1))
+    canvas.style.filter = focus >= 1 ? '' : `blur(${(1 - focus) * 16}px) brightness(${0.45 + 0.55 * focus})`
+  }
+}
+
+/** Quick title card of part 2: the text zooms in while it drifts from left to right (ease-out). */
+function sceneHook(parent: HTMLElement): Update {
+  const zoom = add(parent, '<div style="position:absolute; left:0; right:0; top:360px; text-align:center"></div>')
+  const el = add(zoom, `
+    <div>
+      <div class="kicker" style="justify-content:center"><span class="line"><span>How it works</span></span></div>
+      <div class="serif" style="font-size:112px; line-height:1; margin-top:26px; font-weight:400">${lines('Give your agent <em>a phone.</em>')}</div>
+      <div class="hand" style="font-size:44px; margin-top:22px; color:${MUTED}">${lines('connect your iPhone, let your agent control it')}</div>
+    </div>`)
+  return (t) => {
+    revealLines(el, t, HOOK_AT + 0.15, MAC_AT + 0.15, 0.05)
+    const p = outCubic(prog(t, HOOK_AT + 0.1, MAC_AT - HOOK_AT + 0.1))
+    zoom.style.transform = `translateX(${lerp(-140, 70, p)}px) scale(${lerp(0.9, 1.06, p)})`
   }
 }
 
@@ -568,7 +704,7 @@ function sceneHow(parent: HTMLElement, world: ReturnType<typeof createWorld>, o:
     setVisible(arrows[1], shown(t, USB_BEAT_AT + 0.7, CONTROL_AT, 0.3, 0.4))
 
     const agentIn = outBack(prog(t, HOW_AT + 0.4, 0.5))
-    setVisible(agent, shown(t, HOW_AT + 0.4, PUSH_AT + 0.4, 0.2, 0.4))
+    setVisible(agent, shown(t, HOW_AT + 0.4, END_AT + 0.4, 0.2, 0.4))
     place(agent, { x: m.x + 32 - agent.offsetWidth, y: m.y - 132 })
     agent.style.transform = `scale(${agentIn})`
     agent.style.transformOrigin = 'right center'
@@ -591,7 +727,7 @@ function sceneControl(parent: HTMLElement, world: ReturnType<typeof createWorld>
     CARDS.forEach((c, i) => {
       const start = CONTROL_AT + 0.6 + i * 0.25
       const p = outBack(prog(t, start, 0.6))
-      const vis = shown(t, start, PUSH_AT + 0.5, 0.15, 0.4)
+      const vis = shown(t, start, END_AT + 0.5, 0.15, 0.4)
       const el = cards[i]
       setVisible(el, vis)
       const half = el.offsetWidth / 2
@@ -610,9 +746,9 @@ function nav(parent: HTMLElement, items: Array<[string, number]>): Update {
   const el = add(parent, `<div class="nav">${items.map(([label]) => `<div>${label}<i></i></div>`).join('')}</div>`)
   const rows = [...el.children] as HTMLElement[]
   return (t) => {
-    setVisible(el, shown(t, MAC_AT + 0.3, PUSH_AT + 0.3, 0.5, 0.4))
+    setVisible(el, shown(t, MAC_AT + 0.3, END_AT + 0.3, 0.5, 0.4))
     items.forEach(([, start], i) => {
-      const end = items[i + 1]?.[1] ?? PUSH_AT
+      const end = items[i + 1]?.[1] ?? END_AT
       const active = t >= start && t < end
       rows[i].style.color = active ? TEXT : t >= end ? PALETTE.dim : MUTED
       const bar = rows[i].querySelector('i')!
@@ -622,12 +758,10 @@ function nav(parent: HTMLElement, items: Array<[string, number]>): Update {
   }
 }
 
-/** Circle reveal from the iPhone screen into the real demo recording, on the dark background. */
+/** Circle reveal from the iPhone screen into the real demo recording, full frame. */
 function sceneDemo(parent: HTMLElement, world: ReturnType<typeof createWorld>, screenCenter: THREE.Vector3): Update {
   const el = add(parent, `
     <div id="demo" class="layer">
-      <div class="hand" style="position:absolute; left:0; right:0; top:64px; text-align:center; font-size:56px">
-        a real run: <span style="color:${ACCENT_LIGHT}">“upload this video to tiktok”</span></div>
       <div class="frame"><img></div>
     </div>`)
   const img = el.querySelector('img')!
@@ -636,13 +770,13 @@ function sceneDemo(parent: HTMLElement, world: ReturnType<typeof createWorld>, s
   const revealAt = DEMO_AT - 0.35
   return (t) => {
     const open = outCubic(prog(t, revealAt, 0.7))
-    const close = inOutCubic(prog(t, END_AT, 0.7))
+    const close = inOutCubic(prog(t, HOOK_AT, 0.5))
     setVisible(el, open > 0 && close < 1 ? 1 : 0)
     if (open <= 0 || close >= 1) return
     const c = world.project(screenCenter)
     const r = open * 2300 * (1 - close)
     el.style.clipPath = `circle(${r}px at ${close > 0 ? W / 2 : c.x}px ${close > 0 ? H / 2 : c.y}px)`
-    frame.style.transform = `scale(${lerp(0.94, 1, outCubic(prog(t, revealAt + 0.2, 0.8)))})`
+    frame.style.transform = `scale(${lerp(1.08, 1, outCubic(prog(t, revealAt, 1.2)))})`
     const n = clamp(Math.floor((t - DEMO_AT) * CLIP_FPS * DEMO_SPEED), 0, frames() - 1)
     setImage(img, `clips/demo/${String(n + 1).padStart(5, '0')}.jpg`)
   }

@@ -1,4 +1,4 @@
-// 3D world of the launch video: toon-shaded Mac mini, iPhone SE on a stand, USB cable, dark theme.
+// 3D world of the launch video: toon-shaded Mac mini, white iPhone SE on a stand, USB cable, dark theme.
 // Models are built from code (1 unit = 1 cm). Frames go through an ink pass: Sobel edges on
 // normals and depth draw dark outlines, silhouettes get a thin brand-color rim, then grain is added.
 //
@@ -22,9 +22,11 @@ export const PALETTE = {
   accentLight: '#7a73f7',
   outline: '#06050b',
   alu: '#a9a8b6',
+  /** iPhone SE (2nd gen) white: light aluminium band and back, black glass front. */
+  phone: '#e6e6ea',
   rubber: '#26242f',
   glass: '#0b0a10',
-  stand: '#565275',
+  stand: '#4a4955',
   cable: '#e8e7f1',
 }
 
@@ -123,7 +125,7 @@ const TILT = 0.2
 /** iPhone SE (2nd gen) on a small stand. Screen faces +z. */
 function iphone(screenTexture: THREE.Texture) {
   const phone = new THREE.Group()
-  phone.add(mesh(slab({ w: PHONE.w, h: PHONE.h, depth: PHONE.d, r: 0.95, bevel: 0.22 }), toon(PALETTE.accent)))
+  phone.add(mesh(slab({ w: PHONE.w, h: PHONE.h, depth: PHONE.d, r: 0.95, bevel: 0.22 }), toon(PALETTE.phone)))
   phone.add(mesh(slab({ w: PHONE.w - 0.16, h: PHONE.h - 0.16, depth: 0.06, r: 0.88, bevel: 0.025 }), toon(PALETTE.glass), [0, 0, PHONE.d / 2 - 0.01]))
 
   const screen = new THREE.Mesh(

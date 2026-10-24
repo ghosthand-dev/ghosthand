@@ -1,6 +1,6 @@
 ---
 title: Relative pointer on iOS 15
-description: How iOS 15 moves the AssistiveTouch pointer for relative HID mouse reports, the measurements that prove it, the timing rules ghosthand follows, and how drags work on iOS 17+.
+description: How iOS 15 moves the AssistiveTouch pointer for relative HID mouse reports, the measurements that prove it, the timing rules ghosthand follows, how drags work on iOS 17+, and the 90° pointer turn.
 ---
 
 # Relative pointer on iOS 15
@@ -106,6 +106,29 @@ So both pointer modes drag with report 7. ghosthand puts the pointer on the star
 | No 80 ms pause before release | no clear momentum in Safari; swipes move by the drag length |
 
 `hold-drag --hold 2500` now moves Home Screen icons with Perform Touch Gestures on (it did not with absolute drags).
+
+## Pointer space turned 90° (iOS 17 and later)
+
+**iOS can map every mouse report turned by 90°.** backboardd keeps its pointer space in its "last effective interface orientation": the last accelerometer orientation that was not flat, not the screen's orientation (`BKMousePointerController` reads it on `deviceOrientationMayHaveChanged`; it logs `Last effective interface orientation changed to:` only on change). A phone lying on its side, or laid flat after it was held sideways, turns the pointer while portrait-only screens (Home Screen, Settings) stay portrait. springboardservices `getInterfaceOrientation` returns the screen's orientation, so it cannot detect this. Seen on an SE2, iOS 18.6.2, a day after a landscape test: the screen was portrait (springboard orientation 1), but backboardd logged `region arrangement bounds: {{0, 0}, {667, 375}}`.
+
+```
+report (u, v) ──▶ pointer at screen (1 - v, u)        absolute reports
+report (dx, dy) ──▶ pointer moves (-dy, dx)           relative reports, drags too
+```
+
+| Input | Result before the fix |
+|---|---|
+| tap `40,42` (back button) | pointer at `350,71`, nothing tapped |
+| swipe `2,300 -> 250,300` (back gesture) | drag from `206,3` down: Notification Centre |
+| first swipe of a connection | "could not measure the drag speed" (moves were vertical) |
+
+Wheel scrolling was not turned. Only a physical turn of the iPhone resets it; AssistiveTouch off/on, Bluetooth reconnects and a daemon restart do not.
+
+**The fix measures the turn** (`BluetoothDriver.pointerTurn`): absolute reports at 2 spots, then the newest USB frames until the pointer shows at one of the 4 places each spot lands under a turn. Exactly one turn must match both spots. Then every absolute position and relative report goes through `PointerTurn`. It runs once per lease, on the first pointer input (about 0.4 s); the iPhone is assumed not to be turned during a lease.
+
+- **USB frames lag the report.** One frame 200 ms after the report still showed the old screen on the Home Screen. The check polls the newest frames for up to 1 s.
+- **The pointer is a translucent dark disk.** On a dark wallpaper it changed gray by 17 (threshold was 24). The check uses threshold 10 (frames are lossless) and the mirror of its 2 spots with the brightest background. On a black background it can still fail; then the last known turn is used and the log says so.
+- backboardd logs exact positions at debug level (`-> model point (HID abs) 133.388,74.9931`, then `Pointer 300.007,133.388 (global)`, syslog relay). Useful to debug; the fix does not depend on these log lines.
 
 ## Findings log
 

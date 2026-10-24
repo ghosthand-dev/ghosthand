@@ -180,6 +180,23 @@ ghosthand screenshot -l 42 --native -o result.png
 not isolated. Use a verified button position and check the result; do not claim
 that every system dialog needs a 5-second press.
 
+### Weather location prompt, October 24
+
+**Tapping the Weather widget opened a location prompt that USB capture hides.** SE2s on
+iOS 18.6.2 and iOS 26.5.2, Location Services on. Capture showed only a dimmed page (on
+iOS 26 not always dimmed); cmd+shift+3 PNGs showed "Allow "Weather" to use your location?".
+With Location Services off (another SE2, iOS 18.6.2) the visible "Turn On Location
+Services" alert came instead, and `key esc` closed it.
+
+| Press on Don't Allow (position from the PNG) | iOS 18.6.2 | iOS 26.5.2 |
+| --- | --- | --- |
+| `tap` | ignored | ignored |
+| `swipe x y x y --duration 400` | ignored | ignored |
+| `key esc`, `key enter`, `key home` | not tried | no effect |
+
+Both prompts stayed until someone tapped them on the phone. Do not use the Weather widget
+as a harmless test target.
+
 ### Other input paths
 
 | Method | Scope | Limit |

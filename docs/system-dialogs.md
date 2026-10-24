@@ -191,9 +191,10 @@ Services" alert came instead, and `key esc` closed it.
 | `tap` | ignored | ignored |
 | `swipe x y x y --duration 400` | ignored | ignored |
 | `key esc`, `key enter`, `key home` | not tried | no effect |
+| `lock`, then `unlock` | closed it | not tried (no confirmed passcode) |
+| `double-tap` on Don't Allow, new lease | not tried | closed it |
 
-Both prompts stayed until someone tapped them on the phone. Do not use the Weather widget
-as a harmless test target.
+Do not use the Weather widget as a harmless test target.
 
 ### Other input paths
 

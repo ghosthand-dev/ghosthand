@@ -15,7 +15,7 @@ ghosthand swipe <x1> <y1> <x2> <y2>
 
 | Option | Description |
 | --- | --- |
-| `--duration [ms]` | Fixed duration, 16-10000 (default: random 80-300, grows with the distance) |
+| `--duration [ms]` | Fixed duration, 16-10000 (default: random 80-180, grows with the distance) |
 | `--screenshot [path]` | Save a screenshot after the action once the screen stops changing (default: screenshot.png); not available while locked |
 | `--screentext` | Print the OCR text of the screen after the action (`x,y wxh text`, after --screenshot if both); uses --language |
 | `--language [tag]` | OCR language, e.g. it-IT; en-US is always included. Env: GHOSTHAND_LANGUAGE |

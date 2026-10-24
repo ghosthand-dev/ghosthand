@@ -1818,7 +1818,7 @@ export interface components {
             from: components["schemas"]["Point"];
             /** @description Where the drag ends */
             to: components["schemas"]["Point"];
-            /** @description Default is random and human-like, 80-300 ms growing with the distance. It starts fast and lifts while still moving, so feeds keep going. Set it to fix the speed. */
+            /** @description Default is random and human-like, 80-180 ms growing with the distance. It starts fast and lifts while still moving, so feeds keep going. Set it to fix the speed. */
             durationMs?: number;
         };
         /** @description Either a point (`x` and `y`) or a `text` to find with OCR, plus an optional `durationMs`. */

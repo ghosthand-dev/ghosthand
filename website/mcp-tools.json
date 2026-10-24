@@ -435,7 +435,7 @@
         "additionalProperties": false,
         "properties": {
           "durationMs": {
-            "description": "Fixed duration (default: random 80-300, grows with the distance)",
+            "description": "Fixed duration (default: random 80-180, grows with the distance)",
             "type": "number"
           },
           "language": {

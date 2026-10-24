@@ -1,7 +1,7 @@
-// D1 client, better-auth and session helpers.
+// Postgres client, better-auth and session helpers.
 //
 // getAuth() builds a new better-auth instance per call: Workers read env per request.
-// Its cookie cache keeps getSession free of D1 reads on most requests. The daemon
+// Its cookie cache keeps getSession free of database reads on most requests. The daemon
 // authenticates with the session token as a bearer header (bearer plugin), which it
 // gets from the device flow (deviceAuthorization plugin, see cli-api.ts).
 // Remote MCP clients get OAuth access tokens instead: mcp() is the OAuth provider,
@@ -11,7 +11,8 @@
 // A signup hook creates the user's personal org: it owns the plan, trial and Mac hub.
 
 import { env } from 'cloudflare:workers'
-import { drizzle } from 'drizzle-orm/d1'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import pg from 'pg'
 import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import { betterAuth } from 'better-auth/minimal'
@@ -27,8 +28,18 @@ import { json } from 'spiceflow'
 import { fetchCimdOnWorkers } from './cimd-fetch.ts'
 import { getHub } from './tunnel.ts'
 
+/** An open socket keeps a Durable Object from hibernating (tested: a pg.Client left open blocks it). */
+const IDLE_SOCKET_CLOSE_MS = 1_000
+
+/**
+ * PlanetScale Postgres through Hyperdrive, which holds the real connection pool. A Worker
+ * cannot reuse a socket across requests, so each call gets its own small lazy pool.
+ */
 export function getDb() {
-  return drizzle(env.DB, { schema, relations: schema.relations })
+  const pool = new pg.Pool({ connectionString: env.HYPERDRIVE.connectionString, max: 5, idleTimeoutMillis: IDLE_SOCKET_CLOSE_MS })
+  // An idle client that dies emits here, outside any query promise; pg already drops it.
+  pool.on('error', (error) => console.error('postgres pool:', error))
+  return drizzle({ client: pool, relations: schema.relations })
 }
 
 export function getBaseUrl(): string {
@@ -49,7 +60,7 @@ export function getAuth() {
   return betterAuth({
     baseURL: getBaseUrl(),
     secret: env.BETTER_AUTH_SECRET,
-    database: drizzleAdapter(getDb(), { provider: 'sqlite' }),
+    database: drizzleAdapter(getDb(), { provider: 'pg', schema }),
     session: {
       expiresIn: 60 * 60 * 24 * 365, // 1 year: a Mac stays logged in
       updateAge: 60 * 60 * 24,
@@ -129,7 +140,7 @@ export async function getSession(request: Pick<Request, 'headers'>): Promise<Ses
 }
 
 /**
- * For the daemon API: errors (D1 down) stay errors. A null here becomes a 401, and the
+ * For the daemon API: errors (database down) stay errors. A null here becomes a 401, and the
  * daemon deletes its token on 401, so an outage must never look like a revoked session.
  */
 export async function getSessionStrict(request: Pick<Request, 'headers'>): Promise<Session | null> {
@@ -149,7 +160,7 @@ async function readSession({ headers, disableCookieCache }: { headers: Headers; 
 
 /**
  * The caller's user id: an API token (`Bearer ghk_...`) of a script, else a Mac's session.
- * One D1 lookup: the bearer plugin would look up a ghk_ token as a session first. Errors throw.
+ * One database lookup: the bearer plugin would look up a ghk_ token as a session first. Errors throw.
  */
 export async function getCallerUserId(request: Pick<Request, 'headers'>): Promise<string | null> {
   const key = request.headers.get('authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1]
@@ -169,14 +180,12 @@ export type Org = Awaited<ReturnType<typeof getPersonalOrg>>
 /** Signup hook: the personal org has org_id = user.id, so a retry is a no-op. */
 async function createPersonalOrg(user: { id: string; name: string; email: string; createdAt: Date }): Promise<void> {
   const db = getDb()
-  await db.batch([
-    db.insert(schema.org)
-      .values({ orgId: user.id, name: user.name || user.email, kind: 'personal', createdAt: user.createdAt })
-      .onConflictDoNothing({ target: schema.org.orgId }),
-    db.insert(schema.orgMember)
-      .values({ orgId: user.id, userId: user.id, role: 'admin' })
-      .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] }),
-  ])
+  await db.insert(schema.org)
+    .values({ orgId: user.id, name: user.name || user.email, kind: 'personal', createdAt: user.createdAt })
+    .onConflictDoNothing({ target: schema.org.orgId })
+  await db.insert(schema.orgMember)
+    .values({ orgId: user.id, userId: user.id, role: 'admin' })
+    .onConflictDoNothing({ target: [schema.orgMember.orgId, schema.orgMember.userId] })
 }
 
 /**

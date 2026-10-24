@@ -7,7 +7,7 @@ const DAY_MS = 86_400_000
 
 let runtime: Awaited<ReturnType<typeof startTestRuntime>>
 beforeAll(async () => { runtime = await startTestRuntime() })
-afterAll(async () => { await runtime?.server.close() })
+afterAll(async () => { await runtime?.close() })
 
 async function session() {
   const response = await runtime.worker.fetch('/__test/session', { method: 'POST' })
@@ -27,19 +27,16 @@ async function connect(token: string) {
 
 async function oauth({ identity, clientId = crypto.randomUUID() }: { identity: Awaited<ReturnType<typeof session>>; clientId?: string }) {
   const redirectUri = 'http://127.0.0.1:8765/callback'
-  await runtime.env.DB.prepare(dedent`
-    INSERT OR IGNORE INTO oauth_client
+  await runtime.sql(dedent`
+    INSERT INTO oauth_client
       (id, client_id, redirect_uris, grant_types, response_types, token_endpoint_auth_method, skip_consent, scopes)
-      VALUES (?, ?, ?, ?, ?, 'none', 1, ?)
-  `).bind(
-    clientId, clientId, JSON.stringify([redirectUri]), JSON.stringify(['authorization_code', 'refresh_token']),
-    JSON.stringify(['code']), JSON.stringify(['openid', 'offline_access']),
-  ).run()
+      VALUES ($1, $2, $3, $4, $5, 'none', true, $6)
+      ON CONFLICT DO NOTHING
+  `, [clientId, clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['openid', 'offline_access']])
   const resource = new URL('/mcp', runtime.baseUrl).href
   // Auth initialization seeds the real resource before the client-resource link.
   await runtime.worker.fetch('/api/auth/get-session')
-  await runtime.env.DB.prepare('INSERT OR IGNORE INTO oauth_client_resource (id, client_id, resource_id) VALUES (?, ?, ?)')
-    .bind(crypto.randomUUID(), clientId, resource).run()
+  await runtime.sql('INSERT INTO oauth_client_resource (id, client_id, resource_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [crypto.randomUUID(), clientId, resource])
   const verifier = crypto.randomBytes(32).toString('base64url')
   const query = new URLSearchParams({
     client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid offline_access',
@@ -84,11 +81,11 @@ test('MCP checks grant revocation, disabled clients and ended sessions against B
   const identity = await session()
   const grant = await oauth({ identity })
   expect((await mcp(grant.access_token)).status).toBe(200)
-  await runtime.env.DB.prepare('UPDATE oauth_client SET disabled = 1 WHERE client_id = ?').bind(grant.clientId).run()
+  await runtime.sql('UPDATE oauth_client SET disabled = true WHERE client_id = $1', [grant.clientId])
   const disabled = await mcp(grant.access_token)
   expect(disabled.status).toBe(401)
   expect(disabled.headers.get('www-authenticate')).toContain('oauth-protected-resource')
-  await runtime.env.DB.prepare('UPDATE oauth_client SET disabled = 0 WHERE client_id = ?').bind(grant.clientId).run()
+  await runtime.sql('UPDATE oauth_client SET disabled = false WHERE client_id = $1', [grant.clientId])
   expect((await mcp(grant.access_token)).status).toBe(200)
   const revoked = await runtime.worker.fetch('/api/auth/oauth2/revoke', {
     method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -126,11 +123,11 @@ test('session deadline alarms survive hibernation and honor renewed sessions', a
   const identity = await session()
   const socket = await connect(identity.session.token)
   const renewedExpiry = Date.now() + DAY_MS
-  await runtime.env.DB.prepare('UPDATE session SET expires_at = ? WHERE id = ?').bind(renewedExpiry, identity.session.id).run()
+  await runtime.sql('UPDATE session SET expires_at = $1 WHERE id = $2', [new Date(renewedExpiry), identity.session.id])
   await runtime.worker.evictDurableObject('GHOSTHAND_HUB', { name: identity.user.id, webSockets: 'hibernate' })
   const renewed = await runtime.worker.fetch(`/__test/expire?org=${identity.user.id}`)
   expect(await renewed.json()).toMatchObject({ deadline: renewedExpiry, macs: [{ sessionId: identity.session.id, online: true }] })
-  await runtime.env.DB.prepare('UPDATE session SET expires_at = ? WHERE id = ?').bind(Date.now() - 1, identity.session.id).run()
+  await runtime.sql('UPDATE session SET expires_at = $1 WHERE id = $2', [new Date(Date.now() - 1), identity.session.id])
   const expired = await runtime.worker.fetch(`/__test/expire?org=${identity.user.id}`)
   expect(await expired.json()).toEqual({ deadline: null, macs: [] })
   const reconnect = await runtime.worker.fetch('/tunnel/upstream', {
@@ -190,7 +187,7 @@ test('dashboard sign-out retries hub cleanup after the session row is already go
   const browserResponse = await runtime.worker.fetch(`/__test/session?userId=${mac.user.id}`, { method: 'POST' })
   const browser = await browserResponse.json() as Awaited<ReturnType<typeof session>>
   // A failed delete.after RPC leaves this exact state: no row, but an open socket.
-  await runtime.env.DB.prepare('DELETE FROM session WHERE id = ?').bind(mac.session.id).run()
+  await runtime.sql('DELETE FROM session WHERE id = $1', [mac.session.id])
   const response = await runtime.worker.fetch('/__test/sign-out-mac', {
     method: 'POST', headers: { authorization: `Bearer ${browser.session.token}`, 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ sessionId: mac.session.id }), redirect: 'manual',
@@ -223,19 +220,18 @@ test('the HTTP API accepts a session or a live API token', async () => {
 test('MCP requires its audience and an unexpired, session-bound access token', async () => {
   const identity = await session()
   const grant = await oauth({ identity })
-  const original = await runtime.env.DB.prepare('SELECT resources FROM oauth_access_token WHERE client_id = ?').bind(grant.clientId).first<string>('resources')
-  await runtime.env.DB.prepare('UPDATE oauth_access_token SET resources = NULL WHERE client_id = ?').bind(grant.clientId).run()
+  const [{ resources: original }] = await runtime.sql('SELECT resources FROM oauth_access_token WHERE client_id = $1', [grant.clientId])
+  await runtime.sql('UPDATE oauth_access_token SET resources = NULL WHERE client_id = $1', [grant.clientId])
   expect((await mcp(grant.access_token)).status).toBe(401)
-  await runtime.env.DB.prepare('UPDATE oauth_access_token SET resources = ? WHERE client_id = ?').bind(original, grant.clientId).run()
+  await runtime.sql('UPDATE oauth_access_token SET resources = $1 WHERE client_id = $2', [original, grant.clientId])
   expect((await mcp(grant.access_token)).status).toBe(200)
-  await runtime.env.DB.prepare('UPDATE session SET expires_at = ? WHERE id = ?').bind(Date.now() - 1, identity.session.id).run()
+  await runtime.sql('UPDATE session SET expires_at = $1 WHERE id = $2', [new Date(Date.now() - 1), identity.session.id])
   expect((await mcp(grant.access_token)).status).toBe(401)
-  await runtime.env.DB.prepare('UPDATE session SET expires_at = ? WHERE id = ?').bind(Date.now() + DAY_MS, identity.session.id).run()
+  await runtime.sql('UPDATE session SET expires_at = $1 WHERE id = $2', [new Date(Date.now() + DAY_MS), identity.session.id])
   expect((await mcp(grant.access_token)).status).toBe(200)
-  await runtime.env.DB.prepare('UPDATE oauth_access_token SET session_id = NULL WHERE client_id = ?').bind(grant.clientId).run()
+  await runtime.sql('UPDATE oauth_access_token SET session_id = NULL WHERE client_id = $1', [grant.clientId])
   expect((await mcp(grant.access_token)).status).toBe(401)
-  await runtime.env.DB.prepare('UPDATE oauth_access_token SET session_id = ?, expires_at = ? WHERE client_id = ?')
-    .bind(identity.session.id, Date.now() - 1, grant.clientId).run()
+  await runtime.sql('UPDATE oauth_access_token SET session_id = $1, expires_at = $2 WHERE client_id = $3', [identity.session.id, new Date(Date.now() - 1), grant.clientId])
   expect((await mcp(grant.access_token)).status).toBe(401)
   const missing = await runtime.worker.fetch('/mcp', { method: 'POST', body: '{}' })
   expect(missing.status).toBe(401)

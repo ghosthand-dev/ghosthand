@@ -12,7 +12,7 @@ beforeAll(async () => {
   if (!process.env.AI_GATEWAY_API_KEY) throw new Error('AI_GATEWAY_API_KEY is missing: run `sigillo run -- pnpm test`')
   runtime = await startTestRuntime()
 })
-afterAll(async () => { await runtime?.server.close() })
+afterAll(async () => { await runtime?.close() })
 
 const SCREENS: Record<string, string[]> = {
   home: ['Settings', 'Photos', 'TikTok'],

@@ -32,6 +32,8 @@ Rules:
 - The passcode must be nonempty printable US-ASCII: no newline or tab. stdin must be
   a pipe or file, not a terminal.
 - A wrong passcode is not retried: failed attempts count toward the iPhone lockout.
+  Call unlock at most once per passcode. If it fails, do not try again: ask the user.
+- Never guess the passcode. If the user did not give it, ask for it and stop.
 - After an iPhone restart, unlock it by hand once; before that iOS ignores the
   Bluetooth keyboard.
 - Not available in XCTest mode (unsupported-in-mode): ask the user to unlock.

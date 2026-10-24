@@ -882,7 +882,7 @@
       "name": "lock"
     },
     {
-      "description": "Unlock with the Bluetooth keyboard: Enter, Enter, passcode, then check the lock state over USB (~3s). A wrong passcode is not retried\n\nRules:\n- Pipe a confirmed passcode directly to --stdin, not as an argument (arguments\n  appear in logs and shell history). GHOSTHAND_PASSCODE is also supported.\n  The local .passcode is stale; never read it. Use only the user-confirmed secret.\n- The passcode must be nonempty printable US-ASCII: no newline or tab. stdin must be\n  a pipe or file, not a terminal.\n- A wrong passcode is not retried: failed attempts count toward the iPhone lockout.\n- After an iPhone restart, unlock it by hand once; before that iOS ignores the\n  Bluetooth keyboard.\n- Not available in XCTest mode (unsupported-in-mode): ask the user to unlock.\n\nCLI flags in this text are arguments: --screenshot = screenshot, --screentext = screentext, --language = language",
+      "description": "Unlock with the Bluetooth keyboard: Enter, Enter, passcode, then check the lock state over USB (~3s). A wrong passcode is not retried\n\nRules:\n- Pipe a confirmed passcode directly to --stdin, not as an argument (arguments\n  appear in logs and shell history). GHOSTHAND_PASSCODE is also supported.\n  The local .passcode is stale; never read it. Use only the user-confirmed secret.\n- The passcode must be nonempty printable US-ASCII: no newline or tab. stdin must be\n  a pipe or file, not a terminal.\n- A wrong passcode is not retried: failed attempts count toward the iPhone lockout.\n  Call unlock at most once per passcode. If it fails, do not try again: ask the user.\n- Never guess the passcode. If the user did not give it, ask for it and stop.\n- After an iPhone restart, unlock it by hand once; before that iOS ignores the\n  Bluetooth keyboard.\n- Not available in XCTest mode (unsupported-in-mode): ask the user to unlock.\n\nCLI flags in this text are arguments: --screenshot = screenshot, --screentext = screentext, --language = language",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -899,7 +899,7 @@
             "type": "string"
           },
           "passcode": {
-            "description": "The passcode the user confirmed. Never guess it",
+            "description": "The passcode the user gave. Never guess it: if you do not know it, ask the user",
             "type": "string"
           },
           "scale": {

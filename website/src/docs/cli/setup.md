@@ -18,6 +18,7 @@ ghosthand setup
 | `--mock [scene]` | Run on fixed state without a phone: sign-in, signing-in, permissions, no-phone, trust, unlock, unreadable, bluetooth-off, bluetooth-permission, bluetooth-restricted, bluetooth-unsupported, bluetooth-starting, bluetooth-error, pair, connecting, ready, developer-mode, xctest-starting, xctest-failed, xctest-ready, several, fleet, remote, chat, tour |
 | `--snapshot [path]` | Save the window to PNG after 2.5 s and quit (with --foreground). Mocks render in process; live backdrop blur needs Screen Recording |
 | `--foreground` | Stay in this process instead of detaching |
+| `--background` | Open the window behind the user's windows without taking focus: for agents that check the window with accessibility tools (cua-driver) |
 | `--permissions` | Show the permissions checklist, even if access is already allowed. Only user clicks request dialogs |
 | `--xctest` | Also show the choice between Bluetooth and XCTest control. Shown anyway for iPhones with Developer Mode on. Only when the user asks for XCTest |
 

@@ -22,8 +22,8 @@ Also takes the [global options](/docs/cli/overview#global-options).
 
 ## Details
 
-The agent (DeepSeek V4.1 Flash on ghosthand.dev, about 0.5 s per step plus the input)
-reads the screen text after every action and stops when the task is done or blocked.
+The agent (Claude Haiku 5.5 on ghosthand.dev) reads the screen text after every action
+and stops when the task is done or blocked.
 Progress (each tool call and the first line of its result) goes to stderr, the answer to
 stdout, then the task id.
 - Use it for multi-step navigation, to save your own steps and context. Check the result
@@ -34,6 +34,8 @@ stdout, then the task id.
   that. Do sensitive steps yourself.
 - Ctrl-C stops the task. A dropped connection reconnects by itself; if the command still
   fails, `task --resume <id>` follows the running turn.
+- `--resume <id> <prompt>` while a turn of that task runs stops the turn and starts the
+  new prompt, with the stopped turn in the history.
 - The agent knows the iPhone's name, model, iOS version, language and region, so it
   looks for labels in that language.
 - Needs a signed-in Mac (`ghosthand account`) and the lease. Send no other input while it

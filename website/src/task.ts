@@ -2,12 +2,12 @@
 // Responses are the AI SDK UI message stream (SSE `data: <UIMessageChunk>`) as is, so any
 // AI SDK client (`useChat`, DefaultChatTransport with resume) works, and so does the daemon.
 //
-//   POST /api/cli/tasks {id, messages, lease} ─> send()    new turn; SSE of the turn
+//   POST /api/cli/tasks {id, messages, lease} ─> send()    new turn (a running one stops); SSE of the turn
 //   GET  /api/cli/tasks/:id/stream            ─> resume()  the running turn from its first chunk, or 204
 //   GET  .../stream?from=<n>&message=<id>     ─> resume()  a reconnecting client: chunks from n, also of
 //                                                           an ended turn (until the next one starts)
 //   GET  /api/cli/tasks/:id                   ─> messages()
-//   POST /api/cli/tasks/:id/abort             ─> abort()
+//   POST /api/cli/tasks/:id/abort?prompt=<id> ─> abort()   the running turn, or only the one that message started
 //
 // The turn runs detached from the request: a client that drops reconnects with /stream.
 //
@@ -29,6 +29,7 @@ import { DurableObject, env } from 'cloudflare:workers'
 import { convertToModelMessages, generateId, readUIMessageStream, streamText, type UIMessage, type UIMessageChunk } from 'ai'
 import { createDaemonClient, taskStreamOptions, type TaskPhone } from './task-agent.ts'
 import { getHub } from './tunnel.ts'
+import { captureException, reportErrors, trackEvent } from './telemetry.ts'
 
 const HEARTBEAT_MS = 30_000
 const EXPIRY_MS = 24 * 60 * 60 * 1000
@@ -41,11 +42,16 @@ const INTERRUPTED = 'Interrupted by a server restart: this action may or may not
 /** `studio:42`: the Mac's slug and the lease on it. */
 export const TASK_LEASE_PATTERN = /^([a-z0-9-]+):([^:/]+)$/
 
-type Meta = { orgId: string; lease: string; phone?: TaskPhone; running: boolean; turn: number; recoveries: number }
+/** `taskId` is missing in tasks started before it was stored. */
+/** `prompt`: id of the user message that started the turn, so an abort can name its turn. */
+type Meta = { orgId: string; taskId?: string; lease: string; phone?: TaskPhone; running: boolean; turn: number; recoveries: number; prompt?: string }
 /** The running turn: all its chunks (`saved` of them stored) and the open streams with their ping timer. */
 type Turn = {
   number: number
+  startedAt: number
   abort: AbortController
+  /** Resolves in endTurn, after the turn's answer is saved. */
+  ended: PromiseWithResolvers<void>
   chunks: UIMessageChunk[]
   saved: number
   listeners: Map<ReadableStreamDefaultController<Uint8Array>, ReturnType<typeof setInterval>>
@@ -58,14 +64,22 @@ export function getTask({ orgId, taskId }: { orgId: string; taskId: string }) {
 export class GhosthandTask extends DurableObject<Env> {
   private turn: Turn | null = null
 
-  /** Starts a turn with a new user message. `busy` while another turn runs. */
-  async send({ orgId, lease, phone, message }: { orgId: string; lease: string; phone?: TaskPhone; message: UIMessage }): Promise<ReadableStream<Uint8Array> | 'busy'> {
+  /** Starts a turn with a new user message. A running turn stops first (its stream ends with
+   *  `abort`, its partial answer stays in the history): the new prompt replaces it. */
+  async send({ orgId, taskId, lease, phone, message }: { orgId: string; taskId: string; lease: string; phone?: TaskPhone; message: UIMessage }): Promise<ReadableStream<Uint8Array>> {
+    // A turn a restart stopped is rebuilt first, so its partial answer stays in the history.
+    await this.recover()
+    // Another send can arrive while this one waits: the last prompt wins.
+    while (this.turn) {
+      this.turn.abort.abort()
+      await this.turn.ended.promise
+    }
+    // From here to `this.turn =` nothing awaits, so no other send starts a turn in between.
     const meta = this.meta()
-    if (meta?.running) return 'busy'
     const history = [...this.messages(), message]
     this.saveMessage(message)
     const turn = (meta?.turn ?? 0) + 1
-    this.ctx.storage.kv.put('meta', { orgId, lease, phone, running: true, turn, recoveries: 0 } satisfies Meta)
+    this.ctx.storage.kv.put('meta', { orgId, taskId, lease, phone, running: true, turn, recoveries: 0, prompt: message.id } satisfies Meta)
     this.turn = newTurn(turn, [])
     await this.run(history)
     return this.follow(0)
@@ -87,10 +101,12 @@ export class GhosthandTask extends DurableObject<Env> {
     return [...this.ctx.storage.kv.list<UIMessage>({ prefix: 'message:' })].map(([, message]) => message)
   }
 
-  /** Stops the running turn. Its stream ends with an `abort` chunk. */
-  abort(): boolean {
+  /** Stops the running turn. Its stream ends with an `abort` chunk. With `prompt`, only the
+   *  turn that user message started: a late abort of a replaced turn never stops its successor. */
+  abort({ prompt }: { prompt?: string } = {}): boolean {
     const meta = this.meta()
     if (!meta?.running) return false
+    if (prompt && meta.prompt !== prompt) return false
     if (this.turn) {
       this.turn.abort.abort()
       return true
@@ -100,11 +116,13 @@ export class GhosthandTask extends DurableObject<Env> {
   }
 
   async alarm(): Promise<void> {
-    const meta = this.meta()
-    if (!meta) return
-    if (!meta.running) return this.ctx.storage.deleteAll()
-    if (this.turn) return this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_MS)
-    await this.recover()
+    await reportErrors('GhosthandTask.alarm', async () => {
+      const meta = this.meta()
+      if (!meta) return
+      if (!meta.running) return this.ctx.storage.deleteAll()
+      if (this.turn) return this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_MS)
+      await this.recover()
+    })
   }
 
   /** Runs `this.turn` detached from the request. The heartbeat alarm is set once here and
@@ -126,11 +144,16 @@ export class GhosthandTask extends DurableObject<Env> {
       return untilAborted(hub.daemonFetch(mac!, request), signal)
     })
     try {
+      const options = taskStreamOptions({ apiKey: this.env.AI_GATEWAY_API_KEY, daemon, lease: meta.lease, phone: meta.phone })
       const result = streamText({
         ...options,
         // With the tools, old screenshots in the history tell the model they were not kept.
         messages: await convertToModelMessages(history, { tools: options.tools, ignoreIncompleteToolCalls: true }),
         abortSignal: signal,
+        // Model and gateway failures. Tool errors are the daemon's answers: the model reads them.
+        onError: ({ error }) => {
+          captureException(error, { tags: { handler: 'task.streamText' } })
+        },
       })
       const stream = result.toUIMessageStream({
         originalMessages: history,
@@ -142,17 +165,18 @@ export class GhosthandTask extends DurableObject<Env> {
       })
       for await (const chunk of stream) this.push(chunk)
     } catch (error) {
+      if (!signal.aborted) captureException(error, { tags: { handler: 'task.runTurn' } })
       this.push({ type: 'error', errorText: error instanceof Error ? error.message : String(error) })
     } finally {
       this.endTurn()
-      const options = taskStreamOptions({ apiKey: this.env.AI_GATEWAY_API_KEY, daemon, lease: meta.lease, phone: meta.phone })
     }
   }
 
-  private endTurn(): void {
+  private endTurn(outcome?: string): void {
     this.saveChunks()
     const meta = this.meta()
     if (meta) this.ctx.storage.kv.put('meta', { ...meta, running: false } satisfies Meta)
+    if (meta && this.turn) trackTurn({ meta, turn: this.turn, outcome })
     for (const [listener, keepalive] of this.turn?.listeners ?? []) {
       clearInterval(keepalive)
       try {
@@ -160,6 +184,7 @@ export class GhosthandTask extends DurableObject<Env> {
         listener.close()
       } catch {}
     }
+    this.turn?.ended.resolve()
     this.turn = null
     void this.ctx.storage.setAlarm(Date.now() + EXPIRY_MS)
   }
@@ -173,8 +198,10 @@ export class GhosthandTask extends DurableObject<Env> {
     const chunks = this.chunks()
     this.turn = newTurn(meta.turn, chunks)
     if (meta.recoveries >= MAX_RECOVERIES) {
-      this.push({ type: 'error', errorText: 'The task stopped after repeated server restarts. Send it again.' })
-      return this.endTurn()
+      const errorText = 'The task stopped after repeated server restarts. Send it again.'
+      captureException(new Error(errorText), { tags: { handler: 'task.recover' } })
+      this.push({ type: 'error', errorText })
+      return this.endTurn('stopped')
     }
     this.ctx.storage.kv.put('meta', { ...meta, recoveries: meta.recoveries + 1 } satisfies Meta)
     const history = this.messages()
@@ -278,7 +305,21 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 function newTurn(number: number, chunks: UIMessageChunk[]): Turn {
-  return { number, abort: new AbortController(), chunks: [...chunks], saved: chunks.length, listeners: new Map() }
+  return { number, startedAt: Date.now(), abort: new AbortController(), ended: Promise.withResolvers(), chunks: [...chunks], saved: chunks.length, listeners: new Map() }
+}
+
+/** `task_finished` from the turn's chunks. The duration of a recovered turn starts at its restart. */
+function trackTurn({ meta, turn, outcome }: { meta: Meta; turn: Turn; outcome?: string }): void {
+  const count = (type: UIMessageChunk['type']) => turn.chunks.filter((chunk) => chunk.type === type).length
+  trackEvent('task_finished', {
+    org_id: meta.orgId,
+    task_id: meta.taskId ?? '',
+    outcome: outcome ?? (count('abort') ? 'aborted' : count('error') ? 'failed' : 'finished'),
+    steps: count('start-step'),
+    tool_calls: count('tool-input-available'),
+    tool_errors: count('tool-output-error'),
+    duration_ms: Date.now() - turn.startedAt,
+  })
 }
 
 function pad(n: number): string {

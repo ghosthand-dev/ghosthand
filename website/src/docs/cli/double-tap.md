@@ -48,6 +48,10 @@ First use: pair the Mac from iPhone Settings &gt; Bluetooth (tap the Mac's name,
 Pair); the command waits for it. Each tap turns AssistiveTouch on over USB if off.
 A paired iPhone reconnects in about 2 s after a daemon start.
 - Approaches accelerate then slow at the target. Timing varies; tap coordinates do not.
+- The first pointer input of a lease moves the pointer to 2 spots first (+0.4 s, no
+  click): iOS turns the pointer 90° from the screen when the iPhone lies on its side,
+  and input is turned to match ("iOS pointer space is turned"). Do not turn the
+  iPhone during a lease; if you must, acquire a new lease.
 - Relative pointer (older iOS, only if absolute failed): after a daemon start, a reconnect or 60 s idle, the
   pointer first jumps to the top-left corner (+0.3 s). That is normal.
 

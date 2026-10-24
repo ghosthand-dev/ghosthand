@@ -10,20 +10,15 @@
   "routes": [
     { "pattern": "ghosthand.dev", "custom_domain": true }
   ],
-  // A request makes several sequential D1 round trips (session, org, tokens): run the Worker
-  // near the D1 primary. Only the fetch handler moves; Durable Objects and static assets do not.
-  "placement": { "mode": "smart" },
+  // A request makes several sequential database round trips (session, org, tokens): run the
+  // Worker in IAD next to PlanetScale (us-east = aws us-east-1). Durable Objects do not move.
+  "placement": { "region": "aws:us-east-1" },
   // Prerendered pages (`rendering: static`) are read from build assets through this binding.
   "assets": { "binding": "ASSETS" },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "ghosthand-db",
-      "database_id": "4bceef41-15fa-4b3e-ab37-65ae9551593a",
-      "migrations_dir": "../db/drizzle",
-      "migrations_pattern": "../db/drizzle/*/migration.sql"
-    }
-  ],
+  // PlanetScale Postgres `ghosthand` (org clamordev), caching disabled: auth reads must be fresh.
+  // Local: CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE (Sigillo dev) overrides
+  // localConnectionString; the build's prerender only needs one to start, it runs no queries.
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "8a9f08518c124088bf4570b21900dd55", "localConnectionString": "postgres://ghosthand:local@localhost:5432/ghosthand" }],
   // `ghosthand upload` files. Bucket lifecycle rule deletes objects after 1 day:
   // wrangler r2 bucket lifecycle add <bucket> expire-1-day --expire-days 1
   "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" }],
@@ -61,16 +56,9 @@
       "routes": [
         { "pattern": "preview.ghosthand.dev", "custom_domain": true }
       ],
-      "placement": { "mode": "smart" },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "ghosthand-preview-db",
-          "database_id": "bcd41cd8-51df-4a01-90bb-3a748d28acfa",
-          "migrations_dir": "../db/drizzle",
-          "migrations_pattern": "../db/drizzle/*/migration.sql"
-        }
-      ],
+      "placement": { "region": "aws:us-east-1" },
+      // Same database as production for now.
+      "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "8a9f08518c124088bf4570b21900dd55", "localConnectionString": "postgres://ghosthand:local@localhost:5432/ghosthand" }],
       "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads-preview" }],
       "durable_objects": {
         "bindings": [

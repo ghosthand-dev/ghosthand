@@ -133,7 +133,7 @@ async function connectUpstream(request: Request): Promise<Response> {
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
     return problem({ status: 426, code: 'upgrade-required', title: 'Upgrade required', detail: 'Connect with a WebSocket.' })
   }
-  // Errors (D1 down) throw and become 500: the daemon must not take an outage for a sign-out.
+  // Errors (database down) throw and become 500: the daemon must not take an outage for a sign-out.
   const session = await getSessionStrict(request)
   if (!session) {
     return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'This Mac is signed out. Sign in again with `ghosthand setup`.' })
@@ -204,7 +204,7 @@ export class GhosthandHub extends DurableObject<Env> {
     const sessionId = request.headers.get(SESSION_HEADER)
     if (!sessionId) return problem({ status: 400, code: 'bad-request', title: 'Bad request', detail: 'Missing session' })
     const name = decodeURIComponent(request.headers.get(MAC_NAME_HEADER) ?? 'Mac')
-    // Blocks revoke() until the socket is accepted, so a sign-out during the D1 query cannot be undone.
+    // Blocks revoke() until the socket is accepted, so a sign-out during the session query cannot be undone.
     return this.ctx.blockConcurrencyWhile(async () => {
       // Signed-out sessions free their slug; the connecting one must still be valid.
       const known = [...new Set([...Object.keys(this.registry()), sessionId])]

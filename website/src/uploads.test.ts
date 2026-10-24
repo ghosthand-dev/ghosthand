@@ -52,6 +52,6 @@ test('uploaded HTML stays inert without breaking sharing or ranges', async () =>
     expect(range.headers.get('content-range')).toBe(`bytes 0-7/${body.length}`)
     expect(await range.text()).toBe(body.slice(0, 8))
   } finally {
-    await runtime.server.close()
+    await runtime.close()
   }
 }, TEST_TIMEOUT_MS)

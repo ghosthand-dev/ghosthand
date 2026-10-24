@@ -92,7 +92,7 @@ export async function portalUrl({ accountId, customerId, returnUrl }: { accountI
 }
 
 /**
- * Mirrors one subscription into D1. Re-fetches it, because events can arrive out of
+ * Mirrors one subscription into Postgres. Re-fetches it, because events can arrive out of
  * order. Ignores subscriptions of other apps on the same Stripe account.
  */
 export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<void> {

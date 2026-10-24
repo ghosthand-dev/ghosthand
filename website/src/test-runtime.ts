@@ -56,6 +56,8 @@ export async function startTestRuntime() {
     },
     hyperdrive: [{ binding: 'HYPERDRIVE', id: 'local-test', localConnectionString: database.url }],
     r2_buckets: [{ binding: 'UPLOADS', bucket_name: 'security-test' }],
+    // `?raw` markdown imports (task-agent.ts), which Vite handles in the real build.
+    rules: [{ type: 'Text', globs: ['**/*.md?raw'] }],
     durable_objects: {
       bindings: [
         { name: 'GHOSTHAND_HUB', class_name: 'TestHub' },

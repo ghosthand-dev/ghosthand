@@ -1,11 +1,12 @@
 // Phone tasks end to end: the real Worker, task and hub Durable Objects, and the real model
 // (Vercel AI Gateway, so run with `sigillo run -- pnpm test`). Only the Mac is scripted: a
 // WebSocket on /tunnel/upstream that answers the daemon routes with a small Settings app.
+import { readFileSync } from 'node:fs'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { z } from 'zod'
 import { startTestRuntime } from './test-runtime.ts'
-import { TASK_TOOL_INPUTS, taskToolSchema, type TaskToolName } from './task-agent.ts'
+import { TASK_TOOLS, taskToolSchema, type TaskToolName } from './task-agent.ts'
 
 let runtime: Awaited<ReturnType<typeof startTestRuntime>>
 beforeAll(async () => {
@@ -39,28 +40,38 @@ async function fakeMac({ hold }: { hold?: (op: string) => boolean } = {}) {
     width: 375, height: 667,
     lines: SCREENS[mac.screen]!.map((text, i) => ({ text, x: 20, y: 100 + i * 44, width: 120, height: 20, confidence: 1 })),
   })
-  const answer = (id: string, status: number, body: object) => {
-    const contentType = status === 200 ? 'application/json' : 'application/problem+json'
-    socket.send(JSON.stringify({ type: 'response', id, status, headers: { 'content-type': contentType } }))
-    socket.send(JSON.stringify({ type: 'chunk', id, data: Buffer.from(JSON.stringify(body)).toString('base64') }))
+  // src/fixtures/task-<screen>.jpg: the SCREENS lines drawn at their OCR boxes.
+  const screenImage = () => readFileSync(new URL(`./fixtures/task-${mac.screen}.jpg`, import.meta.url))
+  const send = (id: string, status: number, headers: Record<string, string>, body: Buffer) => {
+    socket.send(JSON.stringify({ type: 'response', id, status, headers }))
+    socket.send(JSON.stringify({ type: 'chunk', id, data: body.toString('base64') }))
     socket.send(JSON.stringify({ type: 'end', id }))
+  }
+  const answer = (id: string, status: number, body: object) => {
+    send(id, status, { 'content-type': status === 200 ? 'application/json' : 'application/problem+json' }, Buffer.from(JSON.stringify(body)))
   }
   const handle = (request: DaemonRequest) => {
     const url = new URL(request.path, 'http://mac')
     const [, lease, op] = url.pathname.match(/^\/v1\/leases\/([^/]+)\/([a-z-]+)$/) ?? []
     if (decodeURIComponent(lease ?? '') !== 'studio:7') return answer(request.id, 403, { code: 'lease-invalid', title: 'Lease not valid', status: 403, detail: `unknown lease ${lease}` })
     const body = request.body ? JSON.parse(Buffer.from(request.body, 'base64').toString()) : {}
-    mac.ops.push(op === 'tap' || op === 'type' || op === 'key' ? `${op} ${body.text ?? body.key}` : op!)
+    mac.ops.push(op === 'tap' || op === 'type' || op === 'key' ? `${op} ${body.text ?? body.key ?? `${body.x},${body.y}`}` : op!)
     if (op === 'text') return answer(request.id, 200, screenText())
+    if (op === 'screenshot') return send(request.id, 200, { 'content-type': 'image/jpeg', 'x-image-width': '375', 'x-image-height': '667' }, screenImage())
     if (op === 'key' && body.key === 'home') mac.screen = 'home'
     if (op === 'type' && /settings/i.test(body.text) && body.enter) mac.screen = 'settings'
     if (op === 'tap') {
-      if (!SCREENS[mac.screen]!.some((line) => line.toLowerCase().includes(String(body.text).toLowerCase()))) {
+      // A point taps the row it is in (rows are 44 points high), like a finger on the fixture image.
+      const line = body.text !== undefined
+        ? screenText().lines.find((l) => l.text.toLowerCase().includes(String(body.text).toLowerCase()))
+        : screenText().lines.find((l) => Math.abs(body.y - (l.y + l.height / 2)) <= 22)
+      if (body.text !== undefined && !line) {
         return answer(request.id, 404, { code: 'text-not-found', title: 'Text not on screen', status: 404, detail: `no line contains "${body.text}"` })
       }
-      mac.screen = TAPS[mac.screen]?.[body.text] ?? mac.screen
+      if (line) mac.screen = TAPS[mac.screen]?.[line.text] ?? mac.screen
     }
-    const after = url.searchParams.get('screentext') === 'true' ? { screen: screenText() } : {}
+    const format = url.searchParams.get('screenshot')
+    const after = format ? { screenshot: { format, width: 375, height: 667, data: screenImage().toString('base64') } } : {}
     answer(request.id, 200, { message: `${op} sent`, logs: [], ...after })
   }
   socket.addEventListener('message', (event) => {
@@ -97,23 +108,27 @@ function testTask({ orgId, taskId, action }: { orgId: string; taskId: string; ac
   return runtime.worker.fetch(`/__test/task/${action}?org=${orgId}&task=${taskId}`).catch(() => null)
 }
 
-test('task tools are MCP tools: same names and arguments, without lease, mac, scale, screenshot, screentext, waitText, timeoutMs', () => {
-  const names = Object.keys(TASK_TOOL_INPUTS) as TaskToolName[]
+test('task tool arguments are MCP arguments of the same type', () => {
+  const names = Object.keys(TASK_TOOLS) as TaskToolName[]
   const shapes = names.map((name) => {
     const mcp = taskToolSchema(name).inputSchema
-    const ours = z.toJSONSchema(TASK_TOOL_INPUTS[name])
-    return { name, mcp: [Object.keys(mcp.properties ?? {}).sort(), mcp.required], ours: [Object.keys(ours.properties ?? {}).sort(), ours.required ?? []] }
+    const ours = z.toJSONSchema(TASK_TOOLS[name].input)
+    const types = (properties: object | undefined) => Object.entries(properties ?? {}).map(([key, p]) => `${key}:${p.type}`).sort()
+    expect(types(ours.properties)).toEqual(types(mcp.properties))
+    const required = new Set(mcp.required)
+    return [name, `${TASK_TOOLS[name].mcp}(${Object.keys(mcp.properties ?? {}).map((key) => (required.has(key) ? key : `${key}?`)).join(' ')})`]
   })
-  for (const { mcp, ours } of shapes) expect(ours).toEqual(mcp)
-  expect(Object.fromEntries(shapes.map(({ name, mcp }) => [name, mcp[0]!.join(' ')]))).toMatchInlineSnapshot(`
+  expect(Object.fromEntries(shapes)).toMatchInlineSnapshot(`
     {
-      "key": "key language",
-      "screenshot": "native settle",
-      "screentext": "language settle",
-      "scroll": "direction language ticks x y",
-      "swipe": "durationMs language x1 x2 y1 y2",
-      "tap": "index language text x y",
-      "type": "enter language text",
+      "key": "key(key)",
+      "screenshot": "screenshot(settle? native?)",
+      "screentext": "screentext(settle?)",
+      "scroll": "scroll(direction ticks x? y?)",
+      "swipe": "swipe(x1 y1 x2 y2 durationMs?)",
+      "tap": "tap(x y)",
+      "tapText": "tap(text index?)",
+      "type": "type(text enter?)",
+      "unlock": "unlock(passcode)",
     }
   `)
 })
@@ -171,7 +186,7 @@ test('a task streams AI SDK chunks, drives the Mac through the hub, then deletes
 test('a new prompt stops the running turn and starts at once, with the stopped answer in the history', async () => {
   // The first action never answers: the turn would wait for it forever.
   let holding = true
-  const mac = await fakeMac({ hold: (op) => holding && op !== 'text' })
+  const mac = await fakeMac({ hold: (op) => holding && op !== 'text' && op !== 'screenshot' })
   const taskId = 'task-interrupted'
   const first = startTask({ mac, taskId, prompt: PROMPT }).then(readStream)
   await expect.poll(() => mac.held.length, { timeout: 30_000 }).toBe(1)

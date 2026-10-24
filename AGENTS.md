@@ -167,6 +167,7 @@ website: @strada.sh/sdk <── src/telemetry.ts: initStrada, typed trackEvent, 
 - In the daemon, API and MCP errors go to Strada only when they are `internal-error` or `recording-failed` (`Telemetry.captureIfUnexpected`): the other codes are expected answers.
 - **Product events are typed**: add them to `WebsiteEvents` (telemetry.ts) or `Telemetry.Event` (telemetry.swift), never `track()` with a free string. Properties are ids, counts, names and booleans: never prompts, typed text, screen text or tokens. Update the Telemetry section of website/src/docs/privacy.mdx when what is sent changes.
 - The daemon never ships a Strada token (ingest is anonymous); `STRADA_TOKEN` is a website secret in Sigillo.
+- **Daemon traces are opt-in:** `launchctl setenv GHOSTHAND_TRACES 1`, then `ghosthand daemon stop && ghosthand daemon start` (`restart` keeps the old env). Each API call is a trace with spans for `input.send`, `hid.tap`, `screen.before`, `screen.settle` (attrs `settle.before_diff`, `settle.reaction_ms`), `image.encode` and `ocr`. Read them with `strada traces list -p ghosthand -s ghosthand-daemon --json`, then `strada traces view <32-hex id> -p ghosthand --attrs 20`. Polled routes (`Telemetry.uncounted`) are never traced.
 
 # CLI and MCP docs (website)
 

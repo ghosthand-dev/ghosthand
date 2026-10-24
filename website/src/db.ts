@@ -25,8 +25,10 @@ import { getOAuthProviderApi } from '@better-auth/oauth-provider'
 import { cimd } from '@better-auth/cimd'
 import { drizzleAdapter } from 'better-auth-drizzle-adapter'
 import { json } from 'spiceflow'
+import { strataBetterAuth } from '@strada.sh/sdk/better-auth'
 import { fetchCimdOnWorkers } from './cimd-fetch.ts'
 import { getHub } from './tunnel.ts'
+import { captureException } from './telemetry.ts'
 
 /** An open socket keeps a Durable Object from hibernating (tested: a pg.Client left open blocks it). */
 const IDLE_SOCKET_CLOSE_MS = 1_000
@@ -38,7 +40,7 @@ const IDLE_SOCKET_CLOSE_MS = 1_000
 export function getDb() {
   const pool = new pg.Pool({ connectionString: env.HYPERDRIVE.connectionString, max: 5, idleTimeoutMillis: IDLE_SOCKET_CLOSE_MS })
   // An idle client that dies emits here, outside any query promise; pg already drops it.
-  pool.on('error', (error) => console.error('postgres pool:', error))
+  pool.on('error', (error) => captureException(error, { tags: { handler: 'postgres.pool' } }))
   return drizzle({ client: pool, relations: schema.relations })
 }
 
@@ -73,6 +75,15 @@ export function getAuth() {
         prompt: 'select_account',
       },
     },
+    // Replaces the Strada plugin's handler, which reports every APIError: 4xx answers
+    // (an expired MCP token, a pending device code) are expected.
+    onAPIError: {
+      onError: (error) => {
+        if (error instanceof APIError && error.statusCode < 500) return
+        console.error('better-auth:', error)
+        captureException(error, { tags: { handler: 'better-auth' } })
+      },
+    },
     databaseHooks: {
       user: { create: { after: (user) => createPersonalOrg(user) } },
       session: { delete: {
@@ -88,6 +99,8 @@ export function getAuth() {
       } },
     },
     plugins: [
+      // auth.signup, auth.login (Google, a Mac's device flow), auth.logout events and the user profile.
+      strataBetterAuth(),
       deviceAuthorization({ verificationUri: '/device', expiresIn: '15m', interval: '2s' }),
       bearer(),
       // Rate limits are off: a script drives an iPhone with many calls.
@@ -135,6 +148,7 @@ export async function getSession(request: Pick<Request, 'headers'>): Promise<Ses
   if (!request.headers.has('cookie') && !request.headers.has('authorization')) return null
   return readSession({ headers: request.headers, disableCookieCache: false }).catch((cause) => {
     console.error('getSession failed:', cause)
+    captureException(cause, { tags: { handler: 'getSession' } })
     return null
   })
 }

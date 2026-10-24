@@ -10,6 +10,7 @@ import Stripe from 'stripe'
 import * as schema from 'db/schema'
 import { getDb, type Org } from '../db.ts'
 import { isExistingStatus, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP } from './billing.ts'
+import { captureException, trackEvent } from '../telemetry.ts'
 
 /** Secret key per Stripe account id. */
 function stripeAccounts(): Record<string, string> {
@@ -39,7 +40,9 @@ export async function getOrCreateStripeCustomer({ org, email, accountId }: { org
     .returning()
   if (inserted.length) return customer.id
   // A concurrent request won the insert: use its customer, drop ours.
-  await stripeFor(accountId).customers.del(customer.id).catch(() => {})
+  await stripeFor(accountId).customers.del(customer.id).catch((cause) => {
+    captureException(cause, { tags: { handler: 'getOrCreateStripeCustomer' } })
+  })
   const winner = await db.query.stripeCustomer.findFirst({ where: { orgId: org.orgId, stripeAccountId: accountId } })
   if (!winner) throw new Error(`stripe customer for org ${org.orgId} vanished`)
   return winner.stripeCustomerId
@@ -125,4 +128,5 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
   await db.insert(schema.subscription)
     .values({ subscriptionId: sub.id, ...record })
     .onConflictDoUpdate({ target: schema.subscription.subscriptionId, set: record })
+  trackEvent('subscription_updated', { org_id: orgId, status: sub.status, cancel_at_period_end: sub.cancel_at_period_end })
 }

@@ -8,6 +8,7 @@ import { env } from 'cloudflare:workers'
 import { Spiceflow } from 'spiceflow'
 import Stripe from 'stripe'
 import { stripeFor, syncSubscription } from './lib/stripe.ts'
+import { captureException } from './telemetry.ts'
 
 export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
   .post('/webhook', async ({ request }) => {
@@ -21,6 +22,8 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
       event = await stripe.webhooks.constructEventAsync(body, signature, env.STRIPE_WEBHOOK_SECRET, undefined, Stripe.createSubtleCryptoProvider())
     } catch (cause) {
       console.error('Stripe webhook signature check failed:', cause)
+      // A wrong STRIPE_WEBHOOK_SECRET fails every webhook: report it.
+      captureException(cause, { tags: { route: '/api/stripe/webhook' } })
       return new Response('bad signature', { status: 400 })
     }
 
@@ -44,6 +47,7 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
       await syncSubscription({ accountId, subscriptionId })
     } catch (cause) {
       console.error(`Stripe webhook ${event.type} failed:`, cause)
+      captureException(cause, { tags: { route: '/api/stripe/webhook', stripe_event: event.type } })
       return new Response('sync failed', { status: 500 })
     }
     return new Response('ok')

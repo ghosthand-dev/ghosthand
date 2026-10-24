@@ -38,6 +38,11 @@
   // A task turn is one invocation with no incoming messages: tool results and model streams
   // all count against one CPU budget (default 30 s).
   "limits": { "cpu_ms": 300000 },
+  // Strada project `ghosthand` (src/telemetry.ts). The id is public; STRADA_TOKEN is a secret.
+  "vars": {
+    "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
+    "STRADA_ENVIRONMENT": "production"
+  },
   "secrets": {
     "required": [
       "BETTER_AUTH_SECRET",
@@ -47,7 +52,8 @@
       "STRIPE_ACCOUNT_ID",
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
-      "AI_GATEWAY_API_KEY"
+      "AI_GATEWAY_API_KEY",
+      "STRADA_TOKEN"
     ]
   },
   "env": {
@@ -72,6 +78,10 @@
         { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] }
       ],
       "limits": { "cpu_ms": 300000 },
+      "vars": {
+        "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
+        "STRADA_ENVIRONMENT": "preview"
+      },
       "secrets": {
         "required": [
           "BETTER_AUTH_SECRET",
@@ -81,7 +91,8 @@
           "STRIPE_ACCOUNT_ID",
           "STRIPE_SECRET_KEY",
           "STRIPE_WEBHOOK_SECRET",
-          "AI_GATEWAY_API_KEY"
+          "AI_GATEWAY_API_KEY",
+          "STRADA_TOKEN"
         ]
       }
     }

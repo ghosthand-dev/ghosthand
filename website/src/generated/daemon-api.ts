@@ -522,10 +522,10 @@ export interface paths {
         /**
          * Run a task
          * @description Do a task in plain words ("open the TikTok likes tab") on the lease's iPhone. An agent on
-         *     ghosthand.dev (a fast model, DeepSeek V4.1 Flash) reads the screen with OCR and sends
+         *     ghosthand.dev (a fast model, Claude Haiku 5.5) reads the screen with OCR and sends
          *     the taps, swipes and keys through this Mac's tunnel, then answers in one or two
          *     sentences. One call is one turn; the task keeps its history, so `task` sends a
-         *     follow-up to the same task. The task ends one day after its last turn. The agent gets
+         *     follow-up to the same task. A follow-up while a turn runs stops that turn first. The task ends one day after its last turn. The agent gets
          *     the iPhone's name, model, iOS version, language and region (as `info` reads them).
          *
          *     With `Accept: text/event-stream` the response is the turn's AI SDK UI message stream,
@@ -2100,7 +2100,7 @@ export interface components {
              * @description Stable error code. Switch on it; `title` and `detail` are for people.
              * @enum {string}
              */
-            code: "invalid-request" | "unauthorized" | "not-found" | "device-not-found" | "no-device" | "multiple-devices" | "permission-denied" | "bluetooth-unavailable" | "bluetooth-disconnected" | "no-frame" | "device-locked" | "lock-failed" | "pairing-timeout" | "pointer-not-found" | "lock-state-unavailable" | "lockdown-unavailable" | "unlock-failed" | "mute-unconfirmed" | "text-not-found" | "wait-text-timeout" | "cancelled" | "lease-invalid" | "device-leased" | "recording-active" | "no-recording" | "recording-failed" | "daemon-busy" | "tunnel-offline" | "login-required" | "subscription-required" | "unsupported-in-mode" | "xctest-unavailable" | "task-busy" | "task-failed" | "internal-error";
+            code: "invalid-request" | "unauthorized" | "not-found" | "device-not-found" | "no-device" | "multiple-devices" | "permission-denied" | "bluetooth-unavailable" | "bluetooth-disconnected" | "no-frame" | "device-locked" | "lock-failed" | "pairing-timeout" | "pointer-not-found" | "lock-state-unavailable" | "lockdown-unavailable" | "unlock-failed" | "mute-unconfirmed" | "text-not-found" | "wait-text-timeout" | "cancelled" | "lease-invalid" | "device-leased" | "recording-active" | "no-recording" | "recording-failed" | "daemon-busy" | "tunnel-offline" | "login-required" | "subscription-required" | "unsupported-in-mode" | "xctest-unavailable" | "task-failed" | "internal-error";
             /** @description Short summary of the code, the same for every error with this code */
             title: string;
             /** @description HTTP status of the error. In stream mode the response status stays 200. */

@@ -168,6 +168,33 @@ test('a task streams AI SDK chunks, drives the Mac through the hub, then deletes
   expect(after.messages).toEqual([])
 }, 60_000)
 
+test('a new prompt stops the running turn and starts at once, with the stopped answer in the history', async () => {
+  // The first action never answers: the turn would wait for it forever.
+  let holding = true
+  const mac = await fakeMac({ hold: (op) => holding && op !== 'text' })
+  const taskId = 'task-interrupted'
+  const first = startTask({ mac, taskId, prompt: PROMPT }).then(readStream)
+  await expect.poll(() => mac.held.length, { timeout: 30_000 }).toBe(1)
+  holding = false
+
+  const second = await runtime.worker.fetch('/api/cli/tasks', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${mac.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: taskId, lease: 'studio:7', messages: [{ id: 'm2', role: 'user', parts: [{ type: 'text', text: 'Stop that. Go to the Home Screen instead.' }] }] }),
+  })
+  expect(second.status).toBe(200)
+  expect((await first).at(-1)).toMatchObject({ type: 'abort' })
+  // The first client's late abort names its own prompt: the new turn keeps running.
+  const auth = { headers: { authorization: `Bearer ${mac.token}` } }
+  const lateAbort = await runtime.worker.fetch(`/api/cli/tasks/${taskId}/abort?prompt=m1`, { method: 'POST', ...auth })
+  expect(await lateAbort.json()).toEqual({ aborted: false })
+  expect((await readStream(second)).at(-1)).toMatchObject({ type: 'finish' })
+  expect(mac.screen).toBe('home')
+
+  const { messages } = await (await runtime.worker.fetch(`/api/cli/tasks/${taskId}`, auth)).json() as { messages: UIMessage[] }
+  expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
+}, 60_000)
+
 test('a task stopped by a restart continues from its stored chunks', async () => {
   // The first tap never answers before the restart, like an action in flight during a deploy.
   let holding = true

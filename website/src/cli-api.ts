@@ -179,16 +179,14 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       phone: TaskPhone.optional(),
     }),
     async handler({ request }) {
-      const { orgId } = await requirePlan(request)
+      const { userId, orgId } = await requirePlan(request)
       const body = await request.json()
       const [message] = await validateUIMessages({ messages: [body.messages.at(-1)] }).catch((cause) => {
         throw json({ message: `invalid message: ${cause instanceof Error ? cause.message : cause}` }, { status: 400 })
       })
       if (message!.role !== 'user') throw json({ message: 'the last message must be a user message' }, { status: 400 })
-      const stream = await getTask({ orgId, taskId: body.id }).send({ orgId, lease: body.lease, phone: body.phone, message: message! })
-      if (stream === 'busy') {
-        throw json({ message: `task ${body.id} is running: follow it with GET /api/cli/tasks/${body.id}/stream, or stop it with POST /api/cli/tasks/${body.id}/abort` }, { status: 409 })
-      }
+      const stream = await getTask({ orgId, taskId: body.id }).send({ orgId, taskId: body.id, lease: body.lease, phone: body.phone, message: message! })
+      trackEvent('task_started', { user_id: userId, org_id: orgId, task_id: body.id })
       return new Response(stream, { headers: UI_MESSAGE_STREAM_HEADERS })
     },
   })
@@ -220,9 +218,11 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     method: 'POST',
     path: '/tasks/:id/abort',
     detail: { hide: true },
-    async handler({ request, params }) {
+    // `prompt`: the user message id of the turn to stop; another turn keeps running.
+    query: z.object({ prompt: z.string().optional() }),
+    async handler({ request, params, query }) {
       const { orgId } = await requirePlan(request)
-      return { aborted: await getTask({ orgId, taskId: parseTaskId(params.id) }).abort() }
+      return { aborted: await getTask({ orgId, taskId: parseTaskId(params.id) }).abort({ prompt: query.prompt }) }
     },
   })
   .route({

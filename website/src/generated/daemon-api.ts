@@ -1597,6 +1597,13 @@ export interface components {
              */
             device: string;
             /**
+             * @description Slug of the Mac the iPhone is on (`mac` from `GET /v1/devices`). On the unix socket,
+             *     another Mac's slug sends the acquire straight to that Mac, without listing every Mac
+             *     first. Through the tunnel it must be this Mac's slug or omitted.
+             * @example studio
+             */
+            mac?: string;
+            /**
              * @description Optional display text shown to others in `GET /v1/devices` and `device-leased` errors, e.g. an agent session id. Not checked and not unique
              * @example ses_123
              */

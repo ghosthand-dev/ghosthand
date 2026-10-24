@@ -14,6 +14,7 @@ import { Spiceflow, json } from 'spiceflow'
 import dedent from 'string-dedent'
 import { z } from 'zod'
 import { getBaseUrl } from './db.ts'
+import { trackEvent } from './telemetry.ts'
 
 /** The Worker request body limit of the Free and Pro plans; Cloudflare answers 413 above it. */
 export const UPLOAD_MAX_BYTES = 100_000_000
@@ -48,6 +49,7 @@ export async function createUpload({ request, name, userId }: { request: Request
     customMetadata: { name, userId, expiresAt: expiresAt.toISOString() },
   })
   console.log('upload', { id, userId, name, size })
+  trackEvent('upload_created', { user_id: userId, size })
   return { url: new URL(`/u/${id}`, getBaseUrl()).toString(), name, size, expiresAt: expiresAt.toISOString() }
 }
 

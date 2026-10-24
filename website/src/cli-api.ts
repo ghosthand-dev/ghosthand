@@ -23,6 +23,7 @@ import { entitlementFor } from './lib/billing.ts'
 import { createUpload } from './uploads.ts'
 import { getTask, TASK_LEASE_PATTERN } from './task.ts'
 import { TaskPhone } from './task-agent.ts'
+import { trackEvent } from './telemetry.ts'
 
 const CLIENT_ID = 'ghosthand'
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
@@ -145,6 +146,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       const { name } = await request.json()
       // Server-side create: no session cookie, the owner is passed as userId.
       const created = await getAuth().api.createApiKey({ body: { name, userId: session.userId } })
+      trackEvent('api_token_created', { user_id: session.userId })
       return { id: created.id, name, token: created.key }
     },
   })

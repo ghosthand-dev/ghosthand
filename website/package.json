@@ -24,6 +24,7 @@
     "@better-auth/mcp": "1.7.7",
     "@better-auth/oauth-provider": "1.7.7",
     "@holocron.so/vite": "^0.38.0",
+    "@strada.sh/sdk": "^0.9.1",
     "ai": "^7.0.148",
     "ai-fallback": "^3.0.0",
     "better-auth": "^1.7.7",

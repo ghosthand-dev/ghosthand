@@ -10,12 +10,14 @@
 //   /mcp               remote MCP, OAuth; routed to the user's Macs (tunnel.ts, before spiceflow)
 //   /tunnel/upstream   each signed-in daemon's WebSocket to its user's hub (tunnel.ts)
 //   everything else    holocron docs, plus /.well-known/agent-skills/* for `npx skills add`
+// First import: Strada is initialized before anything creates a span (telemetry.ts).
+import { spiceflowTracer, startSpan, trackEvent } from './telemetry.ts'
 import { Spiceflow, redirect } from 'spiceflow'
 import { router } from 'spiceflow/react'
 import { z } from 'zod'
 import { app as holocronApp } from '@holocron.so/vite/app'
 import skillMd from '../../skills/ghosthand/SKILL.md?raw'
-import { getHub, routeHubRequest } from './tunnel.ts'
+import { getHub, isHubPath, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
 import { uploadsApp } from './uploads.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
@@ -56,7 +58,8 @@ async function accountLayout({ children }: { children?: React.ReactNode }) {
 const loginQuery = z.object({ callbackURL: z.string().optional(), response_type: z.string().optional() })
 const deviceQuery = z.object({ user_code: z.string().optional(), status: z.enum(['approved', 'denied']).optional() })
 
-export const app = new Spiceflow()
+// Errors that escape a route or page are recorded on its span: no captureException here.
+export const app = new Spiceflow({ tracer: spiceflowTracer })
   .use(({ request }, next) => {
     const url = new URL(request.url)
     if (!url.hostname.startsWith('www.')) return next()
@@ -230,6 +233,7 @@ export const app = new Spiceflow()
     if (!session) throw redirect(router.href('/login', { callbackURL: '/subscribe' }))
     const org = await getPersonalOrg(session.userId)
     const url = await subscribeRedirectUrl({ org, email: session.user.email, returnUrl: new URL('/dashboard', getBaseUrl()).toString() })
+    trackEvent('subscribe_opened', { user_id: session.userId, org_id: org.orgId })
     throw redirect(url)
   })
 
@@ -270,6 +274,10 @@ export { GhosthandTask } from './task.ts'
 
 export default {
   fetch(request: Request): Promise<Response> {
-    return routeHubRequest(request) ?? app.handle(request)
+    const { pathname } = new URL(request.url)
+    if (!isHubPath(pathname)) return app.handle(request)
+    // Outside Spiceflow: the span records an escaping error for Strada.
+    const route = pathname.startsWith('/macs/') ? '/macs/:mac/*' : pathname
+    return startSpan({ name: `${request.method} ${route}` }, () => routeHubRequest(request))
   },
 } satisfies ExportedHandler<Env>

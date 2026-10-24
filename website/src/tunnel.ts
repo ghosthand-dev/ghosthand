@@ -37,6 +37,7 @@ import {
   type JsonRpcMessage,
   type MacReply,
 } from './lib/mcp-routing.ts'
+import { reportErrors } from './telemetry.ts'
 
 /** Daemon → DO. */
 type UpstreamMessage =
@@ -76,21 +77,25 @@ export function getHub(orgId: string) {
   return env.GHOSTHAND_HUB.get(env.GHOSTHAND_HUB.idFromName(orgId))
 }
 
-/** Handles /mcp, /macs, /tunnel/upstream and old /tunnel/* URLs; null for every other path. */
-export function routeHubRequest(request: Request): Promise<Response> | null {
+/** /mcp, /macs, /tunnel/upstream and old /tunnel/* URLs: routeHubRequest answers them, not Spiceflow. */
+export function isHubPath(pathname: string): boolean {
+  return pathname === '/mcp' || pathname === '/macs' || pathname.startsWith('/macs/') || pathname.startsWith('/tunnel/')
+}
+
+/** Answers a path that isHubPath accepts. */
+export async function routeHubRequest(request: Request): Promise<Response> {
   const { pathname } = new URL(request.url)
   if (pathname === '/mcp') return handleMcpRequest(request)
-  if (pathname === '/macs' || pathname.startsWith('/macs/')) return handleApiRequest(request)
   if (pathname === UPSTREAM_PATH) return connectUpstream(request)
   if (pathname.startsWith('/tunnel/')) {
-    return Promise.resolve(problem({
+    return problem({
       status: 410,
       code: 'gone',
       title: 'Tunnel URLs were removed',
       detail: 'Update ghosthand (`npx ghosthand@latest setup`). Agents now connect to the remote MCP at https://ghosthand.dev/mcp.',
-    }))
+    })
   }
-  return null
+  return handleApiRequest(request)
 }
 
 async function handleMcpRequest(request: Request): Promise<Response> {
@@ -234,8 +239,10 @@ export class GhosthandHub extends DurableObject<Env> {
 
   /** One alarm at the next session deadline, not a keepalive or periodic poll. */
   async alarm(): Promise<void> {
-    await this.refreshExpiredSessions()
-    await this.scheduleExpiry()
+    await reportErrors('GhosthandHub.alarm', async () => {
+      await this.refreshExpiredSessions()
+      await this.scheduleExpiry()
+    })
   }
 
   private async refreshExpiredSessions(): Promise<void> {
@@ -388,6 +395,10 @@ export class GhosthandHub extends DurableObject<Env> {
   }
 
   async webSocketMessage(socket: WebSocket, raw: string | ArrayBuffer): Promise<void> {
+    await reportErrors('GhosthandHub.webSocketMessage', () => this.handleMessage(socket, raw))
+  }
+
+  private async handleMessage(socket: WebSocket, raw: string | ArrayBuffer): Promise<void> {
     await this.refreshExpiredSessions()
     if (socket.readyState !== WebSocket.OPEN) return
     if (typeof raw !== 'string') return

@@ -1,7 +1,7 @@
 // This entry is bundled only by security tests, never by the website build.
 import { env } from 'cloudflare:workers'
 import { getAuth } from './db.ts'
-import { GhosthandHub, getHub, routeHubRequest } from './tunnel.ts'
+import { GhosthandHub, getHub, isHubPath, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
 import { GhosthandTask, getTask } from './task.ts'
 import { uploadsApp } from './uploads.ts'
@@ -73,8 +73,7 @@ export default {
       return new Response(null, { status: 204 })
     }
     if (url.pathname.startsWith('/api/auth/')) return getAuth().handler(request)
-    const hub = routeHubRequest(request)
-    if (hub) return hub
+    if (isHubPath(url.pathname)) return routeHubRequest(request)
     if (url.pathname.startsWith('/api/cli/')) return cliApp.handle(request)
     return uploadsApp.handle(request)
   },

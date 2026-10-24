@@ -161,10 +161,10 @@ Always Show Menu OFF  ──> hidden while the Mac mouse is connected; taps stil
 - **Set it on the iPhone, once.** USB lockdown has only the AssistiveTouch on/off key (`AssistiveTouchEnabledByiTunes`), no key for this switch, so ghosthand cannot change it over USB. An agent can flip it with taps in Settings (tested on an XR, iOS 18.7).
 - **It stays off** when `acquire` and `release` turn AssistiveTouch on and off.
 
-**Map mouse button 3 to Home, once.** `key home` clicks mouse button 3, which AssistiveTouch turns into its Home action. Open **Settings > Accessibility > Touch > AssistiveTouch > Devices > (this Mac) > Customise Additional Buttons**, run `ghosthand key home` while it says "Press a button", then pick **Home** (tested on an SE2, iOS 18.6.2). Unmapped, `key home` does nothing; `key fn+h` and `key menu` (HID consumer Menu, tested on iOS 15.8) are the keyboard Home keys.
+**Home needs no setup.** `key home` sends the keyboard Home key (HID consumer Menu), which works with AssistiveTouch on or off (6 of 6 on iOS 18.6 and 26.5, SE2; also iOS 15.8). `key fn+h` does the same.
 
 ```bash
-ghosthand key home  # Home Screen via AssistiveTouch button 3
+ghosthand key home  # Home Screen
 ```
 
 ### 4. Keep awake (automatic)

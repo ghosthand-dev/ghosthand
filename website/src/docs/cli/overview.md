@@ -193,8 +193,7 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
   shortcuts work with `key`: cmd+a then backspace clears a field, alt+backspace,
   cmd+shift+left, cmd+c, cmd+z, fn+h (Home), fn+up (App Switcher), fn+c (Control
   Center), fn+n (notifications). Full list: `ghosthand key --help`.
-- Go Home with `key home` (AssistiveTouch button 3; see `key --help` for the one-time
-  mapping), not the AssistiveTouch menu.
+- Go Home with `key home`, not the AssistiveTouch menu.
 - Screen shrunk to the bottom half (iOS Reachability), sheets look stale: tap the
   empty top area (`tap 207 100`) to restore it. Check this before anything else.
 - Screen dimmed but no dialog in the screenshot: the dialog is hidden from USB capture.

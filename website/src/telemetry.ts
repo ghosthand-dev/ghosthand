@@ -50,27 +50,22 @@ export function captureException(error: unknown, options?: strada.CaptureExcepti
 /** Product events of the website. The daemon's events are in telemetry.swift. */
 export type WebsiteEvents = {
   /** A prompt started a turn of a phone task (POST /api/cli/tasks). */
-  task_started: { user_id: string; org_id: string; task_id: string }
+  task_started: { org_id: string; task_id: string }
   /** A turn ended. `outcome`: finished, aborted, failed or stopped (repeated restarts). */
   task_finished: { org_id: string; task_id: string; outcome: string; steps: number; tool_calls: number; tool_errors: number; duration_ms: number }
-  upload_created: { user_id: string; size: number }
-  api_token_created: { user_id: string }
+  upload_created: { size: number }
+  api_token_created: {}
   /** /subscribe: Checkout or the billing portal. */
-  subscribe_opened: { user_id: string; org_id: string }
+  subscribe_opened: { org_id: string }
   /** The Stripe webhook mirrored a subscription change. */
   subscription_updated: { org_id: string; status: string; cancel_at_period_end: boolean }
-  mcp_consent: { user_id: string; accepted: boolean }
-  mac_signed_out: { user_id: string }
+  mcp_consent: { accepted: boolean }
+  mac_signed_out: {}
 }
 
-/** `user_id` also goes into baggage, so the event carries `user.id` like the daemon's events
- *  and the Better Auth plugin's, and joins `otel_users`. */
-export function trackEvent<Name extends keyof WebsiteEvents>(name: Name, properties: WebsiteEvents[Name]): void {
-  const userId: unknown = Reflect.get(properties, 'user_id')
-  if (typeof userId !== 'string') return void strada.track(name, properties)
-  const active = strada.context.active()
-  const baggage = (strada.propagation.getBaggage(active) ?? strada.propagation.createBaggage()).setEntry('user.id', { value: userId })
-  strada.context.with(strada.propagation.setBaggage(active, baggage), () => void strada.track(name, properties))
+/** `userId` is sent as `user.id`, like the daemon's events and the Better Auth plugin's, so the event joins `otel_users`. */
+export function trackEvent<Name extends keyof WebsiteEvents>(name: Name, properties: WebsiteEvents[Name], options?: strada.TrackOptions): void {
+  void strada.track(name, properties, options)
 }
 
 /** Code whose errors no span records: Durable Object alarms and WebSocket messages, and server

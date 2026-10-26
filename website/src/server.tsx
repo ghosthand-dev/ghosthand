@@ -233,7 +233,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
     if (!session) throw redirect(router.href('/login', { callbackURL: '/subscribe' }))
     const org = await getPersonalOrg(session.userId)
     const url = await subscribeRedirectUrl({ org, email: session.user.email, returnUrl: new URL('/dashboard', getBaseUrl()).toString() })
-    trackEvent('subscribe_opened', { user_id: session.userId, org_id: org.orgId })
+    trackEvent('subscribe_opened', { org_id: org.orgId }, { userId: session.userId })
     throw redirect(url)
   })
 

@@ -49,7 +49,7 @@ export async function createUpload({ request, name, userId }: { request: Request
     customMetadata: { name, userId, expiresAt: expiresAt.toISOString() },
   })
   console.log('upload', { id, userId, name, size })
-  trackEvent('upload_created', { user_id: userId, size })
+  trackEvent('upload_created', { size }, { userId })
   return { url: new URL(`/u/${id}`, getBaseUrl()).toString(), name, size, expiresAt: expiresAt.toISOString() }
 }
 

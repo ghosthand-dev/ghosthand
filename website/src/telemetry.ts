@@ -63,8 +63,14 @@ export type WebsiteEvents = {
   mac_signed_out: { user_id: string }
 }
 
+/** `user_id` also goes into baggage, so the event carries `user.id` like the daemon's events
+ *  and the Better Auth plugin's, and joins `otel_users`. */
 export function trackEvent<Name extends keyof WebsiteEvents>(name: Name, properties: WebsiteEvents[Name]): void {
-  void strada.track(name, properties)
+  const userId: unknown = Reflect.get(properties, 'user_id')
+  if (typeof userId !== 'string') return void strada.track(name, properties)
+  const active = strada.context.active()
+  const baggage = (strada.propagation.getBaggage(active) ?? strada.propagation.createBaggage()).setEntry('user.id', { value: userId })
+  strada.context.with(strada.propagation.setBaggage(active, baggage), () => void strada.track(name, properties))
 }
 
 /** Code whose errors no span records: Durable Object alarms and WebSocket messages, and server

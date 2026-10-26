@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.12.0
+
+1. **Phone tasks see the screen.** The `task` agent now runs on Claude Haiku and gets a screenshot of the settled screen after every action, so it can use icons and images that OCR cannot read. New task tools: `tapText` (tap a text on screen), `unlock` (with a passcode you give in the prompt; it never guesses one) and `webfetch` (reads the ghosthand.dev docs when it is stuck).
+
+2. **Control plane chat: a new prompt replaces the running turn.** Press Enter while the agent works: the old turn stops at once and the new prompt runs on the same lease and task. The chat also works on a locked iPhone; the agent asks you for the passcode.
+
+3. **Screenshots after an action return as soon as the screen reacted.** `--screenshot` and `--screentext` no longer wait a fixed time: the daemon compares the screen with the one before the input and returns once it changed and stood still (up to 1 s for slow reactions).
+
+4. **`key home` works without setup.** It now sends the keyboard Home key, with AssistiveTouch on or off. The manual AssistiveTouch button mapping is no longer needed.
+
+5. **Faster, more consistent default swipes**: 80...180 ms (was 60...400 ms).
+
+6. **Taps land on the right spot when the iPhone lies on its side.** iOS turns mouse input to the last orientation the iPhone was held in, so taps and back swipes went to the wrong place. The daemon now measures this once per lease and turns its input to match.
+
+7. **Faster input.** The daemon runs as an interactive process, so macOS no longer delays its timers: a tap took up to 1.2 s, now about 400 ms. Keys right after a tap wait 300 ms so they never act before the tap.
+
+8. **`--background` for `setup` and `dashboard`**: open the window behind your windows without taking focus, for agents that check it with accessibility tools.
+
+9. **Steadier control plane.** Rows stay one line and the cards keep their rows with or without a lease, so values never move the layout. The screen keeps each iPhone's aspect ratio across launches.
+
+10. **The tunnel reconnects after sleep and network changes**, and leasing an iPhone on another Mac goes to that Mac directly.
+
+11. **Error reports and usage counts.** The daemon sends unexpected errors, crash reports and hourly command counts (never screen text, typed text or prompts). Turn it off with `touch ~/.ghosthand/telemetry-off`. See https://ghosthand.dev/docs/privacy.
+
 ## 0.11.0
 
 1. **New `ghosthand task` command: do a task in plain words.** A fast agent on ghosthand.dev reads the screen with OCR and taps, swipes, scrolls and types until the task is done, then answers. Progress goes to stderr, the answer to stdout, then the task id:

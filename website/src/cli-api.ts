@@ -146,7 +146,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       const { name } = await request.json()
       // Server-side create: no session cookie, the owner is passed as userId.
       const created = await getAuth().api.createApiKey({ body: { name, userId: session.userId } })
-      trackEvent('api_token_created', { user_id: session.userId })
+      trackEvent('api_token_created', {}, { userId: session.userId })
       return { id: created.id, name, token: created.key }
     },
   })
@@ -186,7 +186,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       })
       if (message!.role !== 'user') throw json({ message: 'the last message must be a user message' }, { status: 400 })
       const stream = await getTask({ orgId, taskId: body.id }).send({ orgId, taskId: body.id, lease: body.lease, phone: body.phone, message: message! })
-      trackEvent('task_started', { user_id: userId, org_id: orgId, task_id: body.id })
+      trackEvent('task_started', { org_id: orgId, task_id: body.id }, { userId })
       return new Response(stream, { headers: UI_MESSAGE_STREAM_HEADERS })
     },
   })

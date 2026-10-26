@@ -48,7 +48,7 @@ export async function consentMcp(formData: FormData) {
       request,
       asResponse: false,
     })
-    trackEvent('mcp_consent', { user_id: session.userId, accepted: accept === 'true' })
+    trackEvent('mcp_consent', { accepted: accept === 'true' }, { userId: session.userId })
     throw redirect(url)
   })
 }
@@ -66,7 +66,7 @@ export async function signOutMac(formData: FormData) {
     // Retry the hub cleanup even if an earlier attempt already deleted the row.
     const org = await getPersonalOrg(session.userId)
     await getHub(org.orgId).revoke(sessionId)
-    if (target) trackEvent('mac_signed_out', { user_id: session.userId })
+    if (target) trackEvent('mac_signed_out', {}, { userId: session.userId })
     throw redirect('/dashboard')
   })
 }

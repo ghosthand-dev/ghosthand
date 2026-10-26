@@ -255,23 +255,18 @@ The MCP tools are `triple-tap`, `hold` (`durationMs`) and `hold-drag` (`holdMs`,
 
 ## Control plane: watch your agents
 
-**Many agents, many iPhones?** `ghosthand dashboard` opens a window that shows what each one is doing:
+**Many agents, many iPhones?** `ghosthand dashboard` opens a window that shows what each one is doing, on every Mac of your account:
 
-```diagram
-┌ iPhones on USB ──────┐┌ Morse’s iPhone   iPhone XR · iOS 18.7                     ● In use ┐
-│ ● Morse’s iPhone   1 ││ ┌──────────┐   Agent         ses_f089c49bfffe                      │
-│   reply to Anna      ││ │  live    │   Task          reply to Anna in Messages             │
-│ ● Test iPhone        ││ │  screen  │   Last command  tap · 4s ago                          │
-│ ● iPhone 15          ││ │ (30 fps) │   Waiting       ses_f08a12c3 · install Reddit         │
-│ + Set Up iPhone…     ││ └──────────┘   Connection · Device ids                             │
-└──────────────────────┘└────────────────────────────────────────────────────────────────────┘
-```
+![ghosthand control plane: iPhones on two Macs in the sidebar, the live screen of the selected iPhone, the agent that holds it and its task, and the agent chat](https://ghosthand.dev/assets/control-plane-fleet.jpg)
 
 - **Sidebar:** each iPhone with a status dot: blue in use, green free, orange locked, yellow connecting, red needs setup. A badge counts agents waiting for it.
 - **Lease:** agent label, task, lease age, last command, idle timeout, and agents running `ghosthand wait`.
 - **Screen:** small, live at up to 30 fps while the window is on screen (no frames when it is hidden or covered). It needs no lease and does not reset the agent's idle timer.
 - **Connection and ids:** USB, Bluetooth, pointer mode, AssistiveTouch, and the device id to copy for `acquire -d`.
 - **Take Control:** hover the screen and click it. Then a click on the screen taps the iPhone there, a drag swipes with the same start, end and duration, and the Mac keyboard types into it, shortcuts like ⌘A included. ⌘V types the Mac clipboard as text. Esc or **Release Control** under the screen stops. No lease: it works also while an agent holds the iPhone, and your input goes between its commands. In Bluetooth mode a tap or swipe turns AssistiveTouch on; Release Control turns it off again if no lease holds the iPhone (after a crash of the app: 60 s after your last input). ⌘Space and ⌘Tab stay on the Mac unless Ghosthand is allowed in System Settings > Privacy & Security > Accessibility.
+- **Agent chat:** type a task in the right column and an agent on ghosthand.dev does it on the selected iPhone (the same agent as `ghosthand task`). Each prompt takes a lease and releases it when the agent is done; a new prompt stops the running one.
+
+![Agent chat in the control plane: each tool call is one line, the agent's answer shows when it is done](https://ghosthand.dev/assets/control-plane-chat.jpg)
 
 `dashboard` and `setup` share one process; running either again brings its window to the front. Both read `GET /v1/phones` (see [HTTP API](#http-api)).
 

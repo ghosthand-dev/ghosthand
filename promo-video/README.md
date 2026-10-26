@@ -72,6 +72,16 @@ Scene starts are constants at the top of `video.ts`; every other time is relativ
 
 The iPhone SE mockup (CSS, 16:9 screen, home button) plays `demo-video/public/*/phone.mp4` (listed in `CLIPS` in `src/shared.ts`). The render script extracts them once to `out/clips/<name>/00001.jpg...` (delete the folder to extract again). `seek(t)` swaps the `<img>` frame and waits for it to decode. Tap ripples and the caption under the phone come from the clip's `timeline.json`.
 
+## Control plane screenshots
+
+`scripts/control-plane-shots.ts` renders the dashboard mock scenes (`fleet`, `chat`) as launch screenshots: the window over the wallpaper in `assets/wallpaper-sky.jpg`, with the blur behind the window, rounded corners and a shadow.
+
+```bash
+pnpm tsx scripts/control-plane-shots.ts --ghosthand ../.build/debug/ghosthand
+```
+
+It writes `out/control-plane-<scene>.png` (for X) and `website/public/assets/control-plane-<scene>.jpg` (README and website). `--mock --snapshot` leaves the window backdrop transparent, because an offscreen render cannot draw the blur behind a window; the script draws it with CSS `backdrop-filter`.
+
 ## Rules
 
 - **Pure function of time.** No CSS transitions, no `requestAnimationFrame`, no `Math.random()`. Use `random(seed)` for scatter and particles. Shared math and DOM helpers live in `src/shared.ts`.

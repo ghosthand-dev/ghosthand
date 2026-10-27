@@ -29,3 +29,10 @@
 - Releases ghosthand@0.3.0-0.12.0 copied to the new repo (notes only, new dates).
 - Other Macs: none has a ghosthand clone (checked mintmacbook Oct 27).
 - Open: daemon LICENSE draft, free/Pro billing code done and pushed (Oct 27), not deployed or migrated in prod. Needs: `GITHUB_TOKEN` (fine-grained, ghosthand-daemon admin write) in Sigillo, Stripe portal quantity changes, prod migration, deploy, npm publish. Phone tasks are Pro only.
+
+## Tetherport (iPhone mobile proxy product, planned Oct 27 2026)
+
+- Plan: `/Users/morse/Documents/GitHub/tetherport/docs/plan.md` (local only, no remote). Thread 1564639728744140920.
+- One proxy port per USB iPhone (Personal Hotspot), one-time price, menu bar app + CLI via `.pkg`. Not App Store for v1 (sandbox blocks usbmuxd and PATH).
+- Riskiest open test: two tethered iPhones at once, each with its own carrier IP. ghosthand capture flips iPhone USB mode, which may drop proxy connections.
+- `GITHUB_TOKEN` (fine-grained "ghosthand.dev source access", ghosthand-dev/ghosthand-daemon, Administration write) in Sigillo dev, preview, prod. **Expires 2027-10-28**: renew before then. Stripe: own portal config `bpc_1UVAhkA0ZSKMzQVuHC3ALSTe` (metadata.app=ghosthand).

@@ -1,4 +1,4 @@
-// API for the ghosthand daemon (Sources/ghosthand/account.swift). Our own small
+// API for the ghosthand daemon (daemon/Sources/ghosthand/account.swift). Our own small
 // contract over better-auth, so a better-auth upgrade cannot break installed daemons.
 //
 //   daemon ── POST /api/cli/login ────────▶ device code + verification URL

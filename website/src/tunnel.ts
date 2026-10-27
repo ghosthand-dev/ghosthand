@@ -10,7 +10,7 @@
 //                                                                             ▼
 //                                     routeMcpCall (lib/mcp-routing.ts): lease prefix, `mac`, `list` fan-out
 //
-// The API path is the daemon's own API (Sources/ghosthand/openapi.yaml) with the Mac in the
+// The API path is the daemon's own API (daemon/Sources/ghosthand/openapi.yaml) with the Mac in the
 // URL, so lease ids stay `42` there; only MCP, which has no URL per Mac, prefixes them.
 //
 // The daemon authenticates with its better-auth session token; the Worker checks it and

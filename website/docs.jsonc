@@ -26,13 +26,15 @@
       { "label": "Download", "href": "/download" },
       { "label": "Pricing", "href": "/docs/pricing" },
       { "label": "Log in", "href": "/login" },
-      { "label": "Dashboard", "href": "/dashboard" }
+      { "label": "Dashboard", "href": "/dashboard" },
+      { "type": "github", "label": "GitHub", "href": "https://github.com/ghosthand-dev/ghosthand" }
     ],
     "primary": { "type": "button", "label": "Start free", "href": "/signup" }
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/__morse"
+      "x": "https://x.com/__morse",
+      "github": "https://github.com/ghosthand-dev/ghosthand"
     },
     "links": [
       {

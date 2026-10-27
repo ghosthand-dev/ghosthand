@@ -418,8 +418,9 @@ each deploy, the Stripe change, and the npm publish.
 **Build.**
 - [ ] `pnpm db:migrate:prod`, `pnpm run deploy` (preview), check, `pnpm run deploy:prod`.
       The website must ship before the daemon: old daemons ignore the new account fields.
-- [ ] Stripe: `ghosthand_pro_monthly` stays $99, now per Mac (quantity); portal allows
-      quantity changes; product text mentions source access.
+- [x] Stripe: `ghosthand_pro_monthly` is already per unit ($99 x quantity). Own portal
+      configuration `bpc_1UVAhkA0ZSKMzQVuHC3ALSTe` (metadata.app=ghosthand): quantity 1-50,
+      cancel at period end; the account default stays Playwriter's. `portalUrl` uses it.
 - [ ] Bump `npm/package.json` and `daemon.swift`, publish with `cd npm && pnpm publish --no-git-checks`.
 
 **Verify.**

@@ -90,8 +90,18 @@ export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org
   return checkout.url
 }
 
+/**
+ * The portal opens our own configuration (metadata.app = ghosthand): the account's default
+ * belongs to Playwriter too. Ours lets customers change the number of paid Macs (1-50) of the
+ * Pro price, cancel at period end, and update cards and invoices. Made once per Stripe account
+ * with the API; see docs/plans/pricing-and-repo-split.md (Task 8).
+ */
 export async function portalUrl({ accountId, customerId, returnUrl }: { accountId: string; customerId: string; returnUrl: string }): Promise<string> {
-  const portal = await stripeFor(accountId).billingPortal.sessions.create({ customer: customerId, return_url: returnUrl })
+  const stripe = stripeFor(accountId)
+  const configurations = await stripe.billingPortal.configurations.list({ active: true, limit: 100 })
+  const configuration = configurations.data.find((c) => c.metadata?.app === STRIPE_PRODUCT_APP)
+  if (!configuration) throw new Error(`no active billing portal configuration with metadata.app=${STRIPE_PRODUCT_APP} on Stripe account ${accountId}`)
+  const portal = await stripe.billingPortal.sessions.create({ customer: customerId, return_url: returnUrl, configuration: configuration.id })
   return portal.url
 }
 

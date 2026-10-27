@@ -124,7 +124,7 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
     // Stripe moved the period to the item in API 2025-03-31.
     currentPeriodEnd: item.current_period_end ? new Date(item.current_period_end * 1000) : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
-    quantity: item.quantity ?? 1,
+    paidMacs: item.quantity ?? 1,
     updatedAt: new Date(),
   }
   await db.insert(schema.subscription)

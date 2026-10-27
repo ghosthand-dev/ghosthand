@@ -27,10 +27,10 @@ async function check(token: string, phone: string, mac: string) {
   return `${phone} on ${mac}: ${body.plan} ${body.allowed ? 'allowed' : `refused | ${body.message}`}`
 }
 
-async function subscribe(orgId: string, quantity: number) {
+async function subscribe(orgId: string, paidMacs: number) {
   await runtime.sql(
-    `INSERT INTO subscription (subscription_id, org_id, stripe_account_id, stripe_customer_id, price_id, product_id, status, quantity, created_at, updated_at)
-     VALUES ($1, $2, 'acct_test', 'cus_test', 'price_test', 'prod_test', 'active', ${quantity}, now(), now())`,
+    `INSERT INTO subscription (subscription_id, org_id, stripe_account_id, stripe_customer_id, price_id, product_id, status, paid_macs, created_at, updated_at)
+     VALUES ($1, $2, 'acct_test', 'cus_test', 'price_test', 'prod_test', 'active', ${paidMacs}, now(), now())`,
     [`sub_${crypto.randomUUID()}`, orgId],
   )
 }

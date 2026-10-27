@@ -3,7 +3,7 @@ import { entitlementFor, leaseDecision, type BoundDevice } from './billing.ts'
 
 const now = new Date('2026-10-27T10:00:00Z')
 const periodEnd = new Date('2026-11-08T00:00:00Z')
-const sub = (status: string, { quantity = 1, cancelAtPeriodEnd = false } = {}) => ({ status, cancelAtPeriodEnd, currentPeriodEnd: periodEnd, quantity })
+const sub = (status: string, { paidMacs = 1, cancelAtPeriodEnd = false } = {}) => ({ status, cancelAtPeriodEnd, currentPeriodEnd: periodEnd, paidMacs })
 
 test('entitlement: free without a live subscription, Pro counts paid Macs', () => {
   const show = (subscriptions: ReturnType<typeof sub>[]) => {
@@ -13,7 +13,7 @@ test('entitlement: free without a live subscription, Pro counts paid Macs', () =
   expect([
     show([]),
     show([sub('canceled'), sub('incomplete')]),
-    show([sub('active', { quantity: 3 })]),
+    show([sub('active', { paidMacs: 3 })]),
     show([sub('active', { cancelAtPeriodEnd: true })]),
     show([sub('past_due')]),
   ].join('\n')).toMatchInlineSnapshot(`

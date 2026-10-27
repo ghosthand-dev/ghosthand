@@ -76,7 +76,7 @@ function Section({ title, description, children }: { title: string; description:
 /** A signed-in Mac, with its MCP slug and hub connection once it connected. */
 export type DashboardMac = MacSession & { slug: string | null; online: boolean }
 
-type Subscription = { status: string; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean; quantity: number }
+type Subscription = { status: string; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean; paidMacs: number }
 
 /** A device bound by lease-check: the free iPhone or a paid Mac slot. */
 export type DashboardDevice = { orgDeviceId: string; kind: 'phone' | 'mac'; name: string; slot: number; boundAt: Date }

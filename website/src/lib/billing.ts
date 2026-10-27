@@ -49,7 +49,7 @@ export type Entitlement = {
   validUntil: Date
 }
 
-type SubscriptionRow = { status: string; cancelAtPeriodEnd: boolean; currentPeriodEnd: Date | null; quantity: number }
+type SubscriptionRow = { status: string; cancelAtPeriodEnd: boolean; currentPeriodEnd: Date | null; paidMacs: number }
 
 export function entitlementFor({ subscriptions, now }: { subscriptions: SubscriptionRow[]; now: Date }): Entitlement {
   const pro = subscriptions.filter((s) => isProStatus(s.status))
@@ -65,7 +65,7 @@ export function entitlementFor({ subscriptions, now }: { subscriptions: Subscrip
   const periodEnd = first.currentPeriodEnd ?? now
   return {
     plan: 'pro',
-    paidMacs: pro.reduce((sum, s) => sum + s.quantity, 0),
+    paidMacs: pro.reduce((sum, s) => sum + s.paidMacs, 0),
     sourceAccess: true,
     notice,
     validUntil: new Date(Math.max(periodEnd.getTime(), now.getTime()) + PRO_GRACE_DAYS * DAY_MS),

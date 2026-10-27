@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "9",
   "dialect": "postgres",
-  "id": "cd621280-bf63-4357-a819-16ece1462b06",
+  "id": "3ea02fe0-8a7d-438b-847f-6c741eb88db1",
   "prevIds": [
     "656f5c9c-c738-49f1-b9c9-90291096b654"
   ],
@@ -69,12 +69,12 @@
         "column",
         "public",
         "subscription",
-        "quantity"
+        "paid_macs"
       ],
       "writes": [
-        "s|col|public.subscription.quantity",
-        "n|col|public.subscription.quantity",
-        "e|col|public.subscription.quantity"
+        "s|col|public.subscription.paid_macs",
+        "n|col|public.subscription.paid_macs",
+        "e|col|public.subscription.paid_macs"
       ],
       "reads": [
         "n|tbl|public.subscription",
@@ -404,7 +404,7 @@
       "row": {
         "schema": "public",
         "table": "subscription",
-        "name": "quantity",
+        "name": "paid_macs",
         "type": "integer",
         "typeSchema": null,
         "notNull": true,

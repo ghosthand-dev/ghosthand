@@ -322,7 +322,9 @@ billing (server side), tasks, publishing, docs generation, demo videos.
 - [x] With submodule: `build.ts --dev` printed "ghosthand 0.12.0 dev build ready".
 - [x] `pnpm generate-docs` leaves no diff except the new `website/openapi.yaml`;
       `pnpm build` and `tsc` pass.
-- [ ] Fresh clone without submodule builds the website (see Progress).
+- [x] Fresh clone without submodule: `pnpm install`, `tsc` and `pnpm build` pass.
+- [x] Fresh `--recurse-submodules` clone starts detached; after `git -C daemon switch main`,
+      `git submodule update` keeps `main` (the AGENTS.md rule covers it).
 
 **Progress.**
 

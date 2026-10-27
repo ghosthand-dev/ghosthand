@@ -161,7 +161,7 @@ tokens, so they are an open question.
 | `Assets/settings-icon.png`, `Assets/ghosthand-icon.icns` | both | the daemon embeds them; public keeps all of `Assets/` |
 | `website/`, `db/`, `npm/`, `docs/`, `promo-*`, `demo-video/`, `README.md`, `CHANGELOG.md` | public | `npm/scripts/build.ts` stays public, it builds from `daemon/` |
 | `Sources/ghosthand/openapi.yaml` | daemon, copied | `generate-docs` writes `website/openapi.yaml` for docs and types |
-| `MEMORY.md`, `screenshot.png` | neither yet | uncommitted; `MEMORY.md` names real users, keep it out of the public repo |
+| `MEMORY.md` | public | holds no user names; `screenshot.png` (a CLI output) is gitignored |
 | `AGENTS.md` | split | daemon sections move to `daemon/AGENTS.md` |
 
 ### History with git filter-repo
@@ -279,14 +279,16 @@ billing (server side), tasks, publishing, docs generation, demo videos.
 
 **Build.**
 - [x] Freeze: no active sessions (`kimaki session list --active` empty). `MEMORY.md`,
-      `screenshot.png` and `README.md` edits stayed uncommitted in the working tree.
+      `screenshot.png` and `README.md` edits stayed uncommitted, then were committed per
+      session; `screenshot.png` is gitignored.
 - [x] Rerun on fresh clones of `2d2e3c0`: daemon 216 commits, public 228 commits.
       The base skill `skills/ghosthand/` stays public with its history; only private skills
       go to the daemon.
 - [x] `ghosthand-dev/ghosthand-daemon` (private) pushed, `072870d` adds `LICENSE`,
       `AGENTS.md`, `.gitignore` and `migration/{daemon,public}-commit-map`.
 - [x] `ghosthand-dev/ghosthand` (private) pushed: `main`, `promo-video` and the
-      `ghosthand@*` tags. GitHub releases were not copied.
+      `ghosthand@*` tags. Releases 0.3.0 to 0.12.0 recreated with the same notes (no
+      assets existed); their dates are the copy date.
 
 **Verify.**
 - [x] Both repos print `private` (`gh repo create --private`).
@@ -315,8 +317,8 @@ billing (server side), tasks, publishing, docs generation, demo videos.
       rules (always on `main`, never detached; daemon first, then pointer).
 - [x] Comment paths `Sources/...` in website and docs now `daemon/Sources/...`; npm and
       dashboard repo links point to `ghosthand-dev/ghosthand`.
-- [ ] README links to `Sources/...`: left for the session that owns the uncommitted README
-      edits.
+- [x] README links to `Sources/...` replaced (daemon code is not linked from public docs);
+      Swift comments in the daemon point at `../website/`, `../docs/`, `../npm/`.
 
 **Verify.**
 - [x] With submodule: `build.ts --dev` printed "ghosthand 0.12.0 dev build ready".

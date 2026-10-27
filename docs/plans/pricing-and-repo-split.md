@@ -433,8 +433,8 @@ each deploy, the Stripe change, and the npm publish.
 **Depends on.** Task 8, and the user's go.
 
 **Build.**
-- [ ] Final `gitleaks git` on `ghosthand-dev/ghosthand`, `LICENSE` (MIT) at the root.
-- [ ] Make `ghosthand-dev/ghosthand` public; archive `remorses/ghosthand`; update every link
+- [x] Final `gitleaks git` on `ghosthand-dev/ghosthand`, `LICENSE` (MIT) at the root. Audit Oct 27: safe, no blockers.
+- [x] Made `ghosthand-dev/ghosthand` public on Oct 27 (before the release, user asked). Still to do: archive `remorses/ghosthand`; update every link
       to `github.com/remorses/ghosthand` (dashboard footer, npm `repository`, README).
 
 **Verify.**

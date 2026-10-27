@@ -23,7 +23,7 @@ The help output is the full agent manual: leases, coordinates, the screenshot fe
 
 If `ghosthand` is not found, use `npx -y ghosthand@latest` instead.
 
-Task skills in the same repo: `ghosthand-accounts` (Google, Apple, App Store and social account signup) and `tiktok-warmup` (watch and like TikTok videos for a niche).
+Pro subscribers also get the task skills `ghosthand-accounts` (Google, Apple, App Store and social account signup) and `tiktok-warmup` (watch and like TikTok videos for a niche) in the private daemon repo: https://ghosthand.dev/docs/pricing
 
 ## Phone tips
 

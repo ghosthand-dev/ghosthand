@@ -10,7 +10,7 @@
 //                                                      └──> release/Ghosthand-<v>.pkg    (download page)
 //                          --upload: release/* ──wrangler r2──> ghosthand-releases, latest.json last
 //
-// --dev: a debug build for this Mac only, at .build/Ghosthand.app (no pkg). Run its
+// --dev: a debug build for this Mac only, at daemon/.build/Ghosthand.app (no pkg). Run its
 // Contents/MacOS/ghosthand; its first daemon command copies it to ~/Applications.
 //
 // Signing uses the Developer ID certificates from the environment (Sigillo project macos-release:
@@ -24,10 +24,15 @@ import url from 'node:url'
 import dedent from 'string-dedent'
 
 const npmDir = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..')
-// Package.swift passes linker paths relative to the repo root, so swift runs there.
 const repoRoot = path.resolve(npmDir, '..')
+// The Swift package is the private submodule ghosthand-dev/ghosthand-daemon. Package.swift passes
+// linker paths relative to its root, so swift runs there.
+const daemonRoot = path.join(repoRoot, 'daemon')
+if (!fs.existsSync(path.join(daemonRoot, 'Package.swift'))) {
+  throw new Error('daemon/ is empty. Building ghosthand needs read access to ghosthand-dev/ghosthand-daemon: git submodule update --init && git -C daemon switch main')
+}
 const dev = process.argv.includes('--dev')
-const app = dev ? path.join(repoRoot, '.build', 'Ghosthand.app') : path.join(npmDir, 'dist', 'Ghosthand.app')
+const app = dev ? path.join(daemonRoot, '.build', 'Ghosthand.app') : path.join(npmDir, 'dist', 'Ghosthand.app')
 const binary = path.join(app, 'Contents', 'MacOS', 'ghosthand')
 const releaseDir = path.join(npmDir, 'release')
 const archs = dev ? [os.arch() === 'arm64' ? 'arm64' : 'x86_64'] : ['arm64', 'x86_64']
@@ -42,7 +47,7 @@ if (dev && release) throw new Error('--dev and --release exclude each other')
 const upload = process.argv.includes('--upload')
 
 function run(cmd: string, args: string[], options: { cwd?: string } = {}): string {
-  return execFileSync(cmd, args, { cwd: options.cwd ?? repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim()
+  return execFileSync(cmd, args, { cwd: options.cwd ?? daemonRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim()
 }
 
 function log(message: string) {
@@ -66,7 +71,7 @@ const slices = archs.map((arch) => {
   // Dev: no --arch, so it shares the build cache with a plain `swift build` (else each switch relinks).
   const args = ['build', '-c', configuration, ...(dev ? [] : ['--arch', arch])]
   log(`building ${arch} (swift ${args.join(' ')})`)
-  execFileSync('swift', args, { cwd: repoRoot, stdio: 'inherit' })
+  execFileSync('swift', args, { cwd: daemonRoot, stdio: 'inherit' })
   const binPath = run('swift', [...args, '--show-bin-path'])
   const slice = path.join(tmp, `ghosthand-${arch}`)
   fs.copyFileSync(path.join(binPath, 'ghosthand'), slice)
@@ -94,14 +99,14 @@ log(`archs: ${found.join(' ')}`)
 // The CLI prints its own version (ghosthandVersion in daemon.swift); npm must publish the same one.
 const binVersion = run(binary, ['--version'])
 if (binVersion !== version) {
-  throw new Error(`binary version ${binVersion} differs from package.json version ${version}. Update ghosthandVersion in Sources/ghosthand/daemon.swift`)
+  throw new Error(`binary version ${binVersion} differs from package.json version ${version}. Update ghosthandVersion in daemon/Sources/ghosthand/daemon.swift`)
 }
 
 // ── 2. bundle ───────────────────────────────────────────────────────
 
 // Same keys as GhosthandApplication.install gives a dev build, plus the release markers.
 const infoPath = path.join(app, 'Contents', 'Info.plist')
-const info = JSON.parse(run('plutil', ['-convert', 'json', '-o', '-', path.join(repoRoot, 'Sources/ghosthand/Info.plist')])) as Record<string, unknown>
+const info = JSON.parse(run('plutil', ['-convert', 'json', '-o', '-', path.join(daemonRoot, 'Sources/ghosthand/Info.plist')])) as Record<string, unknown>
 Object.assign(info, {
   CFBundleExecutable: 'ghosthand',
   CFBundleName: 'Ghosthand',
@@ -120,7 +125,7 @@ const infoJson = path.join(tmp, 'Info.json')
 fs.writeFileSync(infoJson, JSON.stringify(info))
 run('plutil', ['-convert', 'xml1', '-o', infoPath, infoJson])
 fs.mkdirSync(path.join(app, 'Contents', 'Resources'), { recursive: true })
-fs.copyFileSync(path.join(repoRoot, 'Assets/ghosthand-icon.icns'), path.join(app, 'Contents', 'Resources', 'ghosthand.icns'))
+fs.copyFileSync(path.join(daemonRoot, 'Assets/ghosthand-icon.icns'), path.join(app, 'Contents', 'Resources', 'ghosthand.icns'))
 log(`bundle ${app} (version ${version}, build ${buildNumber})`)
 
 // ── 3. sign ─────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
 //   errors handled inline ───────────── captureException() ──────────────────────┤   service ghosthand-website
 //   product events ──────────────────── trackEvent() ────────────────────────────┘
 //
-// The daemon sends to the same project as service `ghosthand-daemon` (Sources/ghosthand/telemetry.swift).
+// The daemon sends to the same project as service `ghosthand-daemon` (daemon/Sources/ghosthand/telemetry.swift).
 // Event properties are ids, counts, names and booleans: never prompts, typed text or tokens.
 
 import { env } from 'cloudflare:workers'

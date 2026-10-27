@@ -1,0 +1,5 @@
+[submodule "daemon"]
+	path = daemon
+	url = https://github.com/ghosthand-dev/ghosthand-daemon.git
+	branch = main
+	update = merge

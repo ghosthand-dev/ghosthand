@@ -229,7 +229,7 @@ export function DashboardPage({
 
       <footer className='mt-auto flex gap-6 border-t border-border pt-6 text-sm text-muted-foreground'>
         <Link href='/' className='hover:text-foreground'>Docs</Link>
-        <a href='https://github.com/remorses/ghosthand' className='hover:text-foreground'>GitHub</a>
+        <a href='https://github.com/ghosthand-dev/ghosthand' className='hover:text-foreground'>GitHub</a>
         {/* A holocron page: Link's typed routes only know this app's pages. */}
         <a href='/docs/privacy' className='hover:text-foreground'>Privacy</a>
       </footer>

@@ -35,7 +35,7 @@ export type McpRoute =
 
 export const DOWNLOAD_URL = 'https://ghosthand.dev/download'
 
-// Same lists as MCPServer in Sources/ghosthand/mcp.swift.
+// Same lists as MCPServer in daemon/Sources/ghosthand/mcp.swift.
 const MODERN_VERSIONS = ['2026-07-28']
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26']
 const MODERN_VERSION_KEY = 'io.modelcontextprotocol/protocolVersion'

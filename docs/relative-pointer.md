@@ -13,7 +13,7 @@ HID report (dx, dy) ──▶ IOHIDPointerScrollFilter ──▶ AssistiveTouch 
                            move = (dx, dy) · table(v) / v        points, clamped at edges
 ```
 
-Code: `Sources/ghosthand/relative-pointer.swift`. Tests: `Tests/ghosthandTests/relative-pointer-tests.swift`.
+Code: `daemon/Sources/ghosthand/relative-pointer.swift`. Tests: `daemon/Tests/ghosthandTests/relative-pointer-tests.swift`.
 
 ## The table
 

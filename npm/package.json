@@ -23,11 +23,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/remorses/ghosthand.git",
+    "url": "git+https://github.com/ghosthand-dev/ghosthand.git",
     "directory": "npm"
   },
-  "homepage": "https://github.com/remorses/ghosthand",
-  "bugs": "https://github.com/remorses/ghosthand/issues",
+  "homepage": "https://github.com/ghosthand-dev/ghosthand",
+  "bugs": "https://github.com/ghosthand-dev/ghosthand/issues",
   "keywords": [
     "iphone",
     "ios",

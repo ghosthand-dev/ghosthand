@@ -5,9 +5,11 @@
 //                                      ├─> docs.jsonc               (between the cli-pages markers)
 //                                      └─> mcp-tools.json           (MCP tab, read by holocron; the hub's
 //                                                                    offline initialize and tools/list)
-//   Sources/ghosthand/openapi.yaml ──> src/generated/daemon-api.ts  (types of the task tools)
+//   daemon/Sources/ghosthand/openapi.yaml ──> openapi.yaml            (API tab, read by holocron)
+//                                         └─> src/generated/daemon-api.ts  (types of the task tools)
 //
-// Run: pnpm --filter ghosthand-website generate-docs  (builds the Swift binary first)
+// Run: pnpm --filter ghosthand-website generate-docs  (builds the Swift binary first). Needs the
+// private submodule daemon/; the website builds from the committed outputs without it.
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -34,7 +36,10 @@ type Manual = {
 }
 
 const websiteDir = path.resolve(import.meta.dirname, '..')
-const rootDir = path.resolve(websiteDir, '..')
+const daemonDir = path.resolve(websiteDir, '..', 'daemon')
+if (!fs.existsSync(path.join(daemonDir, 'Package.swift'))) {
+  throw new Error('daemon/ is empty. generate-docs needs read access to ghosthand-dev/ghosthand-daemon: git submodule update --init && git -C daemon switch main')
+}
 const pagesDir = path.join(websiteDir, 'src/docs/cli')
 
 // Docs groups for commands. A command missing here lands in "Other", so a new one is never dropped.
@@ -75,7 +80,7 @@ function log(message: string) {
 
 log('building ghosthand and reading its manual')
 const jsonPath = path.join(os.tmpdir(), `ghosthand-docs-${process.pid}.json`)
-execFileSync('swift', ['run', '-q', 'ghosthand', 'docs-json', jsonPath], { cwd: rootDir, stdio: ['ignore', 'ignore', 'inherit'] })
+execFileSync('swift', ['run', '-q', 'ghosthand', 'docs-json', jsonPath], { cwd: daemonDir, stdio: ['ignore', 'ignore', 'inherit'] })
 const manual = JSON.parse(fs.readFileSync(jsonPath, 'utf8')) as Manual
 fs.rmSync(jsonPath)
 log(`${manual.commands.length} commands, ${manual.mcp.tools.length} MCP tools, version ${manual.version}`)
@@ -264,13 +269,18 @@ const mcpManual = { serverUrl: manual.mcp.serverUrl, version: manual.version, in
 fs.writeFileSync(mcpPath, JSON.stringify(mcpManual, null, 2) + '\n')
 log(`wrote mcp-tools.json (${manual.mcp.tools.length} tools)`)
 
-// ── 6. daemon API types for the task tools (src/task-agent.ts) ─────
+// ── 6. daemon API spec and types for the task tools (src/task-agent.ts) ─────
+
+const openapiPath = path.join(websiteDir, 'openapi.yaml')
+fs.copyFileSync(path.join(daemonDir, 'Sources/ghosthand/openapi.yaml'), openapiPath)
+log('wrote openapi.yaml')
+
 // openapi-typescript needs the TypeScript 5 compiler API; this package uses TypeScript 7.
 // TODO: install openapi-typescript as a devDependency once it supports TypeScript 7.
 
 const apiTypesPath = path.join(websiteDir, 'src/generated/daemon-api.ts')
 execFileSync('pnpm', [
   'dlx', '--package', 'openapi-typescript@7.13.0', '--package', 'typescript@5.9',
-  'openapi-typescript', path.join(rootDir, 'Sources/ghosthand/openapi.yaml'), '-o', apiTypesPath,
+  'openapi-typescript', openapiPath, '-o', apiTypesPath,
 ], { cwd: websiteDir, stdio: ['ignore', 'ignore', 'inherit'] })
 log('wrote src/generated/daemon-api.ts')

@@ -221,8 +221,8 @@
       {
         "tab": "API",
         "icon": "lucide:braces",
-        // Single source of truth: the spec the daemon is generated from and serves.
-        "openapi": "../Sources/ghosthand/openapi.yaml",
+        // Copy of daemon/Sources/ghosthand/openapi.yaml (the spec the daemon serves), written by generate-docs.
+        "openapi": "openapi.yaml",
         "pages": ["docs/api/overview", "..."]
       },
       {

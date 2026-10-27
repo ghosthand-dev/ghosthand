@@ -1,3 +1,27 @@
+# Daemon submodule
+
+The Swift daemon and the private skills live in `daemon/`, the private submodule
+[ghosthand-dev/ghosthand-daemon](https://github.com/ghosthand-dev/ghosthand-daemon) (Pro
+subscribers get read access). Everything else in this repo is public.
+
+```
+ghosthand-dev/ghosthand (public)   website/  db/  npm/  docs/  skills/ghosthand/ (base skill)
+└── daemon/ ──submodule──> ghosthand-dev/ghosthand-daemon (private)
+                           Package.swift  Sources/  Tests/  skills/ (private skills)  AGENTS.md
+```
+
+- **Read `daemon/AGENTS.md`** before editing anything in `daemon/`: the Swift internals (CLI help, USB services, control modes, pointer, scroll, UI testing) are documented there.
+- **Keep `daemon/` on branch `main`, never a detached HEAD.** `git -C daemon branch --show-current` must print `main` before you edit or commit there. After a clone or a detached checkout: `git submodule update --init && git -C daemon switch main && git -C daemon pull`. If commits were made on a detached HEAD, switch to `main` and `git merge <sha>` them; never leave them dangling.
+- `.gitmodules` sets `branch = main` and `update = merge`, so `git submodule update` merges the recorded commit into `main` instead of detaching. Never run `git submodule update --checkout`.
+- **Never copy** daemon code, private skill text or `daemon/AGENTS.md` content into the public repo, its issues or PRs. Public docs describe behavior, not Swift code.
+- At session start also run `git -C daemon status -s -u` and `git -C daemon diff`.
+- **Commit order:** commit and push in `daemon/` first, then commit the new pointer in the root (`git add daemon`) and push. Never commit or push a pointer to a daemon commit that is not on `origin/main`.
+- Both commits carry the `Session:` and `Discord:` trailers. The root commit says in one line what the daemon change does.
+- After `git pull` in the root, run `git submodule update` (it merges into `main`). Do not commit a pointer that moved only because of a pull together with unrelated work.
+- Critique: run it inside `daemon/` for daemon commits (`bunx critique --commit <sha> --web ...`), and in the root for the pointer.
+- **Builds without the submodule:** the website typechecks, tests, builds and deploys from committed files (`website/openapi.yaml`, `website/mcp-tools.json`, `website/src/generated/daemon-api.ts`, `skills/ghosthand/SKILL.md`). `pnpm generate-docs` and `npm/scripts/build.ts` need `daemon/`.
+- The old repo `remorses/ghosthand` is a private archive. `daemon/migration/*-commit-map` map its hashes to the new ones.
+
 # Device access
 
 - `.passcode` is stale. Never read, print, upload, or commit its contents. Use only a user-confirmed Sigillo `IPHONE_PASSCODE` if unlocking is needed; never print secrets or put them in command arguments.
@@ -7,16 +31,6 @@
 - For secret text, pipe directly to `ghosthand type -l 42 --stdin`. One final LF or CRLF is removed; other whitespace is preserved. Validate focus first, and never repeat input automatically after a verification timeout.
 - Check the iPhone with `ghosthand list` before input. A wrong passcode is not retried because failed attempts count toward lockout.
 - Read `docs/system-dialogs.md` before diagnosing untappable system alerts: App Store can show Resume during an active download; hidden capture does not prove rejected input.
-
-# CLI help is the agent manual
-
-Agents learn ghosthand from `ghosthand --help` and `ghosthand <command> --help` before they read the README. So every rule an agent needs to use a command correctly goes into the CLI help, in `Sources/ghosthand/main.swift`:
-
-- `description`: one line, what the command does. Shown in the root command list.
-- `details`: usage notes and rules, shown only by `<command> --help`: what the output means, what to do on common errors, limits found in tests (for example "Home Screen labels do not open apps").
-- `agentLoopHelp`: the rules for every command (coordinate space, `--screenshot` after actions, leave the phone unlocked). Shown by `ghosthand --help`.
-
-When you find a new limit or a rule while testing on a real iPhone, add it to the matching command's `details` first, then to the README if a human needs it too. Keep help text short and concrete: say what to do, not only what went wrong.
 
 # Two front ends: CLI and MCP
 
@@ -49,51 +63,7 @@ CLI ──daemon.sock──> daemon (laptop) ──/macs/studio/v1/..., session 
 - **A new route or capability gets both.** Add the HTTP route (`openapi.yaml` + `api.swift`), the CLI command or flag (`main.swift`), and the MCP tool or argument (`tools` in `mcp.swift`) in the same change. A tool name is the CLI command name, words joined by `-` (`file push` is the tool `file-push`, see `MCPDocs.toolName`).
 - **A new CLI flag needs its MCP argument:** add it to the tool's `properties`, and to `MCPDescription.arguments` (flag -> argument) or `MCPDescription.positionals`. Otherwise its examples are dropped from the tool description without an error.
 - **Leases in MCP carry the Mac:** print them with `MCPArgs.remote`, read them with `MCPArgs.lease`. The hub sends the Mac slug in the `ghosthand-mac` header.
-- **Check both:** `swift test` covers the MCP protocol, lease prefixes and the description conversion. For a real check, run `pnpm dev` in website/, start the daemon with `GHOSTHAND_SERVER=http://localhost:8047`, and connect `npx @modelcontextprotocol/inspector` to http://localhost:8047/mcp.
-
-# USB device services (files, photos, apps, info)
-
-`lockdown.swift` talks to iOS lockdown services through the private MobileDevice.framework: AFC (files), house_arrest (app Documents), installation_proxy (apps), springboardservices (Home Screen layout), diagnostics_relay (restart), syslog_relay. `device-management.swift` has the `Controller` methods.
-
-- **No Developer Mode features over lockdown.** Only services a trusted Mac can start (pairing only). Launching apps, GPS simulation, pasteboard and DVT need Developer Mode plus a disk image: do not add them. The one exception is the opt-in XCTest mode below, which goes through Xcode.
-- **Never shell out to pymobiledevice3** at run time. Read its source for protocols: https://github.com/doronz88/pymobiledevice3 (`services/afc.py`, `installation_proxy.py`, `springboard.py`, `diagnostics.py`).
-- **Never remove /DCIM files over AFC**: Photos keeps a broken entry (tested on iOS 18.6). Delete photos with `PhotoLibrary.delete` (ImageCaptureCore, like Image Capture.app). It needs the optional macOS removable volumes access (setup's Allow Photos); commands check it with `TCCAccessPreflight` and never trigger the dialog.
-- **AFC to /DCIM does not add a photo to Photos.** No USB path adds one without an app on the iPhone; see `docs/send-media.md` (served at https://ghosthand.dev/docs/send-media, linked from `file` help).
-
-# Control modes: Bluetooth and XCTest
-
-Input goes through a `PhoneDriver` (controller.swift). Each iPhone has one mode in state.db (an `xctest_phone` row means XCTest):
-
-```
-Controller ──▶ PhoneDriver ─┬─▶ BluetoothDriver (bluetooth-driver.swift)  default: HID mouse + keyboard, AssistiveTouch
-                            └─▶ XCTestDriver (xctest-driver.swift)        WebDriverAgent over usbmux :8100, also screenshots
-```
-
-- **Same commands in both modes.** A command a mode cannot do throws `unsupported-in-mode` from its driver. Never add a separate command namespace for a mode.
-- **Drivers only send input.** Lock-state checks, OCR, settle, waitText and coordinate conversion stay in the Controller. Positions reach drivers as 0...1 fractions of the driver's screen (`PhoneDriver.screen`: a USB capture frame in Bluetooth mode, WebDriverAgent's screenshot size and scale in XCTest mode).
-- **The control mode is keyed by UDID only** (`xctest_phone`, no FK to the capture match). Bluetooth starts only when a USB iPhone uses Bluetooth mode, or on the first Bluetooth command.
-- **XCTest mode is opt-in**: `ghosthand control -l <id> xctest`, or the setup window. Its choice shows only for iPhones with Developer Mode on (`PhoneStatus.developerMode`), or with `ghosthand setup --xctest`. WDA is built from a pinned source tag with the user's Xcode team and kept alive by `xcodebuild test-without-building`. Read `docs/xctest-mode.md` before changing it.
-- **Shared WDA source installs atomically**, under one lock across phones. HTTP reads and writes use the remaining request deadline, including fractions of a second.
-- **XCTest subprocesses have a pipe-owned supervisor.** Closing the daemon's pipe stops the whole process group, including after a crash. Shutdown cancels builds before waiting for lifecycle locks.
-
-# Relative pointer (iOS 15)
-
-Read `docs/relative-pointer.md` before changing relative pointer code: the acceleration table, the measurements, and the timing rules (150 ms after homing, 100 ms before a press).
-
-# Scroll (HID wheel)
-
-Read `docs/scroll.md` before changing `scroll`: why iOS drops the first 2 wheel reports (IOHIDScrollAccelerator), the lead-in, and the measured points per tick.
-
-# Reference sources
-
-Read these before guessing how iOS handles HID input:
-
-- [IOHIDFamily](https://github.com/apple-oss-distributions/IOHIDFamily/tree/IOHIDFamily-1787.140.2) (Apple open source): how iOS turns HID reports into events: scroll acceleration, pointer, descriptor parsing.
-- [iOS 18.2 decompiled system binaries](https://github.com/EthanArbuckle/iPhone17-1_18.2_22C152_Restore) (HID plugins under `System/Library/HIDPlugins`): check that iOS ships the same code as the open source.
-- [egarl004/mirrordeck](https://github.com/egarl004/mirrordeck): same design as ghosthand (Mac as Bluetooth Classic HID, iPhone with AssistiveTouch). Descriptors, absolute + relative reports, wheel.
-- [yoyicue/glassbox wheel notes](https://github.com/yoyicue/glassbox/blob/main/docs/reference/picokvm_ipad_wheel.md): HID wheel on iPad/iPhone over a USB gadget (PicoKVM).
-
-To find code, search one unique function name or constant (`gh search code 'IOHIDScrollAccelerator'`), not sentences.
+- **Check both:** `swift test` in `daemon/` covers the MCP protocol, lease prefixes and the description conversion. For a real check, run `pnpm dev` in website/, start the daemon with `GHOSTHAND_SERVER=http://localhost:8047`, and connect `npx @modelcontextprotocol/inspector` to http://localhost:8047/mcp.
 
 # Publishing to npm
 
@@ -106,7 +76,7 @@ npm/scripts/build.ts ──> dist/Ghosthand.app (npm bin) ── --release: Deve
 website: /download page, /download/ghosthand.pkg and /releases/:file read that bucket
 ```
 
-- Bump `version` in `npm/package.json` and `ghosthandVersion` in `Sources/ghosthand/daemon.swift` together. The build fails if they differ.
+- Bump `version` in `npm/package.json` and `ghosthandVersion` in `daemon/Sources/ghosthand/daemon.swift` together. The build fails if they differ.
 - Publish with `cd npm && pnpm publish --no-git-checks`. Do not run `pnpm build` first: `prepublishOnly` cleans `dist` and runs the full `--release --upload` build with the Sigillo project `macos-release` (Developer ID identities in the keychain, App Store Connect key for notarization), so the installer goes to R2 in the same run (~10 min with notarization).
 - **The CLI never signs or assembles a bundle on a user's Mac.** `GhosthandApplication.install` only copies a bundle built by `build.ts` (`GhosthandRelease` in Info.plist) as is, and never over a newer installed release. Every build is signed with our Developer ID (bundle id + team), so macOS permissions stay across npm, installer and dev builds. `~/.ghosthand/app-source` records which bundle was copied, so a rebuild of the same source restarts the daemon.
 - Signing reads the Developer ID `.p12` files from Sigillo `macos-release` into a temporary keychain (`signingKeychain()`). Without them the build is ad-hoc and the pkg unsigned: enough to inspect (`pkgutil --expand`), not to ship. Load the `apple-code-signing` skill for certificates, notarization and Gatekeeper checks.
@@ -118,13 +88,13 @@ website: /download page, /download/ghosthand.pkg and /releases/:file read that b
 `swift build` alone is not runnable against the daemon (a bare binary cannot install). Build the dev app, then use its executable (the global `ghosthand` wrapper on Tommy's Macs points there):
 
 ```bash
-cd npm && sigillo run -- node scripts/build.ts --dev   # .build/Ghosthand.app, Developer ID, ~20 s
-.build/Ghosthand.app/Contents/MacOS/ghosthand list     # copies it to ~/Applications, restarts the daemon
+cd npm && sigillo run -- node scripts/build.ts --dev   # daemon/.build/Ghosthand.app, Developer ID, ~20 s
+daemon/.build/Ghosthand.app/Contents/MacOS/ghosthand list   # copies it to ~/Applications, restarts the daemon
 ```
 
 # Account and billing
 
-Every lease needs a ghosthand.dev account with a trial or plan. The daemon owns it (`Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
+Every lease needs a ghosthand.dev account with a trial or plan. The daemon owns it (`daemon/Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
 
 Remote MCP uses resource-bound opaque OAuth tokens, checked against current grants and sessions. Before deleting a session, delete its refresh grants (revoked-token reuse can end other sessions' grants); then close its hub sockets. Hub session deadlines use alarms, not polling, so idle sockets still hibernate.
 
@@ -156,21 +126,6 @@ this or another Mac's daemon /v1/leases/<mac>:42/tap?screentext=true <──WS�
 - **Phone context:** each turn sends the leased iPhone (`TaskPhone`: name, model, iOS, language, region), read by `taskTarget` over USB or, for another Mac's lease, from that Mac's `info` route. It goes at the end of the system prompt, so the cached prefix stays the same.
 - **Control plane chat** (`chat-panel.swift`): one chat per iPhone; each prompt is acquire, the same `POST /v1/leases/{lease}/task` stream, release. Text shows when its part ends (no streaming text); tool calls are one monospaced line each (`taskToolLabel`, shared with the CLI progress). Check the design with `ghosthand dashboard --foreground --mock chat --snapshot out.png`.
 - **Tests:** `website/src/task.test.ts` runs the real model against a scripted Mac (`sigillo run -- pnpm test`).
-
-# Testing UI changes (dashboard and setup windows)
-
-`dashboard` and `setup` share one process through `~/.ghosthand/app.lock`. After a dev build (`build.ts --dev`), the next CLI command installs the new bundle into `~/Applications/Ghosthand.app` (with the daemon restart). The open window sees the new `GhosthandSourceBuildID` within a second and opens the new bundle with the same window, between chat turns and outside Take Control (`relaunchIfReplaced` in `setup-app.swift`). It must: a process whose bundle was replaced fails `codesign -v <pid>`, and macOS Accessibility then refuses it (`kAXErrorAPIDisabled`), so cua-driver sees no window.
-
-Drive the real window without taking the user's focus:
-
-```bash
-ghosthand dashboard --background          # opens behind the user's windows, no activation
-cua-driver get_window_state '{"pid":<pid>,"window_id":<id>,"screenshot_out_file":"/tmp/d.png"}'
-```
-
-Background accessibility actions work (`type_text`, `click` with an `element_token`). Controls have identifiers in `tree_markdown`: `chat-input`, `chat-send` (Send or Stop), `chat-new`, `chat-toggle`, `chat-suggestion`, `phone-<udid>` rows, `phone-screen` (action Take Control). Never use foreground delivery.
-
-To check a screen without the user's window, render a mock to PNG: `ghosthand dashboard --foreground --mock no-phone --snapshot out.png` (scenes in `dashboard --help`).
 
 # Errors and product analytics (Strada)
 

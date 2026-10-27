@@ -3,7 +3,7 @@
 // cannot draw the blur behind the window); headless Chrome adds the blurred wallpaper and the shadow.
 //
 //   pnpm tsx scripts/control-plane-shots.ts                       # ghosthand from PATH
-//   pnpm tsx scripts/control-plane-shots.ts --ghosthand ../.build/debug/ghosthand
+//   pnpm tsx scripts/control-plane-shots.ts --ghosthand ../.build/Ghosthand.app/Contents/MacOS/ghosthand
 //
 // Writes out/control-plane-<scene>.png and website/public/assets/control-plane-<scene>.jpg.
 

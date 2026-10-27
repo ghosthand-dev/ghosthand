@@ -28,7 +28,7 @@
       { "label": "Log in", "href": "/login" },
       { "label": "Dashboard", "href": "/dashboard" }
     ],
-    "primary": { "type": "button", "label": "Start free trial", "href": "/signup" }
+    "primary": { "type": "button", "label": "Start free", "href": "/signup" }
   },
   "footer": {
     "socials": {

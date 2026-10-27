@@ -80,7 +80,7 @@ npx ghosthand setup ──> Ghosthand app + daemon ──> sign in, allow access
 ghosthand list / screenshot / tap / type <──────────────┘ iPhone ready
 ```
 
-**Sign in once per Mac.** Every lease needs a ghosthand.dev account: **7 days free from sign-up, then $99/month**. `ghosthand setup` starts with **Sign in with Google**: it opens the browser, you approve the Mac, and the window continues by itself. Agents never sign in for you; they open setup and wait.
+**Sign in once per Mac.** Every lease needs a ghosthand.dev account: **free for one iPhone, $99/month per Mac for unlimited iPhones** ([pricing](https://ghosthand.dev/docs/pricing)). `ghosthand setup` starts with **Sign in with Google**: it opens the browser, you approve the Mac, and the window continues by itself. Agents never sign in for you; they open setup and wait.
 
 ```bash
 ghosthand account   # who is signed in, the plan, the subscribe link
@@ -642,7 +642,7 @@ ghosthand tap -l 42 --text Save    # wait until the button says Save, not Loadin
 ghosthand tap -l 42 --text "Save Video"
 ```
 
-- **Needs the account** (signed in, trial or plan). No lease: the upload does not touch the iPhone.
+- **Needs the account** (signed in, any plan). No lease: the upload does not touch the iPhone.
 - **At most 100 MB.** Anyone with the link can download the file for 1 day.
 - **Offline or bigger:** `file push` into VLC, then Files > Share > Save Video.
 

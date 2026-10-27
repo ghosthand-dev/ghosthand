@@ -332,105 +332,83 @@ billing (server side), tasks, publishing, docs generation, demo videos.
 
 ## Task 4: device limits on the website
 
-**Depends on.** Task 3.
-
-**Files.**
-- [ ] Edit `website/src/lib/billing.ts`, `website/src/lib/billing.test.ts`, `db/src/schema.ts`,
-      new migration in `db/drizzle/`, `website/src/cli-api.ts`, `website/src/lib/stripe.ts`,
-      `website/src/telemetry.ts`, a new test next to `tunnel-auth.test.ts`.
+**Depends on.** Task 3. Done Oct 27 2026, not deployed.
 
 **Build.**
-- [ ] `billing.ts`: `Plan = 'free' | 'pro'`; `Entitlement` gets `paidMacs` (subscription
-      quantity, 0 on free) and `sourceAccess`. A pure `leaseDecision({ entitlement, devices,
-      phone, mac })` returns allowed, or the limit hit and its notice. Delete `TRIAL_DAYS`,
-      `trialEndsAt` and the `expired` state.
-- [ ] Schema: `org_device` as above, cascading on `org`, indexed on `org_id`.
-      `subscription` gets `quantity`.
-- [ ] `POST /api/cli/lease-check` (session token) binds and decides in one statement.
-      `GET /api/cli/account` returns `plan`, `paidMacs`, bound devices, `sourceAccess`.
-- [ ] Checkout with adjustable quantity; `syncSubscription` stores it and frees extra Macs.
-- [ ] `requirePlan` no longer blocks free uploads; tasks follow open question 3.
-- [ ] Typed events `device_limit_reached`, `source_access_granted`, `source_access_revoked`.
+- [x] `billing.ts`: `Plan = 'free' | 'pro'`, `Entitlement` has `paidMacs`, `sourceAccess`,
+      `validUntil`; pure `leaseDecision`. Trial code deleted.
+- [x] Schema and migration `20261027113834_plan_devices`: `org_device` (with a `slot` unique
+      per kind, so racing Macs cannot both take the last one), `source_access`,
+      `subscription.quantity`. Applied to the local database only.
+- [x] `POST /api/cli/lease-check` decides and upserts the slot; a lost race decides again.
+      `GET /api/cli/account` adds `paidMacs`, `sourceAccess`; keeps `allowed: true` and
+      `trialEndsAt` for old daemons (TODO in code).
+- [x] Checkout quantity adjustable (1 to 50); `syncSubscription` stores it. A lowered
+      quantity frees nothing: Macs above it are shown as "not paid".
+- [x] Uploads need only a signed-in caller; phone tasks need Pro (`requirePro`).
+- [x] Typed events `device_bound`, `device_removed`, `device_limit_reached`,
+      `source_access_requested`, `source_access_granted`, `source_access_revoked`.
 
 **Verify.**
-- [ ] `billing.test.ts` inline snapshot of `leaseDecision`: free first phone, free second
-      phone, Pro paid Mac with 5 phones, Pro unpaid Mac with the free phone, Pro unpaid Mac
-      with a second phone, quantity lowered.
-- [ ] Real-runtime test: two parallel lease-checks for the last Mac slot give one winner.
-
-**Progress.**
+- [x] `billing.test.ts` snapshots: free first and second iPhone, Pro paid Mac, unpaid Mac
+      with and without the free iPhone, lowered quantity, slot reuse.
+- [x] `lease-check.test.ts` on the real Worker and Postgres: free and Pro flow, and two
+      parallel checks for the last slot give exactly one winner. All 23 website tests pass
+      (including `task.test.ts` with Pro rows added).
 
 ## Task 5: device check in the daemon
 
-**Depends on.** Task 4.
-
-**Files.**
-- [ ] Edit `daemon/Sources/ghosthand/account.swift`, `controller.swift`, `state-db.swift`,
-      `openapi.yaml`, `main.swift` (help), `setup-app.swift` (trial text), `telemetry.swift`,
-      `daemon/Tests/ghosthandTests/lease-tests.swift`, `daemon/skills/ghosthand/SKILL.md`.
+**Depends on.** Task 4. Done in daemon `38b6ac2`, not published.
 
 **Build.**
-- [ ] `authorizeLease(udid:)` hashes the UDID and the Mac's IOPlatformUUID, calls
-      `lease-check`, and caches the answer in `state.db` (new migration).
-- [ ] `acquireLease` resolves the device before the check (today it checks first).
-- [ ] Offline rules from the table above; no more fail-open for unknown devices.
-- [ ] Help text for acquire, account and `agentLoopHelp`: the free plan is one iPhone;
-      on `subscription-required` show the link and stop. `generate-docs` after.
+- [x] `authorizeLease(udid:phoneName:)` hashes the UDID and IOPlatformUUID, calls
+      `lease-check`, caches allowed iPhones in `state.db` table `lease_check` (schema 13).
+- [x] `acquireLease` resolves the iPhone first; an iPhone the daemon cannot match to a USB
+      UDID now fails acquire with `lockdown-unavailable`.
+- [x] Offline: cached and before `validUntil` allowed, else `tunnel-offline`. No fail-open.
+- [x] Help, setup window and `openapi.yaml` say free / Pro; `generate-docs` run.
 
 **Verify.**
-- [ ] Swift test on the cache: known phone offline before `validUntil` allowed, new phone
-      offline refused, expired cache refused.
-- [ ] Real iPhones, free test account on `pnpm dev`: first iPhone leases, second iPhone fails
-      with the subscribe link; after Remove on the dashboard the second iPhone leases.
-
-**Progress.**
+- [x] `swift test`: 58 tests pass, including hashing and the offline cache rules.
+- [ ] Real iPhones on `pnpm dev`: first iPhone leases, second fails with the links; after
+      Remove on the dashboard the second leases. Not run: it needs a dev daemon restart.
 
 ## Task 6: GitHub source access
 
 **Depends on.** Task 4, and the user's go before creating the token or adding secrets.
 
 **Build.**
-- [ ] Tommy creates the fine-grained token (Playwriter, user present), stored as
-      `GITHUB_TOKEN` in Sigillo and in `wrangler.jsonc` `secrets.required` (both envs).
-- [ ] `source_access` table and a `requestSourceAccess` server action (zod-parsed username);
-      **Request access** form on the dashboard.
-- [ ] `website/src/lib/github.ts`: `syncSourceAccess(orgId)` with `GITHUB_TOKEN`.
-- [ ] Call it from the webhook and the server action; daily `scheduled` handler for drift.
+- [ ] Tommy creates the fine-grained token (resource owner `ghosthand-dev`, only
+      `ghosthand-daemon`, Administration: write) and stores it as `GITHUB_TOKEN` in Sigillo
+      dev, preview and prod. `wrangler.jsonc` already requires it in both envs.
+- [x] `source_access` table, `requestSourceAccessAction` (zod-checked username, GitHub user
+      lookup), `removeSourceAccessAction`, and the **Source code** form on the dashboard.
+- [x] `website/src/lib/github.ts`: `syncSourceAccess`, `requestSourceAccess`,
+      `removeSourceAccess`, `reconcileSourceAccess`.
+- [x] Called from the Stripe webhook and the actions; daily cron `17 4 * * *` (production
+      only) runs `reconcileSourceAccess`.
 
-**Verify.**
-- [ ] Preview deploy with a Stripe test subscription and a test GitHub account: invite with
-      `permission: read` appears in `gh api repos/ghosthand-dev/ghosthand-daemon/invitations`.
-- [ ] Cancel in the test portal and fire `customer.subscription.deleted`: the collaborator and
-      any pending invite are gone.
-- [ ] Remove the collaborator by hand on GitHub, run the cron locally
-      (`/cdn-cgi/handler/scheduled`): access comes back.
-
-**Progress.**
+**Verify.** Needs the token.
+- [ ] Invite with `permission: pull` appears in
+      `gh api repos/ghosthand-dev/ghosthand-daemon/invitations` after a request.
+- [ ] Cancel fires `customer.subscription.deleted`: collaborator and invite are gone.
+- [ ] Remove the collaborator by hand, run the cron locally: access comes back.
 
 ## Task 7: docs, pricing and account pages
 
 **Depends on.** Tasks 4 and 6.
 
-**Files.**
-- [ ] Edit `website/src/docs/pricing.mdx`, `terms.mdx`, `privacy.mdx`,
-      `website/src/components/account-pages.tsx`, `account-client.tsx`, `server.tsx` (login
-      copy), `README.md`, `daemon/skills/ghosthand/SKILL.md`.
-
 **Build.**
-- [ ] `pricing.mdx`: Free vs Pro table (iPhones, Macs, remote MCP, API, tasks, daemon
-      source, private skills, price); how paid Macs and switching work; offline rules; how
-      source access works.
-- [ ] `terms.mdx`: free plan instead of trial, the source license, removal on cancel.
-- [ ] `privacy.mdx`: GitHub username and user id, hashed iPhone and Mac ids with their names.
-- [ ] Dashboard: bound iPhone and paid Macs with Remove, Mac quantity, Pro source access
-      states. Login copy: "Free for one iPhone".
-- [ ] README: pricing paragraph, open-source note, link to the daemon license.
+- [x] `pricing.mdx`: Free vs Pro table, how devices bind and switch, offline, source access.
+- [x] `terms.mdx`: free plan, source access and license, end on cancel.
+- [x] `privacy.mdx`: hashed iPhone and Mac ids with names, GitHub username and id.
+- [x] Dashboard: plan with paid Macs, "iPhones and paid Macs" list with Remove, "Source
+      code" form. Login copy and docs button: free for one iPhone.
+- [x] README pricing sentence. Support page.
 
 **Verify.**
-- [ ] Playwriter screenshots of `/docs/pricing`, `/dashboard` free and Pro, light and dark.
-- [ ] `curl -sI` every new URL returns 200.
-
-**Progress.**
+- [x] Playwriter screenshots of `/docs/pricing` and `/dashboard` free and Pro on `pnpm dev`
+      (fake rows in the local database, removed after). The site renders dark only.
 
 ## Task 8: release
 

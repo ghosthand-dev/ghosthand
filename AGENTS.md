@@ -76,6 +76,16 @@ npm/scripts/build.ts ──> dist/Ghosthand.app (npm bin) ── --release: Deve
 website: /download page, /download/ghosthand.pkg and /releases/:file read that bucket
 ```
 
+**Release checklist**, in this order (each outward step needs the user's go):
+
+1. **Website first** when the daemon needs a new route (e.g. `/api/cli/lease-check`): in website/, `pnpm db:migrate:prod`, `pnpm secrets:prod` if Sigillo prod gained a secret, then `pnpm run deploy:prod`. Old daemons must keep working against it; a new daemon against an old website fails.
+2. **Bump** `version` in `npm/package.json` and `ghosthandVersion` in `daemon/Sources/ghosthand/daemon.swift` together. The build fails if they differ.
+3. **CHANGELOG.md**: a `## <version>` section with numbered, user-facing items (same style as the last one).
+4. **Commit and push**: the daemon bump in `daemon/` (on `main`), then the pointer, `npm/package.json` and the changelog in the root. The working tree must be clean: the build compiles it as is.
+5. **Publish**: `cd npm && pnpm publish --no-git-checks` (details below). It builds, signs, notarizes and uploads the pkg, zip and `latest.json` to R2 (`wrangler` must be logged in), then publishes to npm.
+6. **Tag and GitHub release** in the root: `git tag ghosthand@<version> && git push origin ghosthand@<version>`, then `gh release create ghosthand@<version> -R ghosthand-dev/ghosthand --notes-file <the changelog section>`.
+7. **Check**: `curl -s https://registry.npmjs.org/ghosthand | jq '."dist-tags"'`, `curl -s https://ghosthand.dev/download` shows the version, and `npx ghosthand@<version> --version` on a clean Mac.
+
 - Bump `version` in `npm/package.json` and `ghosthandVersion` in `daemon/Sources/ghosthand/daemon.swift` together. The build fails if they differ.
 - Publish with `cd npm && pnpm publish --no-git-checks`. Do not run `pnpm build` first: `prepublishOnly` cleans `dist` and runs the full `--release --upload` build with the Sigillo project `macos-release` (Developer ID identities in the keychain, App Store Connect key for notarization), so the installer goes to R2 in the same run (~10 min with notarization).
 - **The CLI never signs or assembles a bundle on a user's Mac.** `GhosthandApplication.install` only copies a bundle built by `build.ts` (`GhosthandRelease` in Info.plist) as is, and never over a newer installed release. Every build is signed with our Developer ID (bundle id + team), so macOS permissions stay across npm, installer and dev builds. `~/.ghosthand/app-source` records which bundle was copied, so a rebuild of the same source restarts the daemon.

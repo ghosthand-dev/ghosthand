@@ -82,8 +82,8 @@ export type LeaseDecision =
 
 /**
  * May this iPhone on this Mac be leased? A paid Mac (slot below `paidMacs`) takes any
- * iPhone; a free Mac slot binds this Mac. Otherwise only the one free iPhone works, on
- * any Mac. `bind` is the slot to upsert for this device first; it can lose a race
+ * iPhone, and the one free iPhone works on any Mac. Another iPhone on an unpaid Mac binds
+ * this Mac to a free paid slot, if one is left. `bind` is the slot to upsert for this device first; it can lose a race
  * (unique slot), then the caller decides again.
  */
 export function leaseDecision({ entitlement, devices, phone, mac }: {
@@ -95,13 +95,13 @@ export function leaseDecision({ entitlement, devices, phone, mac }: {
   const macs = devices.filter((d) => d.kind === 'mac')
   const thisMac = macs.find((d) => d.deviceHash === mac.hash)
   if (thisMac && thisMac.slot < entitlement.paidMacs) return { allowed: true, bind: null }
-  // Also moves a bound Mac left above a lowered quantity into a slot freed since.
-  const freeSlot = firstFreeSlot(macs, entitlement.paidMacs)
-  if (freeSlot !== null) return { allowed: true, bind: { kind: 'mac', slot: freeSlot } }
-
+  // The free iPhone first: using it on a laptop must not take a paid Mac slot.
   const freePhone = devices.find((d) => d.kind === 'phone' && d.slot === 0)
   if (!freePhone) return { allowed: true, bind: { kind: 'phone', slot: 0 } }
   if (freePhone.deviceHash === phone.hash) return { allowed: true, bind: null }
+  // Also moves a bound Mac left above a lowered quantity into a slot freed since.
+  const freeSlot = firstFreeSlot(macs, entitlement.paidMacs)
+  if (freeSlot !== null) return { allowed: true, bind: { kind: 'mac', slot: freeSlot } }
 
   if (entitlement.paidMacs > 0) {
     const paid = macs.filter((d) => d.slot < entitlement.paidMacs).map((d) => d.name)

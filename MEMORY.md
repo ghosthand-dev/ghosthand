@@ -15,7 +15,7 @@
 
 ## Users (Oct 26 2026)
 
-- 2 real sign-ups (Oct 12, Oct 21), 0 paying. Names live in Strada, not here: this repo goes public.
+- User counts and names live in Strada and the database, never here: this repo is public.
 
 ## Pricing and repo split (split done Oct 27 2026)
 
@@ -28,4 +28,4 @@
 - Split done: origin is `ghosthand-dev/ghosthand` (private for now), Swift in submodule `daemon/` (`ghosthand-dev/ghosthand-daemon`). Old `.git` in `~/Documents/ghosthand-old-remorses.git`. Backup `~/Documents/ghosthand-backup-2026-10-27`.
 - Releases ghosthand@0.3.0-0.12.0 copied to the new repo (notes only, new dates).
 - Other Macs: none has a ghosthand clone (checked mintmacbook Oct 27).
-- Open: daemon LICENSE draft, free/Pro billing code not started.
+- Open: daemon LICENSE draft, free/Pro billing code done and pushed (Oct 27), not deployed or migrated in prod. Needs: `GITHUB_TOKEN` (fine-grained, ghosthand-daemon admin write) in Sigillo, Stripe portal quantity changes, prod migration, deploy, npm publish. Phone tasks are Pro only.

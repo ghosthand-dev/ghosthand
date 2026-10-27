@@ -4,3 +4,4 @@ tmp/
 node_modules/
 dist/
 .wrangler/
+release/

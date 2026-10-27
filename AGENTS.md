@@ -1,7 +1,7 @@
 # Device access
 
 - `.passcode` is stale. Never read, print, upload, or commit its contents. Use only a user-confirmed Sigillo `IPHONE_PASSCODE` if unlocking is needed; never print secrets or put them in command arguments.
-- Take a lease first: `.build/debug/ghosthand acquire --label <session id> --reason "<task>"` prints a short ID with its Mac, e.g. `studio:42` (examples below write `42`). Pass `-l studio:42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `GHOSTHAND_LEASE`.
+- Take a lease first: `ghosthand acquire --label <session id> --reason "<task>"` prints a short ID with its Mac, e.g. `studio:42` (examples below write `42`). Pass `-l studio:42` explicitly to every device command, including `release`. Tool-call environments may not persist; do not rely on an exported `GHOSTHAND_LEASE`.
 - Always pass `--reason` with your task. If another session holds it, acquire fails and shows its reason and last command: give up or tell the user, or run `ghosthand wait --reason "<task>" --timeout 600`. Never `--force`. The label is only display text; it does not resume a lease. Leave the phone unlocked and run `ghosthand release -l 42` when done.
 - Do not delete or restore `state.db`: its persistent counter prevents old lease IDs from controlling new leases. Lease numbers are coordination IDs, not remote authentication; the tunnel requires an API token.
 - For secret text, pipe directly to `ghosthand type -l 42 --stdin`. One final LF or CRLF is removed; other whitespace is preserved. Validate focus first, and never repeat input automatically after a verification timeout.
@@ -97,12 +97,30 @@ To find code, search one unique function name or constant (`gh search code 'IOHI
 
 # Publishing to npm
 
-`npm/` is the `ghosthand` npm package: one universal binary (arm64 + x86_64) as the bin.
+`npm/` is the `ghosthand` npm package: the signed `Ghosthand.app` (one universal binary, arm64 + x86_64) whose executable is the bin. The same build writes the Mac installer for https://ghosthand.dev/download:
+
+```
+npm/scripts/build.ts ──> dist/Ghosthand.app (npm bin) ── --release: Developer ID, hardened runtime, notarized
+                     └─> release/Ghosthand-<v>.pkg (current user, ~/Applications, opens the app) + .zip
+                         --upload ──wrangler──> R2 ghosthand-releases (pkg, zip, then latest.json)
+website: /download page, /download/ghosthand.pkg and /releases/:file read that bucket
+```
 
 - Bump `version` in `npm/package.json` and `ghosthandVersion` in `Sources/ghosthand/daemon.swift` together. The build fails if they differ.
-- Publish with `cd npm && pnpm publish --no-git-checks`. Do not run `pnpm build` first: `prepublishOnly` cleans `dist` and runs the full build (about 3 min).
+- Publish with `cd npm && pnpm publish --no-git-checks`. Do not run `pnpm build` first: `prepublishOnly` cleans `dist` and runs the full `--release --upload` build with the Sigillo project `macos-release` (Developer ID identities in the keychain, App Store Connect key for notarization), so the installer goes to R2 in the same run (~10 min with notarization).
+- **The CLI never signs or assembles a bundle on a user's Mac.** `GhosthandApplication.install` only copies a bundle built by `build.ts` (`GhosthandRelease` in Info.plist) as is, and never over a newer installed release. Every build is signed with our Developer ID (bundle id + team), so macOS permissions stay across npm, installer and dev builds. `~/.ghosthand/app-source` records which bundle was copied, so a rebuild of the same source restarts the daemon.
+- Signing reads the Developer ID `.p12` files from Sigillo `macos-release` into a temporary keychain (`signingKeychain()`). Without them the build is ad-hoc and the pkg unsigned: enough to inspect (`pkgutil --expand`), not to ship. Load the `apple-code-signing` skill for certificates, notarization and Gatekeeper checks.
 - The registry can take ~5 min before `npx ghosthand@<version>` resolves. Poll `curl -s https://registry.npmjs.org/ghosthand | jq '."dist-tags"'`; do not publish again.
 - Build from the committed tree: `prepublishOnly` compiles whatever Swift code is in the working tree, including uncommitted changes from other sessions.
+
+# Dev builds
+
+`swift build` alone is not runnable against the daemon (a bare binary cannot install). Build the dev app, then use its executable (the global `ghosthand` wrapper on Tommy's Macs points there):
+
+```bash
+cd npm && sigillo run -- node scripts/build.ts --dev   # .build/Ghosthand.app, Developer ID, ~20 s
+.build/Ghosthand.app/Contents/MacOS/ghosthand list     # copies it to ~/Applications, restarts the daemon
+```
 
 # Account and billing
 
@@ -141,7 +159,7 @@ this or another Mac's daemon /v1/leases/<mac>:42/tap?screentext=true <──WS�
 
 # Testing UI changes (dashboard and setup windows)
 
-`dashboard` and `setup` share one process through `~/.ghosthand/app.lock`. After `swift build`, the next CLI command installs the new binary into `~/Applications/Ghosthand.app` (with the daemon restart). The open window sees the new `GhosthandSourceBuildID` within a second and opens the new bundle with the same window, between chat turns and outside Take Control (`relaunchIfReplaced` in `setup-app.swift`). It must: a process whose bundle was replaced fails `codesign -v <pid>`, and macOS Accessibility then refuses it (`kAXErrorAPIDisabled`), so cua-driver sees no window.
+`dashboard` and `setup` share one process through `~/.ghosthand/app.lock`. After a dev build (`build.ts --dev`), the next CLI command installs the new bundle into `~/Applications/Ghosthand.app` (with the daemon restart). The open window sees the new `GhosthandSourceBuildID` within a second and opens the new bundle with the same window, between chat turns and outside Take Control (`relaunchIfReplaced` in `setup-app.swift`). It must: a process whose bundle was replaced fails `codesign -v <pid>`, and macOS Accessibility then refuses it (`kAXErrorAPIDisabled`), so cua-driver sees no window.
 
 Drive the real window without taking the user's focus:
 

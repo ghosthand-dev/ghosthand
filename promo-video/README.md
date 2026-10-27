@@ -77,7 +77,7 @@ The iPhone SE mockup (CSS, 16:9 screen, home button) plays `demo-video/public/*/
 `scripts/control-plane-shots.ts` renders the dashboard mock scenes (`fleet`, `chat`) as launch screenshots: the window over the wallpaper in `assets/wallpaper-sky.jpg`, with the blur behind the window, rounded corners and a shadow.
 
 ```bash
-pnpm tsx scripts/control-plane-shots.ts --ghosthand ../.build/debug/ghosthand
+pnpm tsx scripts/control-plane-shots.ts --ghosthand ../.build/Ghosthand.app/Contents/MacOS/ghosthand
 ```
 
 It writes `out/control-plane-<scene>.png` (for X) and `website/public/assets/control-plane-<scene>.jpg` (README and website). `--mock --snapshot` leaves the window backdrop transparent, because an offscreen render cannot draw the blur behind a window; the script draws it with CSS `backdrop-filter`.

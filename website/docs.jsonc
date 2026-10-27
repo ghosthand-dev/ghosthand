@@ -23,6 +23,7 @@
   },
   "navbar": {
     "links": [
+      { "label": "Download", "href": "/download" },
       { "label": "Pricing", "href": "/docs/pricing" },
       { "label": "Log in", "href": "/login" },
       { "label": "Dashboard", "href": "/dashboard" }
@@ -64,6 +65,12 @@
             "group": "Internals",
             "icon": "lucide:cpu",
             "pages": ["docs/scroll", "docs/relative-pointer"]
+          },
+          {
+            "group": "Download",
+            "icon": "lucide:download",
+            "hidden": true,
+            "pages": ["download"]
           },
           {
             // Hidden from the sidebar, still served and indexed. Linked from the footer.

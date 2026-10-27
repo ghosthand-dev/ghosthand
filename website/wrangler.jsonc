@@ -21,7 +21,10 @@
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "8a9f08518c124088bf4570b21900dd55", "localConnectionString": "postgres://ghosthand:local@localhost:5432/ghosthand" }],
   // `ghosthand upload` files. Bucket lifecycle rule deletes objects after 1 day:
   // wrangler r2 bucket lifecycle add <bucket> expire-1-day --expire-days 1
-  "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" }],
+  "r2_buckets": [
+    { "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" },
+    { "binding": "RELEASES", "bucket_name": "ghosthand-releases" }
+  ],
   "durable_objects": {
     "bindings": [
       { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },
@@ -65,7 +68,10 @@
       "placement": { "region": "aws:us-east-1" },
       // Same database as production for now.
       "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "8a9f08518c124088bf4570b21900dd55", "localConnectionString": "postgres://ghosthand:local@localhost:5432/ghosthand" }],
-      "r2_buckets": [{ "binding": "UPLOADS", "bucket_name": "ghosthand-uploads-preview" }],
+      "r2_buckets": [
+        { "binding": "UPLOADS", "bucket_name": "ghosthand-uploads-preview" },
+        { "binding": "RELEASES", "bucket_name": "ghosthand-releases" }
+      ],
       "durable_objects": {
         "bindings": [
           { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },

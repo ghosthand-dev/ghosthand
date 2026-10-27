@@ -5,6 +5,8 @@
 //   /api/cli/*         the daemon's login and plan checks (cli-api.ts)
 //   /api/stripe/*      Stripe webhook
 //   /u/:id, /u/:id/file   `ghosthand upload` share page and file (uploads.ts)
+//   /download          Mac installer page (download.mdx)
+//   /download/ghosthand.pkg, /releases/:file   public installers and release manifest (R2)
 //   /login /device /consent /dashboard /subscribe     account pages
 //   /pricing /privacy /terms /support   301 to their /docs/* pages
 //   /mcp               remote MCP, OAuth; routed to the user's Macs (tunnel.ts, before spiceflow)
@@ -13,6 +15,7 @@
 // First import: Strada is initialized before anything creates a span (telemetry.ts).
 import { spiceflowTracer, startSpan, trackEvent } from './telemetry.ts'
 import { Spiceflow, redirect } from 'spiceflow'
+import { env } from 'cloudflare:workers'
 import { router } from 'spiceflow/react'
 import { z } from 'zod'
 import { app as holocronApp } from '@holocron.so/vite/app'
@@ -58,6 +61,35 @@ async function accountLayout({ children }: { children?: React.ReactNode }) {
 const loginQuery = z.object({ callbackURL: z.string().optional(), response_type: z.string().optional() })
 const deviceQuery = z.object({ user_code: z.string().optional(), status: z.enum(['approved', 'denied']).optional() })
 
+const RELEASE_FILE = /^Ghosthand-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.(?:pkg|zip)$/
+const RELEASE_CACHE = 'public, max-age=300'
+const releaseSchema = z.object({
+  version: z.string().regex(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
+  pkg: z.string(),
+  zip: z.string(),
+  publishedAt: z.iso.datetime(),
+}).refine((release) => release.pkg === `Ghosthand-${release.version}.pkg` && release.zip === `Ghosthand-${release.version}.zip`)
+
+function releaseNotFound() {
+  return new Response('No Mac release is available at this link yet. Try again later, or run: npx ghosthand setup', {
+    status: 404,
+    headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+  })
+}
+
+function releaseDownload({ object, file, cacheControl }: { object: R2ObjectBody; file: string; cacheControl: string }) {
+  return new Response(object.body, {
+    headers: {
+      'content-disposition': `attachment; filename="${file}"`,
+      'content-type': 'application/octet-stream',
+      'content-length': String(object.size),
+      'cache-control': cacheControl,
+      'x-content-type-options': 'nosniff',
+      etag: object.httpEtag,
+    },
+  })
+}
+
 // Errors that escape a route or page are recorded on its span: no captureException here.
 export const app = new Spiceflow({ tracer: spiceflowTracer })
   .use(({ request }, next) => {
@@ -82,6 +114,27 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
   .use(cliApp)
   .use(uploadsApp)
   .use(stripeWebhookApp)
+  .get('/download/ghosthand.pkg', async () => {
+    const manifest = await env.RELEASES.get('latest.json')
+    if (!manifest) return releaseNotFound()
+    const release = releaseSchema.parse(await manifest.json())
+    const object = await env.RELEASES.get(release.pkg)
+    if (!object) return releaseNotFound()
+    trackEvent('download_started', { version: release.version })
+    return releaseDownload({ object, file: release.pkg, cacheControl: RELEASE_CACHE })
+  })
+  .get('/releases/:file', async ({ params }) => {
+    const { file } = params
+    if (file !== 'latest.json' && !RELEASE_FILE.test(file)) return releaseNotFound()
+    const object = await env.RELEASES.get(file)
+    if (!object) return releaseNotFound()
+    if (file === 'latest.json') {
+      return new Response(object.body, {
+        headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-cache, max-age=300', etag: object.httpEtag },
+      })
+    }
+    return releaseDownload({ object, file, cacheControl: 'public, max-age=31536000, immutable' })
+  })
   .layout('/login', accountLayout)
   .layout('/device', accountLayout)
   .layout('/consent', accountLayout)
@@ -266,6 +319,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
 declare module 'spiceflow/react' {
   interface SpiceflowRegister {
     app: typeof app
+    knownPaths: '/download'
   }
 }
 

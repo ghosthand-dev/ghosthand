@@ -94,19 +94,22 @@ daemon/.build/Ghosthand.app/Contents/MacOS/ghosthand list   # copies it to ~/App
 
 # Account and billing
 
-Every lease needs a ghosthand.dev account with a trial or plan. The daemon owns it (`daemon/Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
+Every lease needs a ghosthand.dev account. **Free**: one iPhone. **Pro**: $99/month per Mac (Stripe quantity), unlimited iPhones on each paid Mac, phone tasks, read access to the daemon repo. No time or request limits. The daemon owns the account (`daemon/Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
 
 Remote MCP uses resource-bound opaque OAuth tokens, checked against current grants and sessions. Before deleting a session, delete its refresh grants (revoked-token reuse can end other sessions' grants); then close its hub sockets. Hub session deadlines use alarms, not polling, so idle sockets still hibernate.
 
 ```
 setup app / ghosthand account login ──POST /v1/account/login──> daemon ──POST /api/cli/login──> website
 browser approves /device ─────────────────────────────> daemon polls /api/cli/login/token
-acquire ──> Account.authorizeLease() ──GET /api/cli/account──> plan from website/src/lib/billing.ts
+acquire ──> Account.authorizeLease() ──POST /api/cli/lease-check {phone, mac hashes}──> leaseDecision (lib/billing.ts)
+                                                                         binds org_device rows
+Stripe webhook / dashboard / daily cron ──> syncSourceAccess (lib/github.ts) ──GITHUB_TOKEN──> daemon repo collaborators
 ```
 
-- The daemon never computes trial dates: the server answers `allowed` and a `notice`. Only acquire and wait check, so a running lease is never stopped. Unreachable server: the lease is allowed (fail-open).
+- The daemon never decides the plan: `lease-check` answers `allowed`, a `message` and `validUntil`. Only acquire and wait check, so a running lease is never stopped. Devices bind on first lease into `org_device` slots (unique per kind, so racing Macs cannot both take the last one); a Mac is paid while its slot is below the quantity. Unreachable server: the daemon allows only iPhones it cached as allowed, until `validUntil`.
+- Source access: Postgres (`source_access`) is the desired state, GitHub the actual one; every sync is safe to repeat. Only org-owned repos give read-only (`pull`) collaborators.
 - `GHOSTHAND_SERVER` at daemon start picks the server (default https://ghosthand.dev; `http://localhost:8047` for `pnpm dev` in website/). A saved account counts only for its own server. Restart the daemon after changing it.
-- Orgs: identity (sessions, OAuth tokens) belongs to the user; the plan, the trial (`org.createdAt`) and the Mac hub (`getHub(orgId)`) belong to the org. A signup hook creates a personal org with `org_id = user.id`. Always resolve it with `getPersonalOrg(userId)` (through `org_member`); never pass a user id as an org id, or team orgs break later.
+- Orgs: identity (sessions, OAuth tokens) belongs to the user; the plan, the bound devices and the Mac hub (`getHub(orgId)`) belong to the org. A signup hook creates a personal org with `org_id = user.id`. Always resolve it with `getPersonalOrg(userId)` (through `org_member`); never pass a user id as an org id, or team orgs break later.
 - Website: `db/` has the Postgres schema and migrations (drizzle). The database is PlanetScale Postgres `ghosthand` (org `clamordev`, us-east, PS-5 single node, billed through Cloudflare), reached through Hyperdrive with caching off; preview uses the same database. Migrate with `pnpm db:migrate:prod` in website/ (Sigillo prod `DATABASE_URL`). Local dev and tests use the local Postgres (Sigillo dev `DATABASE_URL`, tests create a throwaway database). `getDb()` pools close idle sockets after 1 s: an open socket keeps a Durable Object from hibernating. Stripe rows store their Stripe account id; today the account is shared with Playwriter (sigillo project `website` in the `ghosthand` org).
 
 # Phone tasks (agent on ghosthand.dev)

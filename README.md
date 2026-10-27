@@ -62,7 +62,9 @@ npx ghosthand record stop
 
 ## Install
 
-Needs **macOS 14 or later** on Apple silicon or Intel. The npm package ships one universal binary; no Node code runs at runtime. The Bluetooth Classic private API is tested on macOS 26.3 only.
+Needs **macOS 14 or later** on Apple silicon or Intel. The npm package ships the signed Ghosthand.app with one universal binary; no Node code runs at runtime. The Bluetooth Classic private API is tested on macOS 26.3 only.
+
+**No terminal?** Download the installer from [ghosthand.dev/download](https://ghosthand.dev/download). It installs Ghosthand for your user (no admin password) and opens the setup window. This is the path for people who use ghosthand from a chat app like Claude, ChatGPT or Grok through the [remote MCP](#mcp-server): the MCP sends them this link when their account has no Mac yet.
 
 ```bash
 npx ghosthand setup       # run without installing
@@ -1012,7 +1014,8 @@ MCP client ──POST /mcp, OAuth──> ghosthand.dev hub (one per account)
 - **Several Macs:** `list` shows each iPhone under its Mac. Pass `mac` to `acquire`, `wait`, `setup` and `setup status`. With one Mac online, `mac` is optional.
 - **Flags are arguments:** `lease`, `text` and `index` on `tap`, `waitText`, `timeoutMs`, `screenshot: true`, `screentext: true`. Screenshots come back as image content, not files.
 - **Stateless HTTP:** modern clients (MCP 2026-07-28) and legacy ones (`initialize`) both work. A closed request stops the tool.
-- **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift) run in the daemon; the hub in [website/src/tunnel.ts](website/src/tunnel.ts) only routes.
+- **No Mac yet:** a new account can connect before any Mac is set up. The hub then answers `initialize` and `tools/list` itself, and every tool call returns the next step for the user: the [download link](https://ghosthand.dev/download), or which Mac is offline and since when. A Mac that never had an iPhone answers with the plug-in and Trust steps.
+- **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift) run in the daemon; the hub in [website/src/tunnel.ts](website/src/tunnel.ts) only routes, and answers from the generated `website/mcp-tools.json` while no Mac is online.
 - `ghosthand daemon status` shows this Mac's name in the account.
 
 ## Security

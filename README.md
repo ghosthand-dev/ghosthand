@@ -1066,7 +1066,6 @@ The iPhone accepts input only from a Mac that has **all three**:
 | iPhone: Settings > General > Transfer or Reset > Reset > Reset Location & Privacy | removes the USB trust of every computer                                   |
 
 - **The passcode is never stored.** `unlock` gets it per call; prefer a direct pipe to `unlock --stdin`, not an argument.
-- **Apple Pay still needs you.** It asks for a double press of the side button, which the Mac cannot press.
 
 ## Limits
 

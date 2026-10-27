@@ -16,7 +16,7 @@ CREATE TABLE "source_access" (
 	"requested_at" timestamp with time zone NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "subscription" ADD COLUMN "quantity" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "subscription" ADD COLUMN "paid_macs" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
 CREATE INDEX "org_device_org_id_idx" ON "org_device" ("org_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "org_device_org_kind_hash_unique" ON "org_device" ("org_id","kind","device_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "org_device_org_kind_slot_unique" ON "org_device" ("org_id","kind","slot");--> statement-breakpoint

@@ -344,8 +344,8 @@ export const subscription = p.pgTable('subscription', {
   status: p.text('status').notNull(),
   currentPeriodEnd: timestamp('current_period_end'),
   cancelAtPeriodEnd: p.boolean('cancel_at_period_end').notNull().default(false),
-  /** Paid Macs: Pro is priced per Mac. */
-  quantity: p.integer('quantity').notNull().default(1),
+  /** The Stripe quantity: Pro is priced per Mac. */
+  paidMacs: p.integer('paid_macs').notNull().default(1),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (table) => [
@@ -360,7 +360,7 @@ export const orgDeviceKind = p.pgEnum('org_device_kind', ['phone', 'mac'])
  * A device bound to the org's plan by `lease-check`: the free iPhone (kind phone) and the
  * paid Macs (kind mac). Ids are SHA-256 hashes made on the Mac; raw UDIDs never arrive.
  * `slot` is unique per kind, so two Macs racing for the last slot cannot both insert;
- * a Mac is paid while its slot is below the subscription quantity.
+ * a Mac is paid while its slot is below the subscription's `paidMacs`.
  */
 export const orgDevice = p.pgTable('org_device', {
   orgDeviceId: p.text('org_device_id').primaryKey().$defaultFn(() => ulid()),

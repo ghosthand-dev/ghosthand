@@ -1,0 +1,18 @@
+---
+$schema: https://holocron.so/frontmatter.json
+title: "Download for Mac"
+sidebarTitle: "Download"
+description: "Download ghosthand for Mac. Let AI agents control your real iPhone with a USB cable and Bluetooth. No jailbreak or app on the phone."
+mode: "custom"
+hideTitle: true
+maxWidth: 1000
+rendering: static
+prompt: |
+  Mac download and setup page from @/website/src/components/download-page.tsx
+  and the release routes in @/website/src/server.tsx. Help remote AI chat users
+  install Ghosthand on a Mac, connect an iPhone, and return to their chat.
+---
+
+import { DownloadPage } from './components/download-page.tsx'
+
+<DownloadPage />

@@ -5,6 +5,8 @@ import { useState, useSyncExternalStore } from 'react'
 import { preload } from 'react-dom'
 import { VideoBackgroundShader } from '@holocron.so/vite/mdx'
 import dedent from 'string-dedent'
+import { Link, router } from 'spiceflow/react'
+import { cn } from '../lib/utils.ts'
 
 const HERO_FONT = "'IvarText', serif"
 
@@ -95,36 +97,41 @@ export function HeroSection() {
         </h1>
 
         <div className='flex flex-col items-center gap-2'>
-          <button
-            type='button'
-            onClick={async () => {
-              await navigator.clipboard.writeText(SETUP_PROMPT)
-              setCopied(true)
-              setTimeout(() => setCopied(false), 2000)
-            }}
-            className={`${BUTTON} cursor-pointer border-transparent bg-primary text-primary-foreground hover:opacity-90`}
-          >
-            <svg
-              aria-hidden
-              viewBox='0 0 24 24'
-              className='size-4 shrink-0'
-              fill='none'
-              stroke='currentColor'
-              strokeWidth={2}
-              strokeLinecap='round'
-              strokeLinejoin='round'
+          <div className='flex flex-wrap items-center justify-center gap-3'>
+            <button
+              type='button'
+              onClick={async () => {
+                await navigator.clipboard.writeText(SETUP_PROMPT)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 2000)
+              }}
+              className={cn(BUTTON, 'cursor-pointer border-transparent bg-primary text-primary-foreground hover:opacity-90')}
             >
-              {copied ? (
-                <path d='M20 6 9 17l-5-5' />
-              ) : (
-                <>
-                  <rect width='8' height='4' x='8' y='2' rx='1' ry='1' />
-                  <path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2' />
-                </>
-              )}
-            </svg>
-            {copied ? 'Copied' : 'Copy setup prompt'}
-          </button>
+              <svg
+                aria-hidden
+                viewBox='0 0 24 24'
+                className='size-4 shrink-0'
+                fill='none'
+                stroke='currentColor'
+                strokeWidth={2}
+                strokeLinecap='round'
+                strokeLinejoin='round'
+              >
+                {copied ? (
+                  <path d='M20 6 9 17l-5-5' />
+                ) : (
+                  <>
+                    <rect width='8' height='4' x='8' y='2' rx='1' ry='1' />
+                    <path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2' />
+                  </>
+                )}
+              </svg>
+              {copied ? 'Copied' : 'Copy setup prompt'}
+            </button>
+            <Link href={router.href('/download')} className={cn(BUTTON, 'border-border bg-background/70 text-foreground hover:bg-muted')}>
+              Download for Mac
+            </Link>
+          </div>
           <p className='rounded-xl bg-background/50 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur-md'>
             Paste the prompt into your agent to set up ghosthand
           </p>

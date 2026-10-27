@@ -54,6 +54,8 @@ export type WebsiteEvents = {
   /** A turn ended. `outcome`: finished, aborted, failed or stopped (repeated restarts). */
   task_finished: { org_id: string; task_id: string; outcome: string; steps: number; tool_calls: number; tool_errors: number; duration_ms: number }
   upload_created: { size: number }
+  /** The latest Mac installer was found and its download response started. */
+  download_started: { version: string }
   api_token_created: {}
   /** /subscribe: Checkout or the billing portal. */
   subscribe_opened: { org_id: string }

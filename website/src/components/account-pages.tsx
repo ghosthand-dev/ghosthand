@@ -3,14 +3,13 @@
 
 import type { ReactNode } from 'react'
 import { Head, Link } from 'spiceflow/react'
-import { formatDay, TRIAL_DAYS, type Entitlement } from '../lib/billing.ts'
+import { formatDay, PRO_PRICE_PER_MAC, type Entitlement } from '../lib/billing.ts'
 import { cn } from '../lib/utils.ts'
-import { CopyField, QuickStart, RowAction, SignOutButton, SubscribeLink } from './account-client.tsx'
+import { CopyField, QuickStart, RowAction, SignOutButton, SourceAccessForm, SubscribeLink } from './account-client.tsx'
 import { PRIMARY, SECONDARY } from './button-styles.ts'
 import type { MacSession } from '../db.ts'
 
 const SERIF = { fontFamily: "'IvarText', serif" }
-const DAY_MS = 24 * 60 * 60 * 1000
 
 function Logo({ className }: { className?: string }) {
   return (
@@ -77,27 +76,36 @@ function Section({ title, description, children }: { title: string; description:
 /** A signed-in Mac, with its MCP slug and hub connection once it connected. */
 export type DashboardMac = MacSession & { slug: string | null; online: boolean }
 
-type Subscription = { status: string; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean }
+type Subscription = { status: string; currentPeriodEnd: Date | null; cancelAtPeriodEnd: boolean; quantity: number }
 
-/** Plan name, one sentence on what it means now, and the trial progress. */
+/** A device bound by lease-check: the free iPhone or a paid Mac slot. */
+export type DashboardDevice = { orgDeviceId: string; kind: 'phone' | 'mac'; name: string; slot: number; boundAt: Date }
+
+/** The org's GitHub account for the daemon repo, once requested. */
+export type DashboardSourceAccess = { login: string; repoUrl: string; invitationsUrl: string }
+
+function Badge({ tone, children }: { tone?: 'good' | 'bad'; children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'rounded-full px-2 py-0.5 text-xs font-medium tabular-nums',
+        !tone && 'bg-muted text-muted-foreground',
+        tone === 'good' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+        tone === 'bad' && 'bg-red-500/10 text-red-700 dark:text-red-400',
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+/** Plan name and one sentence on what it means now. */
 function PlanStatus({ entitlement, subscription }: { entitlement: Entitlement; subscription: Subscription | null }) {
-  const ends = formatDay(entitlement.trialEndsAt)
-  const daysLeft = Math.max(0, Math.ceil((entitlement.trialEndsAt.getTime() - Date.now()) / DAY_MS))
   const status: { label: string; badge: string | null; tone?: 'good' | 'bad'; detail: string } = (() => {
-    if (entitlement.plan === 'trial') {
-      return {
-        label: 'Free trial',
-        badge: `${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left`,
-        detail: `Your agents can use your iPhones for free until ${ends}. Subscribe before then to keep access.`,
-      }
+    if (entitlement.plan === 'free') {
+      return { label: 'Free', badge: null, detail: 'Your agents can use one iPhone, on any Mac, with no time limit.' }
     }
-    if (entitlement.plan === 'expired') {
-      return {
-        label: 'Trial ended',
-        badge: null,
-        detail: `Your trial ended on ${ends}. Your agents cannot use your iPhones until you subscribe.`,
-      }
-    }
+    const macs = `${entitlement.paidMacs} ${entitlement.paidMacs === 1 ? 'Mac' : 'Macs'}`
     const end = subscription?.currentPeriodEnd ? formatDay(subscription.currentPeriodEnd) : null
     if (subscription?.status === 'past_due') {
       return { label: 'Pro', badge: 'Payment failed', tone: 'bad' as const, detail: 'Update your card in Stripe, or Stripe cancels the plan.' }
@@ -105,34 +113,76 @@ function PlanStatus({ entitlement, subscription }: { entitlement: Entitlement; s
     if (subscription?.cancelAtPeriodEnd) {
       return { label: 'Pro', badge: 'Canceled', tone: 'bad' as const, detail: end ? `Your plan stays active until ${end}.` : 'Your plan stays active until the end of the period.' }
     }
-    return { label: 'Pro', badge: 'Active', tone: 'good' as const, detail: end ? `Renews on ${end} for $99.` : 'Renews every month for $99.' }
+    const price = `$${PRO_PRICE_PER_MAC * entitlement.paidMacs}`
+    return { label: 'Pro', badge: macs, tone: 'good' as const, detail: end ? `Unlimited iPhones on ${macs}. Renews on ${end} for ${price}.` : `Unlimited iPhones on ${macs}, ${price} per month.` }
   })()
 
   return (
     <div className='flex flex-col gap-3'>
       <div className='flex items-center gap-2'>
         <span className='text-base font-medium text-foreground'>{status.label}</span>
-        {status.badge ? (
-          <span
-            className={cn(
-              'rounded-full px-2 py-0.5 text-xs font-medium tabular-nums',
-              !status.tone && 'bg-muted text-muted-foreground',
-              status.tone === 'good' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-              status.tone === 'bad' && 'bg-red-500/10 text-red-700 dark:text-red-400',
-            )}
-          >
-            {status.badge}
-          </span>
-        ) : null}
+        {status.badge ? <Badge tone={status.tone}>{status.badge}</Badge> : null}
       </div>
-      {entitlement.plan === 'trial' ? (
-        <div className='flex w-full max-w-xs gap-1' role='meter' aria-valuemin={0} aria-valuemax={TRIAL_DAYS} aria-valuenow={daysLeft} aria-label='Trial days left'>
-          {Array.from({ length: TRIAL_DAYS }, (_, day) => (
-            <span key={day} className={cn('h-1.5 flex-1 rounded-full', day < daysLeft ? 'bg-foreground/80' : 'bg-muted')} />
-          ))}
+      <p className='text-sm text-pretty text-muted-foreground'>{status.detail}</p>
+    </div>
+  )
+}
+
+/** The free iPhone and the paid Macs, each with Remove to switch. */
+function BoundDevices({ devices, paidMacs, removeDevice }: {
+  devices: DashboardDevice[]
+  paidMacs: number
+  removeDevice: (formData: FormData) => Promise<void>
+}) {
+  if (!devices.length) {
+    return (
+      <div className='rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-balance text-muted-foreground'>
+        Nothing bound yet. The first iPhone your agents lease becomes the free iPhone.
+      </div>
+    )
+  }
+  return (
+    <ul className='flex flex-col divide-y divide-border rounded-xl border border-border'>
+      {devices.map((device) => {
+        const paid = device.kind === 'mac' && device.slot < paidMacs
+        const label = device.kind === 'phone' ? 'Free iPhone' : paid ? 'Paid Mac' : 'Mac, not paid'
+        return (
+          <li key={device.orgDeviceId} className='flex items-center gap-4 px-4 py-3.5'>
+            <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
+              <span className='truncate text-sm font-medium text-foreground'>{device.name}</span>
+              <span className='text-xs text-muted-foreground'>Since {formatDay(device.boundAt)}</span>
+            </div>
+            <Badge tone={device.kind === 'mac' ? (paid ? 'good' : 'bad') : undefined}>{label}</Badge>
+            <RowAction action={removeDevice} name='orgDeviceId' value={device.orgDeviceId} pendingText='Removing…'>Remove</RowAction>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function SourceAccess({ isPro, access, request, remove }: {
+  isPro: boolean
+  access: DashboardSourceAccess | null
+  request: (formData: FormData) => Promise<void>
+  remove: (formData: FormData) => Promise<void>
+}) {
+  if (!isPro) {
+    return <p className='text-sm text-muted-foreground'>Pro subscribers get read access to the daemon repo and the private skills on GitHub.</p>
+  }
+  return (
+    <div className='flex flex-col gap-4'>
+      {access ? (
+        <div className='flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground'>
+          <span>
+            Invited <code className='font-mono text-foreground'>{access.login}</code>.{' '}
+            Accept the invite on <a href={access.invitationsUrl} className='underline underline-offset-4 hover:text-foreground'>GitHub</a>,
+            then open <a href={access.repoUrl} className='underline underline-offset-4 hover:text-foreground'>the repo</a>.
+          </span>
+          <RowAction action={remove} name='confirm' value='1' pendingText='Removing…'>Remove</RowAction>
         </div>
       ) : null}
-      <p className='text-sm text-pretty text-muted-foreground'>{status.detail}</p>
+      <SourceAccessForm action={request} defaultLogin={access?.login} />
     </div>
   )
 }
@@ -143,16 +193,26 @@ export function DashboardPage({
   entitlement,
   subscription,
   macs,
+  devices,
+  sourceAccess,
   mcpUrl,
   signOutMac,
+  removeDevice,
+  requestSourceAccess,
+  removeSourceAccess,
 }: {
   email: string
   name: string
   entitlement: Entitlement
   subscription: Subscription | null
   macs: DashboardMac[]
+  devices: DashboardDevice[]
+  sourceAccess: DashboardSourceAccess | null
   mcpUrl: string
   signOutMac: (formData: FormData) => Promise<void>
+  removeDevice: (formData: FormData) => Promise<void>
+  requestSourceAccess: (formData: FormData) => Promise<void>
+  removeSourceAccess: (formData: FormData) => Promise<void>
 }) {
   const isPro = entitlement.plan === 'pro'
 
@@ -177,16 +237,27 @@ export function DashboardPage({
         <p className='text-sm text-muted-foreground'>{email}</p>
       </div>
 
-      <Section title='Plan' description='$99 per month covers every Mac and iPhone on your account.'>
+      <Section title='Plan' description='Free for one iPhone. Pro is $99 per month per Mac, for unlimited iPhones on it.'>
         <PlanStatus entitlement={entitlement} subscription={subscription} />
         <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
           <SubscribeLink className={cn(isPro ? SECONDARY : PRIMARY, 'w-auto px-5')}>
-            {isPro ? 'Manage subscription' : 'Subscribe for $99/month'}
+            {isPro ? 'Manage subscription' : 'Subscribe for $99/month per Mac'}
           </SubscribeLink>
           <span className='text-xs text-muted-foreground'>
-            {isPro ? 'Change card, get invoices or cancel in Stripe.' : 'Secure checkout with Stripe. Cancel anytime.'}
+            {isPro ? 'Add Macs, change card, get invoices or cancel in Stripe.' : 'Secure checkout with Stripe. Cancel anytime.'}
           </span>
         </div>
+      </Section>
+
+      <Section
+        title='iPhones and paid Macs'
+        description='Bound on their first lease. Remove one to switch: the next lease binds again.'
+      >
+        <BoundDevices devices={devices} paidMacs={entitlement.paidMacs} removeDevice={removeDevice} />
+      </Section>
+
+      <Section title='Source code' description='Read-only access to the Swift daemon and the private skills on GitHub.'>
+        <SourceAccess isPro={isPro} access={sourceAccess} request={requestSourceAccess} remove={removeSourceAccess} />
       </Section>
 
       <Section title='MCP server' description='Add this URL as a remote MCP server in Claude, Cursor or opencode.'>

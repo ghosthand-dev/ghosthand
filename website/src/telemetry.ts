@@ -63,6 +63,14 @@ export type WebsiteEvents = {
   subscription_updated: { org_id: string; status: string; cancel_at_period_end: boolean }
   mcp_consent: { accepted: boolean }
   mac_signed_out: {}
+  /** lease-check bound the free iPhone (kind phone) or a paid Mac (kind mac). */
+  device_bound: { org_id: string; kind: string; slot: number }
+  device_removed: { org_id: string; kind: string }
+  /** lease-check refused a lease: `limit` phone (free plan) or mac (no paid Mac slot left). */
+  device_limit_reached: { org_id: string; plan: string; limit: string }
+  source_access_requested: { org_id: string }
+  source_access_granted: { org_id: string }
+  source_access_revoked: { org_id: string }
 }
 
 /** `userId` is sent as `user.id`, like the daemon's events and the Better Auth plugin's, so the event joins `otel_users`. */

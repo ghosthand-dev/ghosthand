@@ -3,7 +3,8 @@
 //
 //   daemon ── POST /api/cli/login ────────▶ device code + verification URL
 //          ── POST /api/cli/login/token ──▶ pending | approved (+ token) | denied | expired
-//          ── GET  /api/cli/account ──────▶ plan, allowed, notice     (Bearer token)
+//          ── GET  /api/cli/account ──────▶ plan, paid Macs, notice   (Bearer token)
+//          ── POST /api/cli/lease-check ──▶ may this iPhone on this Mac be leased? (Bearer token)
 //          ── POST /api/cli/logout ───────▶ revokes the token          (Bearer token)
 //          ── POST /api/cli/tokens ───────▶ new API token for scripts  (Bearer token)
 //          ── DELETE /api/cli/tokens/:id ─▶ revokes an API token       (Bearer token)
@@ -18,8 +19,11 @@ import { Spiceflow, json } from 'spiceflow'
 import { APIError } from 'better-auth/api'
 import { UI_MESSAGE_STREAM_HEADERS, validateUIMessages } from 'ai'
 import { z } from 'zod'
-import { getAuth, getBaseUrl, getCallerUserId, getPersonalOrg, getSessionStrict } from './db.ts'
-import { entitlementFor } from './lib/billing.ts'
+import * as orm from 'drizzle-orm'
+import * as schema from 'db/schema'
+import pg from 'pg'
+import { getAuth, getBaseUrl, getCallerUserId, getDb, getPersonalOrg, getSessionStrict, type Org } from './db.ts'
+import { entitlementFor, leaseDecision, type DeviceRef, type LeaseDecision } from './lib/billing.ts'
 import { createUpload } from './uploads.ts'
 import { getTask, TASK_LEASE_PATTERN } from './task.ts'
 import { TaskPhone } from './task-agent.ts'
@@ -37,17 +41,56 @@ function parseTaskId(id: string): string {
   return parsed.data
 }
 
-/** The Mac's session, or an API token of a script: the caller and its org, with an active plan. */
-async function requirePlan(request: Request): Promise<{ userId: string; orgId: string }> {
+/** The Mac's session, or an API token of a script: the caller and its org. */
+async function requireCaller(request: Request): Promise<{ userId: string; org: Org }> {
   const userId = await getCallerUserId(request)
   if (!userId) throw json({ message: 'unauthorized' }, { status: 401 })
-  const org = await getPersonalOrg(userId)
-  const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
-  if (!entitlement.allowed) {
+  return { userId, org: await getPersonalOrg(userId) }
+}
+
+/** Phone tasks spend AI tokens with no time limit, so they need Pro. */
+async function requirePro(request: Request): Promise<{ userId: string; orgId: string }> {
+  const { userId, org } = await requireCaller(request)
+  if (entitlementFor({ subscriptions: org.subscriptions, now: new Date() }).plan !== 'pro') {
     const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
-    throw json({ message: `${entitlement.notice ?? 'This ghosthand account has no active plan.'} Subscribe: ${subscribeUrl}` }, { status: 402 })
+    throw json({ message: `Phone tasks need ghosthand Pro ($99/month per Mac). Subscribe: ${subscribeUrl}` }, { status: 402 })
   }
   return { userId, orgId: org.orgId }
+}
+
+const deviceRef = z.object({
+  /** Hex SHA-256 of "ghosthand-device:" + UDID or IOPlatformUUID, made on the Mac. */
+  id: z.string().regex(/^[0-9a-f]{64}$/),
+  name: z.string().trim().min(1).max(100),
+})
+const PG_UNIQUE_VIOLATION = '23505'
+/** Two Macs racing for the same slot: one insert wins, the other decides again. */
+const LEASE_CHECK_ATTEMPTS = 3
+
+/** Decides with `leaseDecision` and binds the device it asks for; on a lost race, reloads and decides again. */
+async function checkLease({ userId, phone, mac }: { userId: string; phone: DeviceRef; mac: DeviceRef }) {
+  const db = getDb()
+  for (let attempt = 1; ; attempt++) {
+    const org = await getPersonalOrg(userId)
+    const entitlement = entitlementFor({ subscriptions: org.subscriptions, now: new Date() })
+    const decision: LeaseDecision = leaseDecision({ entitlement, devices: org.devices, phone, mac })
+    if (!decision.allowed || !decision.bind) return { org, entitlement, decision }
+    const device = decision.bind.kind === 'phone' ? phone : mac
+    try {
+      await db.insert(schema.orgDevice)
+        .values({ orgId: org.orgId, kind: decision.bind.kind, deviceHash: device.hash, name: device.name, slot: decision.bind.slot })
+        .onConflictDoUpdate({
+          target: [schema.orgDevice.orgId, schema.orgDevice.kind, schema.orgDevice.deviceHash],
+          set: { slot: decision.bind.slot, name: device.name },
+        })
+      trackEvent('device_bound', { org_id: org.orgId, kind: decision.bind.kind, slot: decision.bind.slot }, { userId })
+      return { org, entitlement, decision }
+    } catch (error) {
+      const cause = error instanceof orm.DrizzleQueryError ? error.cause : error
+      const lostRace = cause instanceof pg.DatabaseError && cause.code === PG_UNIQUE_VIOLATION
+      if (!lostRace || attempt >= LEASE_CHECK_ATTEMPTS) throw error
+    }
+  }
 }
 
 export const cliApp = new Spiceflow({ basePath: '/api/cli' })
@@ -110,16 +153,45 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       if (!session) throw json({ error: 'unauthorized' }, { status: 401 })
       const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
       const org = await getPersonalOrg(session.userId)
-      const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions: org.subscriptions, now: new Date() })
+      const entitlement = entitlementFor({ subscriptions: org.subscriptions, now: new Date() })
       return {
         userId: session.userId,
         email: session.user.email,
         name: session.user.name,
         plan: entitlement.plan,
-        allowed: entitlement.allowed,
-        trialEndsAt: entitlement.trialEndsAt.toISOString(),
+        paidMacs: entitlement.paidMacs,
+        sourceAccess: entitlement.sourceAccess,
+        // TODO: remove allowed and trialEndsAt once no daemon before lease-check runs (0.12 and older
+        // decode them and check only here, so they keep unlimited iPhones until they update).
+        allowed: true,
+        trialEndsAt: entitlement.validUntil.toISOString(),
         notice: entitlement.notice,
         subscribeUrl,
+        dashboardUrl: new URL('/dashboard', getBaseUrl()).toString(),
+      }
+    },
+  })
+  // The daemon asks before every acquire and wait; it caches allowed iPhones until validUntil.
+  .route({
+    method: 'POST',
+    path: '/lease-check',
+    detail: { hide: true },
+    request: z.object({ phone: deviceRef, mac: deviceRef }),
+    async handler({ request }) {
+      const session = await getSessionStrict(request)
+      if (!session) throw json({ error: 'unauthorized' }, { status: 401 })
+      const body = await request.json()
+      const phone = { hash: body.phone.id, name: body.phone.name }
+      const mac = { hash: body.mac.id, name: body.mac.name }
+      const { org, entitlement, decision } = await checkLease({ userId: session.userId, phone, mac })
+      if (!decision.allowed) trackEvent('device_limit_reached', { org_id: org.orgId, plan: entitlement.plan, limit: decision.limit }, { userId: session.userId })
+      return {
+        allowed: decision.allowed,
+        plan: entitlement.plan,
+        notice: entitlement.notice,
+        message: decision.allowed ? null : decision.message,
+        validUntil: entitlement.validUntil.toISOString(),
+        subscribeUrl: new URL('/subscribe', getBaseUrl()).toString(),
         dashboardUrl: new URL('/dashboard', getBaseUrl()).toString(),
       }
     },
@@ -131,7 +203,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     query: z.object({ name: z.string().min(1).max(255) }),
     async handler({ request, query }) {
       // The Mac's session, or an API token from a script on another computer: the file never touches the Mac.
-      const { userId } = await requirePlan(request)
+      const { userId } = await requireCaller(request)
       return createUpload({ request, name: query.name, userId })
     },
   })
@@ -179,7 +251,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       phone: TaskPhone.optional(),
     }),
     async handler({ request }) {
-      const { userId, orgId } = await requirePlan(request)
+      const { userId, orgId } = await requirePro(request)
       const body = await request.json()
       const [message] = await validateUIMessages({ messages: [body.messages.at(-1)] }).catch((cause) => {
         throw json({ message: `invalid message: ${cause instanceof Error ? cause.message : cause}` }, { status: 400 })
@@ -198,7 +270,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     detail: { hide: true },
     query: z.object({ from: z.coerce.number().int().min(0).optional(), message: z.string().optional() }),
     async handler({ request, params, query }) {
-      const { orgId } = await requirePlan(request)
+      const { orgId } = await requirePro(request)
       const stream = await getTask({ orgId, taskId: parseTaskId(params.id) }).resume({ from: query.from, messageId: query.message })
       if (stream === 'gone') throw json({ message: 'a newer turn of this task replaced that stream' }, { status: 410 })
       if (!stream) return new Response(null, { status: HTTP_NO_CONTENT })
@@ -210,7 +282,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     path: '/tasks/:id',
     detail: { hide: true },
     async handler({ request, params }) {
-      const { orgId } = await requirePlan(request)
+      const { orgId } = await requirePro(request)
       return { messages: await getTask({ orgId, taskId: parseTaskId(params.id) }).messages() }
     },
   })
@@ -221,7 +293,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     // `prompt`: the user message id of the turn to stop; another turn keeps running.
     query: z.object({ prompt: z.string().optional() }),
     async handler({ request, params, query }) {
-      const { orgId } = await requirePlan(request)
+      const { orgId } = await requirePro(request)
       return { aborted: await getTask({ orgId, taskId: parseTaskId(params.id) }).abort({ prompt: query.prompt }) }
     },
   })

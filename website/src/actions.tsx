@@ -1,11 +1,15 @@
 // Server actions: approve or deny a daemon's login (/device), an MCP client's access
-// (/consent), and sign a Mac out (/dashboard).
+// (/consent), and on /dashboard: sign a Mac out, remove a bound device, request source access.
 'use server'
 
 import { getActionRequest, parseFormData, redirect } from 'spiceflow'
 import { router } from 'spiceflow/react'
 import { z } from 'zod'
+import * as orm from 'drizzle-orm'
+import * as schema from 'db/schema'
 import { getAuth, getDb, getPersonalOrg, requireSession } from './db.ts'
+import { entitlementFor } from './lib/billing.ts'
+import { findGithubUser, removeSourceAccess, requestSourceAccess } from './lib/github.ts'
 import { getHub } from './tunnel.ts'
 import { reportErrors, trackEvent } from './telemetry.ts'
 
@@ -67,6 +71,57 @@ export async function signOutMac(formData: FormData) {
     const org = await getPersonalOrg(session.userId)
     await getHub(org.orgId).revoke(sessionId)
     if (target) trackEvent('mac_signed_out', {}, { userId: session.userId })
+    throw redirect('/dashboard')
+  })
+}
+
+/** A message for the user, shown by the form's ErrorBoundary; reportErrors skips 4xx. */
+class FormError extends Error {
+  readonly status = 400
+}
+
+const deviceRowForm = z.object({ orgDeviceId: z.string().min(1) })
+
+/** Frees the free iPhone or a paid Mac slot: the next lease binds again. Only the owner's org. */
+export async function removeDevice(formData: FormData) {
+  return reportErrors('removeDevice', async () => {
+    const session = await requireSession(getActionRequest())
+    const { orgDeviceId } = parseFormData(deviceRowForm, formData)
+    const org = await getPersonalOrg(session.userId)
+    const removed = await getDb().delete(schema.orgDevice)
+      .where(orm.and(orm.eq(schema.orgDevice.orgDeviceId, orgDeviceId), orm.eq(schema.orgDevice.orgId, org.orgId)))
+      .returning()
+    for (const device of removed) trackEvent('device_removed', { org_id: org.orgId, kind: device.kind }, { userId: session.userId })
+    throw redirect('/dashboard')
+  })
+}
+
+// GitHub usernames: 1-39 characters, letters, digits and single hyphens.
+const sourceAccessForm = z.object({ login: z.string().trim().regex(/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/, 'Not a GitHub username') })
+
+/** Pro only: invites the GitHub account as a read-only collaborator on the daemon repo. */
+export async function requestSourceAccessAction(formData: FormData) {
+  return reportErrors('requestSourceAccess', async () => {
+    const request = getActionRequest()
+    const session = await requireSession(request)
+    const { login } = parseFormData(sourceAccessForm, formData)
+    const org = await getPersonalOrg(session.userId)
+    if (!entitlementFor({ subscriptions: org.subscriptions, now: new Date() }).sourceAccess) {
+      throw new FormError('Source access comes with ghosthand Pro. Subscribe first.')
+    }
+    const user = await findGithubUser(login, request.signal)
+    if (!user) throw new FormError(`No GitHub account named ${login}.`)
+    await requestSourceAccess({ orgId: org.orgId, user, signal: request.signal })
+    throw redirect('/dashboard')
+  })
+}
+
+export async function removeSourceAccessAction() {
+  return reportErrors('removeSourceAccess', async () => {
+    const request = getActionRequest()
+    const session = await requireSession(request)
+    const org = await getPersonalOrg(session.userId)
+    await removeSourceAccess({ orgId: org.orgId, signal: request.signal })
     throw redirect('/dashboard')
   })
 }

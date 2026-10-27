@@ -26,8 +26,9 @@ import { uploadsApp } from './uploads.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
 import { getAuth, getBaseUrl, getDb, getMcpResource, getPersonalOrg, getSession, listMacSessions } from './db.ts'
 import { entitlementFor, isProStatus } from './lib/billing.ts'
+import { DAEMON_INVITATIONS_URL, DAEMON_REPO_URL, reconcileSourceAccess } from './lib/github.ts'
 import { subscribeRedirectUrl } from './lib/stripe.ts'
-import { approveDevice, consentMcp, denyDevice, signOutMac } from './actions.tsx'
+import { approveDevice, consentMcp, denyDevice, removeDevice, removeSourceAccessAction, requestSourceAccessAction, signOutMac } from './actions.tsx'
 // wrangler main is this file, so holocron's auto-import of a root style.css never runs.
 import './globals.css'
 
@@ -153,7 +154,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
       const { AuthShell } = await import('./components/account-pages.tsx')
       const { GoogleSignInButton } = await import('./components/account-client.tsx')
       return (
-        <AuthShell title='Sign in' description='Agents use your iPhones through ghosthand. Free for 7 days, then $99 per month.'>
+        <AuthShell title='Sign in' description='Agents use your iPhones through ghosthand. Free for one iPhone; $99 per month per Mac for more.'>
           <GoogleSignInButton callbackURL={callbackURL} />
         </AuthShell>
       )
@@ -263,7 +264,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
     const { subscriptions } = org
     const hubBySession = new Map(hubMacs.map((mac) => [mac.sessionId, mac]))
     const macs = sessions.map((mac) => ({ ...mac, slug: hubBySession.get(mac.sessionId)?.slug ?? null, online: hubBySession.get(mac.sessionId)?.online ?? false }))
-    const entitlement = entitlementFor({ orgCreatedAt: org.createdAt, subscriptions, now: new Date() })
+    const entitlement = entitlementFor({ subscriptions, now: new Date() })
     // The Pro one, else the newest, so a canceled or failed plan still shows.
     const subscription = subscriptions.find((s) => isProStatus(s.status)) ?? subscriptions[0] ?? null
     const { DashboardPage } = await import('./components/account-pages.tsx')
@@ -274,8 +275,13 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
         entitlement={entitlement}
         subscription={subscription}
         macs={macs}
+        devices={org.devices}
+        sourceAccess={org.sourceAccess ? { login: org.sourceAccess.githubLogin, repoUrl: DAEMON_REPO_URL, invitationsUrl: DAEMON_INVITATIONS_URL } : null}
         mcpUrl={getMcpResource()}
         signOutMac={signOutMac}
+        removeDevice={removeDevice}
+        requestSourceAccess={requestSourceAccessAction}
+        removeSourceAccess={removeSourceAccessAction}
       />
     )
   })
@@ -333,5 +339,12 @@ export default {
     // Outside Spiceflow: the span records an escaping error for Strada.
     const route = pathname.startsWith('/macs/') ? '/macs/:mac/*' : pathname
     return startSpan({ name: `${request.method} ${route}` }, () => routeHubRequest(request))
+  },
+  // Daily: fixes drift between Pro orgs and the daemon repo's read-only collaborators.
+  async scheduled() {
+    await startSpan({ name: 'cron reconcileSourceAccess' }, async () => {
+      const { granted, revoked } = await reconcileSourceAccess()
+      console.log(`source access: ${granted} granted, ${revoked} revoked`)
+    })
   },
 } satisfies ExportedHandler<Env>

@@ -41,6 +41,8 @@
   // A task turn is one invocation with no incoming messages: tool results and model streams
   // all count against one CPU budget (default 30 s).
   "limits": { "cpu_ms": 300000 },
+  // Daily source access drift fix (src/lib/github.ts reconcileSourceAccess). Production only.
+  "triggers": { "crons": ["17 4 * * *"] },
   // Strada project `ghosthand` (src/telemetry.ts). The id is public; STRADA_TOKEN is a secret.
   "vars": {
     "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
@@ -56,7 +58,8 @@
       "STRIPE_SECRET_KEY",
       "STRIPE_WEBHOOK_SECRET",
       "AI_GATEWAY_API_KEY",
-      "STRADA_TOKEN"
+      "STRADA_TOKEN",
+      "GITHUB_TOKEN"
     ]
   },
   "env": {
@@ -84,6 +87,7 @@
         { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] }
       ],
       "limits": { "cpu_ms": 300000 },
+      "triggers": { "crons": [] },
       "vars": {
         "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
         "STRADA_ENVIRONMENT": "preview"
@@ -98,7 +102,8 @@
           "STRIPE_SECRET_KEY",
           "STRIPE_WEBHOOK_SECRET",
           "AI_GATEWAY_API_KEY",
-          "STRADA_TOKEN"
+          "STRADA_TOKEN",
+          "GITHUB_TOKEN"
         ]
       }
     }

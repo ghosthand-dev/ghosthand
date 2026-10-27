@@ -8,7 +8,7 @@
 // opaque tokens can be revoked immediately; cimd() loads clients from their metadata URL.
 // API tokens (api-key plugin, prefix ghk_) are for scripts that call the HTTP API through
 // the Mac tunnel (tunnel.ts): the daemon mints them with its session, hub checks them.
-// A signup hook creates the user's personal org: it owns the plan, trial and Mac hub.
+// A signup hook creates the user's personal org: it owns the plan, devices and Mac hub.
 
 import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/node-postgres'
@@ -203,13 +203,14 @@ async function createPersonalOrg(user: { id: string; name: string; email: string
 }
 
 /**
- * The user's personal org with its subscriptions (every Stripe account, newest first).
+ * The user's personal org with its subscriptions (every Stripe account, newest first), bound
+ * devices and source access request.
  * Looked up through org_member, not by assuming org_id = user.id.
  */
 export async function getPersonalOrg(userId: string) {
   const member = await getDb().query.orgMember.findFirst({
     where: { userId, org: { kind: 'personal' } },
-    with: { org: { with: { subscriptions: { orderBy: { createdAt: 'desc' } } } } },
+    with: { org: { with: { subscriptions: { orderBy: { createdAt: 'desc' } }, devices: { orderBy: { boundAt: 'asc' } }, sourceAccess: true } } },
   })
   if (!member?.org) throw new Error(`user ${userId} has no personal org`)
   return member.org

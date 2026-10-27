@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.13.0
+
+1. **New plans: free for one iPhone, Pro per Mac.** Free accounts lease one iPhone, with no time or request limits; switch it with Remove on the dashboard. Pro is $99 per Mac per month: every iPhone on a paid Mac works, plus phone tasks and read access to the daemon source code. See https://ghosthand.dev/docs/pricing.
+
+2. **Acquire checks the device.** The daemon sends hashes of the iPhone and Mac ids (never the raw ids) to ghosthand.dev. When the server cannot be reached, only an iPhone that was allowed before keeps working, until its check expires (`tunnel-offline`). An iPhone the daemon cannot match to its USB id now fails with `lockdown-unavailable`.
+
+3. **Mac installer.** Download a notarized `.pkg` from https://ghosthand.dev/download. It installs for the current user only (no admin password) and opens setup. The npm package and the installer ship the same signed app, so macOS permissions stay when you switch between them or upgrade.
+
+4. **Remote MCP works before you set up a Mac.** Claude, ChatGPT and other remote clients can connect https://ghosthand.dev/mcp at once. With no Mac online, tools explain how to download ghosthand or which Mac to wake.
+
+5. **Clearer first-time errors.** With no iPhone ever connected, the error lists the plug-in, Trust and setup window steps.
+
+6. **`ghosthand account` shows the plan** (free, or Pro with the number of paid Macs). Trial wording is gone.
+
+7. **Fewer telemetry requests.** Error reports and usage counts go in one request.
+
 ## 0.12.0
 
 1. **Phone tasks see the screen.** The `task` agent now runs on Claude Haiku and gets a screenshot of the settled screen after every action, so it can use icons and images that OCR cannot read. New task tools: `tapText` (tap a text on screen), `unlock` (with a passcode you give in the prompt; it never guesses one) and `webfetch` (reads the ghosthand.dev docs when it is stuck).

@@ -28,11 +28,12 @@
 - Split done: origin is `ghosthand-dev/ghosthand` (private for now), Swift in submodule `daemon/` (`ghosthand-dev/ghosthand-daemon`). Old `.git` in `~/Documents/ghosthand-old-remorses.git`. Backup `~/Documents/ghosthand-backup-2026-10-27`.
 - Releases ghosthand@0.3.0-0.12.0 copied to the new repo (notes only, new dates).
 - Other Macs: none has a ghosthand clone (checked mintmacbook Oct 27).
-- Open: daemon LICENSE draft, free/Pro billing code done and pushed (Oct 27), not deployed or migrated in prod. Needs: `GITHUB_TOKEN` (fine-grained, ghosthand-daemon admin write) in Sigillo, Stripe portal quantity changes, prod migration, deploy, npm publish. Phone tasks are Pro only.
+- Open: daemon LICENSE draft, free/Pro billing code done and pushed (Oct 27), website deployed + prod migrated + GITHUB_TOKEN set (Oct 27). 0.13.0 published Oct 27 (npm + pkg + GitHub release). E2E test on mintmacbook in thread 1564648446156087417. Phone tasks are Pro only.
 
 ## Tetherport (iPhone mobile proxy product, planned Oct 27 2026)
 
-- Plan: `/Users/morse/Documents/GitHub/tetherport/docs/plan.md` (local only, no remote). Thread 1564639728744140920.
+- Plan: `/Users/morse/Documents/GitHub/tetherport/docs/plan.md` (private repo ghosthand-dev/tetherport, pushed Oct 27). Thread 1564639728744140920.
 - One proxy port per USB iPhone (Personal Hotspot), one-time price, menu bar app + CLI via `.pkg`. Not App Store for v1 (sandbox blocks usbmuxd and PATH).
 - Riskiest open test: two tethered iPhones at once, each with its own carrier IP. ghosthand capture flips iPhone USB mode, which may drop proxy connections.
 - `GITHUB_TOKEN` (fine-grained "ghosthand.dev source access", ghosthand-dev/ghosthand-daemon, Administration write) in Sigillo dev, preview, prod. **Expires 2027-10-28**: renew before then. Stripe: own portal config `bpc_1UVAhkA0ZSKMzQVuHC3ALSTe` (metadata.app=ghosthand).
+- Oct 27: Swift app + CLI built and committed (ad-hoc signed). Event log state (phone seen/forgotten, remote access on/off). Internet URLs via opentunnel.xyz. Not tested with real tethered iPhones yet.

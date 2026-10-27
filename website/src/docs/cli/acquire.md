@@ -50,6 +50,10 @@ iPhone; list and `random list` do not. -d picks the iPhone here only.
   the iPhone is busy, or run `ghosthand wait` to wait for it.
 - Use --force only when that lease is stale (its holder is gone); the old holder's
   next command then fails. After --force, take a screenshot first.
+- Plan: the free plan covers one iPhone; Pro covers every iPhone on each paid Mac.
+  subscription-required: show the user the links in the error and stop; never retry
+  in a loop. tunnel-offline: ghosthand.dev is unreachable and this iPhone was not
+  checked recently; check the internet connection, then acquire again.
 
 ## Examples
 

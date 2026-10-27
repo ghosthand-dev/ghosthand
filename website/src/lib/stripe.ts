@@ -9,7 +9,7 @@ import { env } from 'cloudflare:workers'
 import Stripe from 'stripe'
 import * as schema from 'db/schema'
 import { getDb, type Org } from '../db.ts'
-import { isExistingStatus, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP } from './billing.ts'
+import { isExistingStatus, MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP } from './billing.ts'
 import { captureException, trackEvent } from '../telemetry.ts'
 
 /** Secret key per Stripe account id. */
@@ -74,7 +74,8 @@ export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org
   const checkout = await stripe.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: price.id, quantity: 1 }],
+    // Pro is priced per Mac: the quantity is the number of paid Macs.
+    line_items: [{ price: price.id, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1, maximum: MAX_PAID_MACS } }],
     success_url: returnUrl,
     cancel_url: returnUrl,
     allow_promotion_codes: true,
@@ -96,14 +97,14 @@ export async function portalUrl({ accountId, customerId, returnUrl }: { accountI
 
 /**
  * Mirrors one subscription into Postgres. Re-fetches it, because events can arrive out of
- * order. Ignores subscriptions of other apps on the same Stripe account.
+ * order. Ignores subscriptions of other apps on the same Stripe account. Returns the org.
  */
-export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<void> {
+export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<string | null> {
   const stripe = stripeFor(accountId)
   const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price.product'] })
   const item = sub.items.data[0]
   const product = item?.price.product
-  if (!item || !product || typeof product === 'string' || product.deleted || product.metadata.app !== STRIPE_PRODUCT_APP) return
+  if (!item || !product || typeof product === 'string' || product.deleted || product.metadata.app !== STRIPE_PRODUCT_APP) return null
 
   const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id
   const db = getDb()
@@ -111,7 +112,7 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
   const orgId = customer?.orgId ?? sub.metadata.orgId
   if (!orgId || !(await db.query.org.findFirst({ where: { orgId } }))) {
     console.warn(`subscription ${sub.id}: no org for customer ${customerId}`)
-    return
+    return null
   }
   const record = {
     orgId,
@@ -123,10 +124,12 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
     // Stripe moved the period to the item in API 2025-03-31.
     currentPeriodEnd: item.current_period_end ? new Date(item.current_period_end * 1000) : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
+    quantity: item.quantity ?? 1,
     updatedAt: new Date(),
   }
   await db.insert(schema.subscription)
     .values({ subscriptionId: sub.id, ...record })
     .onConflictDoUpdate({ target: schema.subscription.subscriptionId, set: record })
   trackEvent('subscription_updated', { org_id: orgId, status: sub.status, cancel_at_period_end: sub.cancel_at_period_end })
+  return orgId
 }

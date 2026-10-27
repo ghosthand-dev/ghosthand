@@ -212,6 +212,35 @@ export function RowAction({ action, name, value, children, pendingText }: {
   )
 }
 
+/** GitHub username for read access to the daemon repo, with the action's error inline. */
+export function SourceAccessForm({ action, defaultLogin }: { action: (formData: FormData) => Promise<void>; defaultLogin?: string }) {
+  return (
+    <ErrorBoundary
+      fallback={
+        <div className='flex flex-col gap-2 text-sm text-destructive'>
+          <ErrorBoundary.ErrorMessage />
+          <ErrorBoundary.ResetButton className='self-start underline underline-offset-4'>Try again</ErrorBoundary.ResetButton>
+        </div>
+      }
+    >
+      <form action={action} className='flex w-full max-w-sm items-center gap-2'>
+        <input
+          name='login'
+          required
+          defaultValue={defaultLogin}
+          placeholder='GitHub username'
+          autoComplete='off'
+          spellCheck={false}
+          className='h-9 min-w-0 flex-1 rounded-md border border-border bg-transparent px-3 font-mono text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
+        />
+        <SubmitButton className={cn(SECONDARY, 'w-auto px-4')} pendingText='Inviting…'>
+          {defaultLogin ? 'Change' : 'Request access'}
+        </SubmitButton>
+      </form>
+    </ErrorBoundary>
+  )
+}
+
 const TABS = ['CLI', 'MCP'] as const
 
 function quickStart(mcpUrl: string) {

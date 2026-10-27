@@ -29,6 +29,12 @@ type DaemonRequest = { type: 'request'; id: string; method: string; path: string
 async function fakeMac({ hold }: { hold?: (op: string) => boolean } = {}) {
   const response = await runtime.worker.fetch('/__test/session', { method: 'POST' })
   const identity = await response.json() as { user: { id: string }; session: { token: string } }
+  // Phone tasks need Pro.
+  await runtime.sql(
+    `INSERT INTO subscription (subscription_id, org_id, stripe_account_id, stripe_customer_id, price_id, product_id, status, created_at, updated_at)
+     VALUES ($1, $2, 'acct_test', 'cus_test', 'price_test', 'prod_test', 'active', now(), now())`,
+    [`sub_${identity.user.id}`, identity.user.id],
+  )
   const upstream = await runtime.worker.fetch('/tunnel/upstream', {
     headers: { upgrade: 'websocket', authorization: `Bearer ${identity.session.token}`, 'user-agent': 'ghosthand/test (Studio)' },
   })

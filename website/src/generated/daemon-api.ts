@@ -236,6 +236,10 @@ export interface paths {
          *     On the unix socket, a `device` that is on another Mac of the account (or the only
          *     iPhone of the account, when this Mac has none) is taken on that Mac; the id is then
          *     `<mac>:<number>`.
+         *     Every acquire asks ghosthand.dev if the plan covers this iPhone on this Mac (free:
+         *     one iPhone; Pro: every iPhone on each paid Mac). Not covered: `subscription-required`
+         *     with the subscribe and dashboard links. ghosthand.dev unreachable: only an iPhone
+         *     allowed in a recent check is leased; any other gets `tunnel-offline`.
          */
         post: operations["acquireLease"];
         delete?: never;
@@ -1127,9 +1131,9 @@ export interface paths {
         /**
          * Get account
          * @description The Mac's sign-in state and, when signed in, the plan from ghosthand.dev (one
-         *     request to the server). Every lease needs a signed-in account with an active
-         *     trial or subscription. `GET /v1/phones` carries the same sign-in state without
-         *     the plan and without a server request.
+         *     request to the server). Every lease needs a signed-in account: free covers one
+         *     iPhone, Pro covers every iPhone on each paid Mac. `GET /v1/phones` carries the same
+         *     sign-in state without the plan and without a server request.
          */
         get: operations["getAccount"];
         put?: never;
@@ -1640,14 +1644,14 @@ export interface components {
             expiresAt: string;
             /** @description The lease that `force` ended, if any */
             replaced?: components["schemas"]["LeaseInfo"];
-            /** @description A note from ghosthand.dev about the plan, e.g. when the trial ends. Show it to the user. */
+            /** @description A note from ghosthand.dev about the plan, e.g. a failed payment. Show it to the user. */
             notice?: string;
         };
         Account: {
             /**
              * @description `signed-out`: no account on this Mac; every lease fails with `login-required`.
-             *     `signing-in`: a browser sign-in runs; open `verificationUrl`. `signed-in`: leases
-             *     are checked against the plan.
+             *     `signing-in`: a browser sign-in runs; open `verificationUrl`. `signed-in`: each
+             *     acquire checks the iPhone and this Mac against the plan.
              * @enum {string}
              */
             state: "signed-out" | "signing-in" | "signed-in";
@@ -1662,14 +1666,16 @@ export interface components {
             /** @description Why the last sign-in did not finish (denied or expired), until the next one starts */
             lastError?: string;
             /**
-             * @description Only from `GET /v1/account`. `expired`: leases fail with `subscription-required`
+             * @description Only from `GET /v1/account`. `free`: one iPhone, on any Mac. `pro`: every iPhone
+             *     on each paid Mac, plus the free iPhone anywhere. Acquire on another iPhone fails
+             *     with `subscription-required`.
              * @enum {string}
              */
-            plan?: "trial" | "pro" | "expired";
-            /** @description Only from `GET /v1/account`. True when a lease can be taken */
-            allowed?: boolean;
-            /** Format: date-time */
-            trialEndsAt?: string;
+            plan?: "free" | "pro";
+            /** @description Only from `GET /v1/account`. Macs the Pro subscription pays for; 0 on free */
+            paidMacs?: number;
+            /** @description Only from `GET /v1/account`. True when the account can read the daemon source on GitHub */
+            sourceAccess?: boolean;
             /** @description Note about the plan to show the user */
             notice?: string;
             /** @description Checkout, or the billing portal when subscribed */
@@ -4204,10 +4210,9 @@ export interface operations {
                      *       "state": "signed-in",
                      *       "server": "https://ghosthand.dev",
                      *       "email": "tommy@example.com",
-                     *       "plan": "trial",
-                     *       "allowed": true,
-                     *       "trialEndsAt": "2026-10-15T09:12:00.000Z",
-                     *       "notice": "ghosthand trial ends on Oct 15, 2026. Then $99/month: https://ghosthand.dev/subscribe",
+                     *       "plan": "pro",
+                     *       "paidMacs": 2,
+                     *       "sourceAccess": true,
                      *       "subscribeUrl": "https://ghosthand.dev/subscribe",
                      *       "dashboardUrl": "https://ghosthand.dev/dashboard"
                      *     }

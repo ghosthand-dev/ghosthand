@@ -1,0 +1,555 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "5b6331cc-8e58-4bbb-b53e-0b55abef0a60",
+  "prevIds": [
+    "656f5c9c-c738-49f1-b9c9-90291096b654"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "org_device"
+      ],
+      "writes": [
+        "s|tbl|public.org_device",
+        "n|tbl|public.org_device",
+        "e|tbl|public.org_device",
+        "n|rel|public.org_device",
+        "n|type|public.org_device",
+        "n|rel|public.org_device_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "source_access"
+      ],
+      "writes": [
+        "s|tbl|public.source_access",
+        "n|tbl|public.source_access",
+        "e|tbl|public.source_access",
+        "n|rel|public.source_access",
+        "n|type|public.source_access",
+        "n|rel|public.source_access_pkey"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "subscription",
+        "quantity"
+      ],
+      "writes": [
+        "s|col|public.subscription.quantity",
+        "n|col|public.subscription.quantity",
+        "e|col|public.subscription.quantity"
+      ],
+      "reads": [
+        "n|tbl|public.subscription",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "org_device",
+        "org_device_org_id_idx"
+      ],
+      "writes": [
+        "s|idx|public.org_device_org_id_idx",
+        "n|idx|public.org_device_org_id_idx",
+        "e|idx|public.org_device_org_id_idx",
+        "n|rel|public.org_device_org_id_idx"
+      ],
+      "reads": [
+        "n|tbl|public.org_device",
+        "n|sch|public",
+        "n|col|public.org_device.org_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "org_device",
+        "org_device_org_kind_hash_unique"
+      ],
+      "writes": [
+        "s|idx|public.org_device_org_kind_hash_unique",
+        "n|idx|public.org_device_org_kind_hash_unique",
+        "e|idx|public.org_device_org_kind_hash_unique",
+        "n|rel|public.org_device_org_kind_hash_unique"
+      ],
+      "reads": [
+        "n|tbl|public.org_device",
+        "n|sch|public",
+        "n|col|public.org_device.org_id",
+        "n|col|public.org_device.kind",
+        "n|col|public.org_device.device_hash"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "org_device",
+        "org_device_org_kind_slot_unique"
+      ],
+      "writes": [
+        "s|idx|public.org_device_org_kind_slot_unique",
+        "n|idx|public.org_device_org_kind_slot_unique",
+        "e|idx|public.org_device_org_kind_slot_unique",
+        "n|rel|public.org_device_org_kind_slot_unique"
+      ],
+      "reads": [
+        "n|tbl|public.org_device",
+        "n|sch|public",
+        "n|col|public.org_device.org_id",
+        "n|col|public.org_device.kind",
+        "n|col|public.org_device.slot"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "org_device"
+      ],
+      "writes": [
+        "s|fk|public.org_device.org_device_org_id_org_org_id_fkey",
+        "n|fk|public.org_device.org_device_org_id_org_org_id_fkey",
+        "e|fk|public.org_device.org_device_org_id_org_org_id_fkey",
+        "n|con|public.org_device.org_device_org_id_org_org_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.org_device",
+        "n|sch|public",
+        "n|tbl|public.org",
+        "n|sch|public",
+        "n|col|public.org_device.org_id",
+        "n|col|public.org.org_id",
+        "e|uniqueness|public.org.org_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "source_access"
+      ],
+      "writes": [
+        "s|fk|public.source_access.source_access_org_id_org_org_id_fkey",
+        "n|fk|public.source_access.source_access_org_id_org_org_id_fkey",
+        "e|fk|public.source_access.source_access_org_id_org_org_id_fkey",
+        "n|con|public.source_access.source_access_org_id_org_org_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.source_access",
+        "n|sch|public",
+        "n|tbl|public.org",
+        "n|sch|public",
+        "n|col|public.source_access.org_id",
+        "n|col|public.org.org_id",
+        "e|uniqueness|public.org.org_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "org_device",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "source_access",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "org_device_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "org_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "device_hash",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "slot",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "bound_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_access",
+        "name": "org_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_access",
+        "name": "github_user_id",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_access",
+        "name": "github_login",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_access",
+        "name": "requested_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "subscription",
+        "name": "quantity",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "1",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "org_device_org_id_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "org_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "org_device_org_kind_hash_unique",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "org_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "kind",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "device_hash",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "org_device_org_kind_slot_unique",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "org_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "kind",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "slot",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "org_device_org_id_org_org_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "org_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "org",
+        "columnsTo": [
+          "org_id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_access",
+        "name": "source_access_org_id_org_org_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "org_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "org",
+        "columnsTo": [
+          "org_id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "org_device",
+        "name": "org_device_pkey",
+        "columns": [
+          "org_device_id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "source_access",
+        "name": "source_access_pkey",
+        "columns": [
+          "org_id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

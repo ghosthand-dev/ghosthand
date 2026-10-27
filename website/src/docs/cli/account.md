@@ -15,12 +15,14 @@ Also takes the [global options](/docs/cli/overview#global-options).
 
 ## Details
 
-Every lease needs a signed-in account with an active plan: 7 days free from sign-up,
-then $99/month. Only acquire and wait check it; a lease that runs is never stopped.
+Every lease needs a signed-in account. Free for one iPhone; Pro is $99/month per Mac
+for more iPhones and the daemon source. Only acquire and wait check it; a lease that
+runs is never stopped. People (preview, Take Control) are never limited.
 - signed out: run `ghosthand setup`. Tell the user to complete setup in its small
   window; do not interact with it. Poll `setup status` until ready.
-- plan expired: acquire fails with subscription-required. Show the user the subscribe
-  link, then acquire again after they subscribe. Never retry in a loop.
+- another iPhone than the plan covers: acquire fails with subscription-required.
+  Show the user the subscribe and dashboard links, then acquire again after they
+  change the plan. Never retry in a loop.
 - Asks ghosthand.dev once per call (GHOSTHAND_SERVER at daemon start overrides it).
 - Remote MCP: while this Mac is signed in, the daemon keeps a connection to ghosthand.dev
   (no port, works behind NAT). Add https://ghosthand.dev/mcp as a remote MCP server in

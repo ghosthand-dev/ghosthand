@@ -8,6 +8,7 @@ import { env } from 'cloudflare:workers'
 import { Spiceflow } from 'spiceflow'
 import Stripe from 'stripe'
 import { stripeFor, syncSubscription } from './lib/stripe.ts'
+import { syncSourceAccess } from './lib/github.ts'
 import { captureException } from './telemetry.ts'
 
 export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
@@ -44,7 +45,9 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
     if (!subscriptionId) return new Response('ignored')
 
     try {
-      await syncSubscription({ accountId, subscriptionId })
+      const orgId = await syncSubscription({ accountId, subscriptionId })
+      // Pro gives read access to the daemon repo; cancel takes it away at period end.
+      if (orgId) await syncSourceAccess(orgId, request.signal)
     } catch (cause) {
       console.error(`Stripe webhook ${event.type} failed:`, cause)
       captureException(cause, { tags: { route: '/api/stripe/webhook', stripe_event: event.type } })

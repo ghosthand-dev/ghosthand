@@ -5,8 +5,10 @@
 //   user ──< oauth_consent, oauth_*_token >── oauth_client   (remote MCP OAuth; jwks signs tokens)
 //   user ──< org_member >── org ──< stripe_customer  one per (org, Stripe account)
 //                               ──< subscription     mirrored from Stripe webhooks
+//                               ──< org_device       the free iPhone and the paid Macs
+//                               ──  source_access    GitHub account with read access to the daemon repo
 //
-// Identity (sessions, OAuth tokens) belongs to the user; plans, the trial and the Macs'
+// Identity (sessions, OAuth tokens) belongs to the user; plans, devices and the Macs'
 // hub belong to the org. Every user gets a personal org at signup with org_id = user.id.
 // Code must still resolve the org through org_member, never use a user id as an org id.
 //
@@ -297,7 +299,7 @@ export const oauthClientAssertion = p.pgTable('oauth_client_assertion', {
 
 // ── orgs ────────────────────────────────────────────────────────────
 
-/** Owns the plan, the trial (from createdAt) and the hub of Macs. Personal: org_id = user.id. */
+/** Owns the plan, the bound devices and the hub of Macs. Personal: org_id = user.id. */
 export const org = p.pgTable('org', {
   orgId: p.text('org_id').primaryKey().$defaultFn(() => ulid()),
   name: p.text('name').notNull(),
@@ -342,17 +344,51 @@ export const subscription = p.pgTable('subscription', {
   status: p.text('status').notNull(),
   currentPeriodEnd: timestamp('current_period_end'),
   cancelAtPeriodEnd: p.boolean('cancel_at_period_end').notNull().default(false),
+  /** Paid Macs: Pro is priced per Mac. */
+  quantity: p.integer('quantity').notNull().default(1),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (table) => [
   p.index('subscription_org_id_idx').on(table.orgId),
 ])
 
+// ── plan limits ─────────────────────────────────────────────────────
+
+/**
+ * A device bound to the org's plan by `lease-check`: the free iPhone (kind phone) and the
+ * paid Macs (kind mac). Ids are SHA-256 hashes made on the Mac; raw UDIDs never arrive.
+ * `slot` is unique per kind, so two Macs racing for the last slot cannot both insert;
+ * a Mac is paid while its slot is below the subscription quantity.
+ */
+export const orgDevice = p.pgTable('org_device', {
+  orgDeviceId: p.text('org_device_id').primaryKey().$defaultFn(() => ulid()),
+  orgId: p.text('org_id').notNull().references(() => org.orgId, { onDelete: 'cascade' }),
+  kind: p.text('kind', { enum: ['phone', 'mac'] }).notNull(),
+  deviceHash: p.text('device_hash').notNull(),
+  /** iPhone or Mac name, only for the dashboard. */
+  name: p.text('name').notNull(),
+  slot: p.integer('slot').notNull(),
+  boundAt: timestamp('bound_at').notNull().$defaultFn(() => new Date()),
+}, (table) => [
+  p.index('org_device_org_id_idx').on(table.orgId),
+  p.uniqueIndex('org_device_org_kind_hash_unique').on(table.orgId, table.kind, table.deviceHash),
+  p.uniqueIndex('org_device_org_kind_slot_unique').on(table.orgId, table.kind, table.slot),
+])
+
+/** The GitHub account an org asked read access for. GitHub holds the actual access. */
+export const sourceAccess = p.pgTable('source_access', {
+  orgId: p.text('org_id').primaryKey().references(() => org.orgId, { onDelete: 'cascade' }),
+  /** Stable across GitHub renames; the cron matches collaborators by it. */
+  githubUserId: p.bigint('github_user_id', { mode: 'number' }).notNull(),
+  githubLogin: p.text('github_login').notNull(),
+  requestedAt: timestamp('requested_at').notNull().$defaultFn(() => new Date()),
+})
+
 export const relations = defineRelations(
   {
     user, session, account, verification, deviceCode, apikey,
     jwks, oauthClient, oauthResource, oauthClientResource, oauthRefreshToken, oauthAccessToken, oauthConsent, oauthClientAssertion,
-    org, orgMember, stripeCustomer, subscription,
+    org, orgMember, stripeCustomer, subscription, orgDevice, sourceAccess,
   },
   (r) => ({
     user: {
@@ -420,6 +456,8 @@ export const relations = defineRelations(
       members: r.many.orgMember(),
       stripeCustomers: r.many.stripeCustomer(),
       subscriptions: r.many.subscription(),
+      devices: r.many.orgDevice(),
+      sourceAccess: r.one.sourceAccess(),
     },
     orgMember: {
       org: r.one.org({ from: r.orgMember.orgId, to: r.org.orgId }),
@@ -430,6 +468,12 @@ export const relations = defineRelations(
     },
     subscription: {
       org: r.one.org({ from: r.subscription.orgId, to: r.org.orgId }),
+    },
+    orgDevice: {
+      org: r.one.org({ from: r.orgDevice.orgId, to: r.org.orgId }),
+    },
+    sourceAccess: {
+      org: r.one.org({ from: r.sourceAccess.orgId, to: r.org.orgId }),
     },
   }),
 )

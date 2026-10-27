@@ -182,10 +182,10 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
   keeps every unlocked USB- and Bluetooth-connected iPhone awake (a Control key press
   after 10 s idle). Locked or unplugged iPhones get no key, so Auto-Lock works normally.
 - A wrong unlock passcode is never retried (failed attempts count toward lockout).
-- Account: acquire needs this Mac signed in to ghosthand.dev with a trial or plan.
-  login-required: run `ghosthand setup`, tell the user to sign in there, poll
-  setup status. subscription-required: show the user the link in the error, acquire
-  again after they subscribe; never retry in a loop. Do not run `account login` yourself.
+- Account: acquire needs this Mac signed in to ghosthand.dev. The free plan covers one
+  iPhone. login-required: run `ghosthand setup`, tell the user to sign in there, poll
+  setup status. subscription-required: show the user the links in the error, acquire
+  again after they change the plan; never retry in a loop. Do not run `account login` yourself.
 - New account and the user gave no details: get each from `ghosthand random <kind>`
   (name, lastname, username, birthdate, password). Never invent a password. Every
   value is saved: `ghosthand random list` finds one you forgot.

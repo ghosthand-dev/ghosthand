@@ -27,4 +27,5 @@
 - MEMORY.md goes to the public repo: no user names, emails or secrets in it.
 - Split done: origin is `ghosthand-dev/ghosthand` (private for now), Swift in submodule `daemon/` (`ghosthand-dev/ghosthand-daemon`). Old `.git` in `~/Documents/ghosthand-old-remorses.git`. Backup `~/Documents/ghosthand-backup-2026-10-27`.
 - Releases ghosthand@0.3.0-0.12.0 copied to the new repo (notes only, new dates).
-- Open: other Macs not switched, daemon LICENSE draft, free/Pro billing code not started.
+- Other Macs: none has a ghosthand clone (checked mintmacbook Oct 27).
+- Open: daemon LICENSE draft, free/Pro billing code not started.

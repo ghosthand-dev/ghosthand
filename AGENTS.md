@@ -11,7 +11,7 @@ ghosthand-dev/ghosthand (public)   website/  db/  npm/  docs/  skills/ghosthand/
 ```
 
 - **Read `daemon/AGENTS.md`** before editing anything in `daemon/`: the Swift internals (CLI help, USB services, control modes, pointer, scroll, UI testing) are documented there.
-- **Keep `daemon/` on branch `main`, never a detached HEAD.** `git -C daemon branch --show-current` must print `main` before you edit or commit there. After a clone or a detached checkout: `git submodule update --init && git -C daemon switch main && git -C daemon pull`. If commits were made on a detached HEAD, switch to `main` and `git merge <sha>` them; never leave them dangling.
+- **Keep `daemon/` on branch `main`, never a detached HEAD.** `git -C daemon branch --show-current` must print `main` before you edit or commit there. After a clone, a new worktree or a detached checkout: `git submodule update --init && git -C daemon switch main && git -C daemon pull`. If commits were made on a detached HEAD, switch to `main` and `git merge <sha>` them; never leave them dangling.
 - `.gitmodules` sets `branch = main` and `update = merge`, so `git submodule update` merges the recorded commit into `main` instead of detaching. Never run `git submodule update --checkout`.
 - **Never copy** daemon code, private skill text or `daemon/AGENTS.md` content into the public repo, its issues or PRs. Public docs describe behavior, not Swift code.
 - At session start also run `git -C daemon status -s -u` and `git -C daemon diff`.

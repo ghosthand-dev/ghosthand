@@ -38,6 +38,7 @@ test('lease decision: one free iPhone anywhere, any iPhone on a paid Mac', () =>
     show('free, first iPhone', free, [], 'a', 'm1'),
     show('free, same iPhone on another Mac', free, [phone('a')], 'a', 'm2'),
     show('free, second iPhone', free, [phone('a')], 'b', 'm1'),
+    show('pro, free iPhone on a new Mac takes no slot', pro1, [phone('a')], 'a', 'laptop'),
     show('pro, first Mac', pro1, [phone('a')], 'b', 'm1'),
     show('pro, paid Mac, 5th iPhone', pro1, [phone('a'), mac('m1', 0)], 'e', 'm1'),
     show('pro, unpaid Mac, free iPhone', pro1, [phone('a'), mac('m1', 0)], 'a', 'm2'),
@@ -50,6 +51,7 @@ test('lease decision: one free iPhone anywhere, any iPhone on a paid Mac', () =>
     free, first iPhone: allowed bind=phone@0
     free, same iPhone on another Mac: allowed bind=-
     free, second iPhone: refused phone | The free plan covers one iPhone: iPhone a. Remove it on the dashboard to switch, or subscribe to Pro ($99/month per Mac) for unlimited iPhones.
+    pro, free iPhone on a new Mac takes no slot: allowed bind=-
     pro, first Mac: allowed bind=mac@0
     pro, paid Mac, 5th iPhone: allowed bind=-
     pro, unpaid Mac, free iPhone: allowed bind=-

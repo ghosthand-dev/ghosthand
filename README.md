@@ -737,6 +737,24 @@ ghosthand tap 414 896 --scale 1             # native pixel coordinates
 
 `screentext` always runs OCR on native pixels (small text reads better), then scales the boxes.
 
+## Does Ghosthand need iPhone Mirroring?
+
+**No.** Ghosthand captures the screen over USB and sends input as a Bluetooth mouse and keyboard. It does not use Apple's iPhone Mirroring app.
+
+[Apple documents these iPhone Mirroring limits](https://support.apple.com/en-us/120421). Ghosthand's default USB + Bluetooth mode works differently:
+
+| iPhone Mirroring | Ghosthand |
+| --- | --- |
+| Unavailable in the EU | No EU restriction |
+| iPhone must stay locked; unlocking ends mirroring | iPhone stays unlocked for screen capture and control |
+| Same Apple Account with two-factor authentication on both devices | No matching Apple Accounts needed; USB trust and Bluetooth pairing instead |
+| Only one iPhone at a time | Several iPhones per Mac; 2 tested, Bluetooth limits still apply |
+| Wi-Fi and Bluetooth must be on for both devices | Screen capture and input need USB and Bluetooth, not iPhone Wi-Fi; the Mac still needs internet for account and remote features |
+| Opening Control Center requires macOS 27 or later | `ghosthand key fn+c` opens it on the iPhone; tested on iOS 18.6 |
+| Connection automatically pauses after inactivity | The daemon keeps connected, unlocked iPhones awake; leases still expire after 10 idle minutes by default |
+
+Ghosthand still needs a Mac, a USB cable and Bluetooth. See [Setup](#setup-once-per-iphone) and [Limits](#limits).
+
 ## Why this instead of Appium?
 
 **Great for letting an agent control your own phone without a development setup.** After installing ghosthand on the Mac, there are just two manual connection steps:

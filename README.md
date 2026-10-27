@@ -1033,7 +1033,7 @@ MCP client ──POST /mcp, OAuth──> ghosthand.dev hub (one per account)
 - **Flags are arguments:** `lease`, `text` and `index` on `tap`, `waitText`, `timeoutMs`, `screenshot: true`, `screentext: true`. Screenshots come back as image content, not files.
 - **Stateless HTTP:** modern clients (MCP 2026-07-28) and legacy ones (`initialize`) both work. A closed request stops the tool.
 - **No Mac yet:** a new account can connect before any Mac is set up. The hub then answers `initialize` and `tools/list` itself, and every tool call returns the next step for the user: the [download link](https://ghosthand.dev/download), or which Mac is offline and since when. A Mac that never had an iPhone answers with the plug-in and Trust steps.
-- **No MCP library:** a few JSON-RPC methods in [mcp.swift](Sources/ghosthand/mcp.swift) run in the daemon; the hub in [website/src/tunnel.ts](website/src/tunnel.ts) only routes, and answers from the generated `website/mcp-tools.json` while no Mac is online.
+- **No MCP library:** a few JSON-RPC methods in the daemon's `mcp.swift` handle it; the hub in [website/src/tunnel.ts](website/src/tunnel.ts) only routes, and answers from the generated `website/mcp-tools.json` while no Mac is online.
 - `ghosthand daemon status` shows this Mac's name in the account.
 
 ## Security
@@ -1155,7 +1155,7 @@ A `tap --text "Settings"` from command to touch: OCR finds the text on the last 
 
 ![tap --text flow: CLI to the daemon HTTP route, Controller runs OCR on the latest USB frame and converts the center to 0..1 fractions, BluetoothDriver sends a HID click to AssistiveTouch on the iPhone.](https://ghosthand.dev/assets/diagram-tap-flow.svg)
 
-The daemon publishes a **Bluetooth Classic HID** service, the same profile a real Bluetooth keyboard uses. macOS has no public API to be a Classic HID device, so it uses CoreBluetooth's private `CBClassicManager` (`Sources/ClassicBluetooth`).
+The daemon publishes a **Bluetooth Classic HID** service, the same profile a real Bluetooth keyboard uses. macOS has no public API to be a Classic HID device, so it uses CoreBluetooth's private `CBClassicManager`.
 
 ```diagram
 Mac (daemon)                                          iPhone
@@ -1343,7 +1343,7 @@ scripts ──> ghosthand.dev/macs/<mac>/v1 (API token) ──> WebSocket the da
   OCR (Vision)                            (MobileDevice)          HID, CBClassicManager
 ```
 
-- `Sources/ghosthand/openapi.yaml` is the source of truth. swift-openapi-generator builds the server and the client from it.
+- [`website/openapi.yaml`](website/openapi.yaml) is the daemon's API spec, the source of truth. swift-openapi-generator builds the server and the client from it.
 - AVFoundation and CoreBluetooth need the main run loop, so HTTP runs in a detached task.
 - Each request runs on its own thread. Capture, OCR, and lock state have per-iPhone locks; input sequences (`unlock`, taps) are serialized per iPhone. Different iPhones run in parallel.
 - Files: `~/.ghosthand/daemon.sock`, `daemon.log`, `daemon.lock`, `state.db`.

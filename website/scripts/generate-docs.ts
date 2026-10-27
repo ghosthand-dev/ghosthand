@@ -3,7 +3,8 @@
 //
 //   ghosthand docs-json ──> tmp JSON ──┬─> src/docs/cli/*.md        (CLI tab pages)         
 //                                      ├─> docs.jsonc               (between the cli-pages markers)
-//                                      └─> mcp-tools.json           (MCP tab, read by holocron)
+//                                      └─> mcp-tools.json           (MCP tab, read by holocron; the hub's
+//                                                                    offline initialize and tools/list)
 //   Sources/ghosthand/openapi.yaml ──> src/generated/daemon-api.ts  (types of the task tools)
 //
 // Run: pnpm --filter ghosthand-website generate-docs  (builds the Swift binary first)
@@ -258,7 +259,9 @@ log('updated docs.jsonc navigation')
 // ── 5. MCP tab definition ───────────────────────────────────────────
 
 const mcpPath = path.join(websiteDir, 'mcp-tools.json')
-fs.writeFileSync(mcpPath, JSON.stringify({ serverUrl: manual.mcp.serverUrl, tools: manual.mcp.tools }, null, 2) + '\n')
+// version and instructions: the hub answers initialize and tools/list from this file while no Mac is online.
+const mcpManual = { serverUrl: manual.mcp.serverUrl, version: manual.version, instructions: manual.mcp.instructions, tools: manual.mcp.tools }
+fs.writeFileSync(mcpPath, JSON.stringify(mcpManual, null, 2) + '\n')
 log(`wrote mcp-tools.json (${manual.mcp.tools.length} tools)`)
 
 // ── 6. daemon API types for the task tools (src/task-agent.ts) ─────

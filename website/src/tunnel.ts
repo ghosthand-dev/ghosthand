@@ -27,7 +27,6 @@ import { createResourceServerChallenge } from '@better-auth/oauth-provider'
 import { getAuth, getCallerUserId, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent } from './db.ts'
 import {
   macSlug,
-  mcpCacheKey,
   mergeListReplies,
   parseJsonRpc,
   parseSseMessage,
@@ -286,17 +285,8 @@ export class GhosthandHub extends DurableObject<Env> {
     switch (route.kind) {
       case 'reply':
         return route.body ? Response.json(route.body, { status: route.status }) : new Response(null, { status: route.status })
-      case 'forward': {
-        const response = await this.dispatch({ slug: route.slug, request, method: 'POST', path: '/mcp', body: text, fail: mcpFail(rpcId) })
-        const cacheKey = mcpCacheKey(message)
-        if (!cacheKey || !response.ok || !response.headers.get('content-type')?.includes('application/json')) return response
-        // Small JSON: keep its result so clients can connect while every Mac is offline.
-        const json = await response.text()
-        const reply = parseJsonRpc(json)
-        const result = reply.ok ? reply.message.result : undefined
-        if (result !== undefined) this.ctx.storage.kv.put(cacheKey, result)
-        return new Response(json, { status: response.status, headers: response.headers })
-      }
+      case 'forward':
+        return this.dispatch({ slug: route.slug, request, method: 'POST', path: '/mcp', body: text, fail: mcpFail(rpcId) })
       case 'fanout': {
         const replies = await Promise.all(route.slugs.map((slug) => this.collect({ slug, request, method: 'POST', path: '/mcp', body: text, fail: mcpFail(rpcId) })))
         return Response.json(mergeListReplies(rpcId, replies))
@@ -306,8 +296,12 @@ export class GhosthandHub extends DurableObject<Env> {
 
   private route(message: JsonRpcMessage) {
     const online = this.onlineMacs()
-    const cacheKey = online.length ? null : mcpCacheKey(message)
-    return routeMcpCall({ message, online, cached: cacheKey ? this.ctx.storage.kv.get(cacheKey) : undefined })
+    const onlineIds = new Set(online.map((mac) => mac.sessionId))
+    const offline = Object.entries(this.registry())
+      .filter(([sessionId]) => !onlineIds.has(sessionId))
+      .map(([, mac]) => mac)
+      .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+    return routeMcpCall({ message, online, offline, now: Date.now() })
   }
 
   /** `/macs` lists the Macs; `/macs/<slug>/v1/...` replays the request on that Mac's daemon. */

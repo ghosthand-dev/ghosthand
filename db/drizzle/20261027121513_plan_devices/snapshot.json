@@ -2,11 +2,28 @@
   "type": "diff",
   "version": "9",
   "dialect": "postgres",
-  "id": "5b6331cc-8e58-4bbb-b53e-0b55abef0a60",
+  "id": "cd621280-bf63-4357-a819-16ece1462b06",
   "prevIds": [
     "656f5c9c-c738-49f1-b9c9-90291096b654"
   ],
   "footprints": [
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "org_device_kind"
+      ],
+      "writes": [
+        "s|enum|public.org_device_kind",
+        "n|enum|public.org_device_kind",
+        "e|enum|public.org_device_kind",
+        "n|type|public.org_device_kind"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
     {
       "statementType": "create_table",
       "statementTarget": [
@@ -23,7 +40,8 @@
         "n|rel|public.org_device_pkey"
       ],
       "reads": [
-        "n|sch|public"
+        "n|sch|public",
+        "n|enum|public.org_device_kind"
       ]
     },
     {
@@ -197,6 +215,18 @@
       "op": "create",
       "row": {
         "schema": "public",
+        "name": "org_device_kind",
+        "values": [
+          "phone",
+          "mac"
+        ],
+        "entityType": "enums"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
         "table": "org_device",
         "name": "org_device_id",
         "type": "text",
@@ -231,8 +261,8 @@
         "schema": "public",
         "table": "org_device",
         "name": "kind",
-        "type": "text",
-        "typeSchema": null,
+        "type": "org_device_kind",
+        "typeSchema": "public",
         "notNull": true,
         "dimensions": 0,
         "default": null,

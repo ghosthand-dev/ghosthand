@@ -354,6 +354,8 @@ export const subscription = p.pgTable('subscription', {
 
 // ── plan limits ─────────────────────────────────────────────────────
 
+export const orgDeviceKind = p.pgEnum('org_device_kind', ['phone', 'mac'])
+
 /**
  * A device bound to the org's plan by `lease-check`: the free iPhone (kind phone) and the
  * paid Macs (kind mac). Ids are SHA-256 hashes made on the Mac; raw UDIDs never arrive.
@@ -363,7 +365,7 @@ export const subscription = p.pgTable('subscription', {
 export const orgDevice = p.pgTable('org_device', {
   orgDeviceId: p.text('org_device_id').primaryKey().$defaultFn(() => ulid()),
   orgId: p.text('org_id').notNull().references(() => org.orgId, { onDelete: 'cascade' }),
-  kind: p.text('kind', { enum: ['phone', 'mac'] }).notNull(),
+  kind: orgDeviceKind('kind').notNull(),
   deviceHash: p.text('device_hash').notNull(),
   /** iPhone or Mac name, only for the dashboard. */
   name: p.text('name').notNull(),

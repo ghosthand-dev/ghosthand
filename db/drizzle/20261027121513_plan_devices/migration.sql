@@ -1,7 +1,8 @@
+CREATE TYPE "org_device_kind" AS ENUM('phone', 'mac');--> statement-breakpoint
 CREATE TABLE "org_device" (
 	"org_device_id" text PRIMARY KEY,
 	"org_id" text NOT NULL,
-	"kind" text NOT NULL,
+	"kind" "org_device_kind" NOT NULL,
 	"device_hash" text NOT NULL,
 	"name" text NOT NULL,
 	"slot" integer NOT NULL,

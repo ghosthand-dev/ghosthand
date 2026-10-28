@@ -26,6 +26,7 @@ Also takes the [global options](/docs/cli/overview#global-options).
   Ghosthand.app, checks its Developer ID and Gatekeeper, and installs it in
   ~/Applications. It never installs while a lease is active and never downgrades.
   The daemon then restarts on it once no lease is active.
+- A local build in ~/Applications (`build.ts --dev`) is never replaced by itself.
 - Without --auto: checks now and installs a newer build, also with auto-update off.
 - `ghosthand daemon status` shows the update state.
 

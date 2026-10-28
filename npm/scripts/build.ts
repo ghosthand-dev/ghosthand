@@ -112,6 +112,8 @@ Object.assign(info, {
   LSUIElement: true,
   GhosthandRelease: true,
   GhosthandSourceBuildID: `${version}+${buildNumber}`,
+  // Not a notarized release (--dev or a plain local build): the daemon's updater never replaces it by itself.
+  ...(release ? {} : { GhosthandLocalBuild: true }),
 })
 const infoJson = path.join(tmp, 'Info.json')
 fs.writeFileSync(infoJson, JSON.stringify(info))

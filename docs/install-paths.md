@@ -48,6 +48,7 @@ A build id is `GhosthandSourceBuildID` from `npm/scripts/build.ts`: `0.13.0+2026
 | app `B`, daemon `B` | release `B'`, a lease is active | zip downloaded and checked, kept until no lease is active, then installed |
 | app `B'`, daemon `B'` | latest.json names `B` or older | nothing: only a newer build is downloaded, and install() is newer-only too |
 | any | auto-update off (`ghosthand daemon update --auto off`) | no download; `ghosthand daemon update` still installs on request |
+| local build `L` (`--dev`), daemon `L` | release `B'` newer than `L` | nothing: a `GhosthandLocalBuild` app is never replaced by itself; `ghosthand daemon update` installs `B'` on request |
 
 ## Auto-update
 
@@ -66,6 +67,7 @@ GhosthandApplication.install() ──> ~/Applications/Ghosthand.app ──> upke
 
 - **Why the R2 zip, not the npm tarball:** same build (one `build.ts --release --upload` run), but the zip is the stapled bundle exactly as `ditto` wrote it, on the server the download page already uses. The tarball needs registry metadata, a tar extract and the package layout.
 - **Off switch:** `ghosthand daemon update --auto off`, stored in the macOS defaults (`com.remorses.ghosthand AutoUpdate`). `ghosthand daemon update` checks and installs now, also when off. `ghosthand daemon status` shows the state.
+- **Local builds stay:** `build.ts` without `--release` (e.g. `--dev`) sets `GhosthandLocalBuild` in Info.plist. When the installed app has it, the updater does not download or install, and a local CLI prints no update notice. Otherwise a release from another Mac would replace uncommitted work on this one, and the dev CLI (now older) could not install itself again until its version is bumped.
 - **Failures** (download, check, install) keep that build out for an hour, are logged, and non-network ones go to Strada (`Updater.run`).
 - Manifests uploaded before the updater existed have no `build`; the updater ignores them.
 - The daemon writes its own app bundle: macOS App Management allows it because both are signed by our Developer ID team (tested on macOS 26.7.1, launched by Launch Services). Earlier ad-hoc signed builds got EPERM there.

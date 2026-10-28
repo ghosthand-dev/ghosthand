@@ -2,10 +2,10 @@
 // Run with `pnpm build` (Node strips the types). Every Ghosthand.app comes from here: the CLI
 // never assembles or signs a bundle on the user's Mac, it only copies this one to ~/Applications.
 //
-//   swift build arm64 + x86_64 ──lipo──> Contents/MacOS/ghosthand ──> dist/Ghosthand.app  (npm bin)
-//                                                                       │ codesign: Developer ID +
-//                                                                       │ hardened runtime, else ad-hoc
-//                                                                       ▼
+//   swift build --arch arm64 --arch x86_64 ──> Contents/MacOS/ghosthand ──> dist/Ghosthand.app (npm bin)
+//   swift-stdlib-tool ──> Contents/Frameworks/libswift*.dylib (macOS < 26)    │ codesign: Developer ID +
+//                                                                             │ hardened runtime, else ad-hoc
+//                                                                             ▼
 //                          --release: notarize + staple ──> release/Ghosthand-<v>.zip    (app updates)
 //                                                      └──> release/Ghosthand-<v>.pkg    (download page)
 //                          --upload: release/* ──wrangler r2──> ghosthand-releases, latest.json last
@@ -65,24 +65,16 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ghosthand-build-'))
 
 // ── 1. universal binary ─────────────────────────────────────────────
 
-// Swift 6.4's build system uses one bin path for every --arch, so each build overwrites
-// the last. Copy each slice out before building the next arch.
-const slices = archs.map((arch) => {
-  // Dev: no --arch, so it shares the build cache with a plain `swift build` (else each switch relinks).
-  const args = ['build', '-c', configuration, ...(dev ? [] : ['--arch', arch])]
-  log(`building ${arch} (swift ${args.join(' ')})`)
-  execFileSync('swift', args, { cwd: daemonRoot, stdio: 'inherit' })
-  const binPath = run('swift', [...args, '--show-bin-path'])
-  const slice = path.join(tmp, `ghosthand-${arch}`)
-  fs.copyFileSync(path.join(binPath, 'ghosthand'), slice)
-  log(`built ${slice}`)
-  return slice
-})
+// Swift Build links every --arch into one universal binary. Dev: no --arch, so it shares the
+// build cache with a plain `swift build` (else each switch relinks).
+const buildArgs = ['build', '-c', configuration, ...(dev ? [] : archs.flatMap((arch) => ['--arch', arch]))]
+log(`building ${archs.join(' + ')} (swift ${buildArgs.join(' ')})`)
+execFileSync('swift', buildArgs, { cwd: daemonRoot, stdio: 'inherit' })
+const binPath = run('swift', [...buildArgs, '--show-bin-path'])
 
 fs.rmSync(app, { recursive: true, force: true })
 fs.mkdirSync(path.dirname(binary), { recursive: true })
-log(`merging ${archs.join(' + ')} into ${binary}`)
-run('lipo', ['-create', ...slices, '-output', binary])
+fs.copyFileSync(path.join(binPath, 'ghosthand'), binary)
 // Local symbols are about half the size (68 MB -> 34 MB); the __info_plist and __openapi sections stay.
 if (!dev) {
   log('stripping local symbols')
@@ -126,6 +118,23 @@ fs.writeFileSync(infoJson, JSON.stringify(info))
 run('plutil', ['-convert', 'xml1', '-o', infoPath, infoJson])
 fs.mkdirSync(path.join(app, 'Contents', 'Resources'), { recursive: true })
 fs.copyFileSync(path.join(daemonRoot, 'Assets/ghosthand-icon.icns'), path.join(app, 'Contents', 'Resources', 'ghosthand.icns'))
+
+// Swift 6.2+ links back-deploy libraries like @rpath/libswiftCompatibilitySpan.dylib (Span types,
+// used by swift-nio) when the target is below macOS 26. macOS 26+ has them in /usr/lib/swift; older
+// macOS loads our copy in Contents/Frameworks. swift-stdlib-tool is what Xcode runs to embed them.
+// https://github.com/apple/swift-collections/issues/732
+const frameworks = path.join(app, 'Contents', 'Frameworks')
+run('xcrun', ['swift-stdlib-tool', '--copy', '--scan-executable', binary, '--platform', 'macosx', '--destination', frameworks])
+// Only /usr/lib/swift, then Frameworks. The build Mac's toolchain paths would load its copy instead
+// on a Mac with Xcode, hiding a missing library.
+const rpaths = [...run('otool', ['-l', binary]).matchAll(/cmd LC_RPATH\n.*\n\s*path (.+) \(offset/g)].map((m) => m[1])
+const dropped = [...new Set(rpaths)].filter((rpath) => rpath !== '/usr/lib/swift')
+run('install_name_tool', [...dropped.flatMap((rpath) => ['-delete_rpath', rpath]), '-add_rpath', '@executable_path/../Frameworks', binary])
+const rpathLibs = [...new Set([...run('otool', ['-L', binary]).matchAll(/@rpath\/(\S+)/g)].map((m) => m[1]))]
+const missing = rpathLibs.filter((lib) => !fs.existsSync(path.join(frameworks, lib)))
+if (missing.length) throw new Error(`not in Contents/Frameworks: ${missing.join(', ')}`)
+const embeddedLibs = fs.existsSync(frameworks) ? fs.readdirSync(frameworks).map((lib) => path.join(frameworks, lib)) : []
+log(`embedded ${embeddedLibs.map((lib) => path.basename(lib)).join(', ') || 'no Swift back-deploy libraries'}`)
 log(`bundle ${app} (version ${version}, build ${buildNumber})`)
 
 // ── 3. sign ─────────────────────────────────────────────────────────
@@ -193,13 +202,17 @@ if (appIdentity) {
     </plist>
   `)
   log(`signing with ${appIdentity} (hardened runtime)`)
-  run('codesign', ['--force', '--timestamp', '--options', 'runtime', '--entitlements', entitlements, ...(keychain ? ['--keychain', keychain] : []), '--sign', appIdentity, app])
+  const sign = ['--force', '--timestamp', '--options', 'runtime', ...(keychain ? ['--keychain', keychain] : []), '--sign', appIdentity]
+  // Nested code first: the app signature seals the signed libraries in Frameworks.
+  for (const lib of embeddedLibs) run('codesign', [...sign, lib])
+  run('codesign', [...sign, '--entitlements', entitlements, app])
 } else {
   // Same designated requirement as a dev install, so macOS permissions survive rebuilds.
   log('no Developer ID Application identity: ad-hoc signing')
+  for (const lib of embeddedLibs) run('codesign', ['--force', '--sign', '-', lib])
   run('codesign', ['--force', '--sign', '-', '--identifier', bundleId, '--requirements', `=designated => identifier "${bundleId}"`, app])
 }
-run('codesign', ['--verify', '--strict', '--verbose=2', app])
+run('codesign', ['--verify', '--deep', '--strict', '--verbose=2', app])
 log('signature verified')
 
 if (dev) {

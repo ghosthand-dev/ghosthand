@@ -495,9 +495,11 @@ export class GhosthandHub extends DurableObject<Env> {
     return this.ctx.storage.kv.get<Record<string, MacEntry>>('macs') ?? {}
   }
 
-  /** Open sockets with their Mac, newest connection first. */
+  /** Open sockets with their Mac, newest connection first, one per session. A replaced socket
+   *  can still read OPEN after close() (seen on prod: one Mac listed twice). */
   private onlineMacs() {
     const registry = this.registry()
+    const seen = new Set<string>()
     return this.ctx.getWebSockets()
       .filter((socket) => socket.readyState === WebSocket.OPEN)
       .flatMap((socket) => {
@@ -506,6 +508,7 @@ export class GhosthandHub extends DurableObject<Env> {
         return info && mac && info.expiresAt > Date.now() ? [{ ...info, slug: mac.slug, name: mac.name, socket }] : []
       })
       .sort((a, b) => b.connectedAt - a.connectedAt)
+      .filter((mac) => !seen.has(mac.sessionId) && !!seen.add(mac.sessionId))
   }
 
   /** A Mac dropped in the last minute: likely a daemon restart, worth waiting for. */

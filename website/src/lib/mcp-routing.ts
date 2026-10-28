@@ -137,7 +137,12 @@ export function routeMcpCall({ message, online, offline, now }: {
     if (target !== undefined) {
       if (online.some((mac) => mac.slug === target)) return { kind: 'forward', slug: target }
       if (!online.length) return noMac()
-      return toolError(`Mac ${target} is offline. Online: ${describe(online)}`, true)
+      const known = offline.find((mac) => mac.slug === target)
+      if (!known) return toolError(`This account has no Mac "${target}". Online: ${describe(online)}. Call \`list\` for the Macs and their iPhones.`)
+      return toolError([
+        `${known.name} (${target}) is offline. Online: ${describe(online)}.`,
+        `Ask the user to wake ${known.name} and open the Ghosthand app, then try again; or call \`list\` and acquire an iPhone on an online Mac (a lease works only on the Mac that gave it).`,
+      ].join(' '), true)
     }
     if (params.name === 'list' && online.length > 1) return { kind: 'fanout', slugs: online.map((mac) => mac.slug) }
     if (online.length === 1) return { kind: 'forward', slug: online[0]!.slug }

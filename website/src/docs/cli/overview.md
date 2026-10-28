@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand CLI reference"
 sidebarTitle: "Overview"
-description: "Every ghosthand 0.13.0 command, option and example, generated from the CLI help."
+description: "Every ghosthand 0.13.1 command, option and example, generated from the CLI help."
 ---
 
 The **ghosthand** CLI controls an iPhone through the daemon on your Mac. Every command is
@@ -144,6 +144,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`daemon stop`](/docs/cli/daemon-stop) | Stop the daemon |
 | [`daemon restart`](/docs/cli/daemon-restart) | Restart the daemon |
 | [`daemon status`](/docs/cli/daemon-status) | Show daemon state, listeners, Bluetooth state and the log path |
+| [`daemon update`](/docs/cli/daemon-update) | Install the latest release now, or turn auto-update on or off |
 | [`daemon run`](/docs/cli/daemon-run) | Run the daemon in the foreground (for launchd or debugging) |
 
 ### Random values
@@ -223,7 +224,7 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
 - No iPhone in `list`, or errors about USB, Trust, a never-paired iPhone, or
   Bluetooth that never connects: the user must connect or fix the phone. Run
   `ghosthand setup` once (MCP: use the setup tool). Tell the user to complete setup
-  in the small Ghosthand window. All actions in the Ghosthand app window are user-only. Agents must not interact with the window or complete setup for the user. Poll `ghosthand setup status` (MCP: setup-status) every 2 seconds until ready is true. Pass --device (MCP: device) for the intended iPhone if known or if several are connected; use the returned device id on later polls. When ready, acquire that phone using its captureId from overview. Wait while the user completes setup, then continue automatically when ready. Do not reopen setup, request permissions, or retry input while waiting. If setup is still incomplete after 10 minutes, report the current status instead of retrying forever. Do not tap Trust or pair for them. A locked iPhone that is trusted
+  in the small Ghosthand window. All actions in the Ghosthand app window are user-only. Agents must not interact with the window or complete setup for the user. Poll `ghosthand setup status` (MCP: setup-status) every 2 seconds until ready is true (remote MCP at ghosthand.dev/mcp: every 10 seconds). Its `next` is the step the window shows: tell it to the user when it changes (a remote user may not look at the Mac). Pass --device (MCP: device) for the intended iPhone if known or if several are connected; use the returned device id on later polls. When ready, acquire that phone using its captureId from overview. Wait while the user completes setup, then continue automatically when ready. Do not reopen setup, request permissions, or retry input while waiting. If setup is still incomplete after 10 minutes, report the current status instead of retrying forever. Do not tap Trust or pair for them. A locked iPhone that is trusted
   and paired is not a setup problem: use `unlock` only with a passcode the user
   confirmed, otherwise ask the user to unlock it. `ghosthand dashboard` is a window to
   watch every iPhone and its agent; open it only if the user asks to see it.

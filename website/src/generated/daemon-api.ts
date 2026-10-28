@@ -1277,6 +1277,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/daemon/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Update now, or turn auto-update on or off
+         * @description Without a body: reads the latest release from ghosthand.dev now and installs it in
+         *     ~/Applications/Ghosthand.app when it is a newer build, even with auto-update off. It
+         *     installs only while no lease is active, and the daemon restarts on it once idle.
+         *     With `auto`: only saves the setting. Only over the unix socket; tunnel clients get 403.
+         */
+        post: operations["updateDaemon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/openapi.yaml": {
         parameters: {
             query?: never;
@@ -1332,6 +1355,23 @@ export interface components {
              */
             expiresAt: string;
         };
+        UpdateDaemonRequest: {
+            /** @description Turn auto-update on or off. Saved in the macOS defaults `com.remorses.ghosthand AutoUpdate`. */
+            auto?: boolean;
+        };
+        UpdateStatus: {
+            /** @description The daemon installs new releases by itself (default on) */
+            auto: boolean;
+            /** @description Build id of the latest release on ghosthand.dev. Absent before the first answer. */
+            latest?: string;
+            /**
+             * Format: date-time
+             * @description When the latest release was last asked for
+             */
+            checkedAt?: string;
+            /** @description The update state in one line, e.g. up to date, downloaded, installed, or why it failed */
+            message: string;
+        };
         RestartDaemonRequest: {
             /**
              * @description Absolute path of another ghosthand binary to run, e.g. a newer version the
@@ -1365,6 +1405,7 @@ export interface components {
             startedAt: string;
             bluetooth: components["schemas"]["BluetoothState"];
             listen: components["schemas"]["Listen"];
+            update?: components["schemas"]["UpdateStatus"];
         };
         BluetoothState: {
             /**
@@ -1526,7 +1567,8 @@ export interface components {
              *     `trust`: unlock the iPhone and tap Trust. `unlock`: trusted, needs its passcode.
              *     `usbUnreadable`: trusted, but the lock state or Bluetooth address could not be read over USB.
              *     Bluetooth mode: `bluetoothUnavailable`: Bluetooth is not ready on this Mac (see `bluetooth`).
-             *     `pair`: pair the Mac from iPhone Settings > Bluetooth. `connecting`: paired, the link
+             *     `pair`: pair the Mac from iPhone Settings > Bluetooth; if the Mac is not listed,
+             *     turn Bluetooth off and on again on the iPhone. `connecting`: paired, the link
              *     is down; the Mac reconnects.
              *     XCTest mode: `developerMode`: turn on Developer Mode on the iPhone. `xctestStarting`:
              *     WebDriverAgent builds or starts. `xctestFailed`: its start failed (`xctest.error`).
@@ -1548,6 +1590,8 @@ export interface components {
         SetupStatus: {
             /** @description True only when this Mac is signed in (`overview.account.state` is `signed-in`) and one selected phone has Camera access, USB capture, is unlocked and has connected Bluetooth. */
             ready: boolean;
+            /** @description The one thing the user must do next, in words an agent can pass on (the step the setup window shows), e.g. `Plug the iPhone into Tommy's Mac with a USB data cable, then unlock it.` When ready, says so. */
+            next: string;
             /** @description Selected USB id. Absent if no phone matches or selection is ambiguous. */
             device?: string;
             overview: components["schemas"]["PhoneOverview"];
@@ -4404,6 +4448,39 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Message"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    updateDaemon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["UpdateDaemonRequest"];
+            };
+        };
+        responses: {
+            /** @description Update state after the check */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "auto": true,
+                     *       "latest": "0.13.2+20261028101500",
+                     *       "checkedAt": "2026-10-28T10:20:00.000Z",
+                     *       "message": "0.13.2+20261028101500 installed; the daemon restarts on it once no lease is active"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["UpdateStatus"];
                 };
             };
             default: components["responses"]["Problem"];

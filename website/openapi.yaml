@@ -2456,6 +2456,45 @@ paths:
                 message: daemon restarting
         default:
           $ref: '#/components/responses/Problem'
+  /v1/daemon/update:
+    post:
+      operationId: updateDaemon
+      tags: [Daemon]
+      summary: Update now, or turn auto-update on or off
+      description: |
+        Without a body: reads the latest release from ghosthand.dev now and installs it in
+        ~/Applications/Ghosthand.app when it is a newer build, even with auto-update off. It
+        installs only while no lease is active, and the daemon restarts on it once idle.
+        With `auto`: only saves the setting. Only over the unix socket; tunnel clients get 403.
+      x-holocron:
+        href: /api/update-daemon
+        metadata:
+          sidebarTitle: Update daemon
+          title: Update the daemon or turn auto-update off
+      x-codeSamples:
+        - lang: bash
+          label: CLI
+          source: ghosthand daemon update
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDaemonRequest'
+      responses:
+        '200':
+          description: Update state after the check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateStatus'
+              example:
+                auto: true
+                latest: 0.13.2+20261028101500
+                checkedAt: '2026-10-28T10:20:00.000Z'
+                message: 0.13.2+20261028101500 installed; the daemon restarts on it once no lease is active
+        default:
+          $ref: '#/components/responses/Problem'
   /v1/openapi.yaml:
     get:
       operationId: getOpenAPI
@@ -2644,6 +2683,30 @@ components:
           type: string
           format: date-time
           description: The link answers 404 after this, 1 day after the upload
+    UpdateDaemonRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        auto:
+          type: boolean
+          description: Turn auto-update on or off. Saved in the macOS defaults `com.remorses.ghosthand AutoUpdate`.
+    UpdateStatus:
+      type: object
+      required: [auto, message]
+      properties:
+        auto:
+          type: boolean
+          description: The daemon installs new releases by itself (default on)
+        latest:
+          type: string
+          description: Build id of the latest release on ghosthand.dev. Absent before the first answer.
+        checkedAt:
+          type: string
+          format: date-time
+          description: When the latest release was last asked for
+        message:
+          type: string
+          description: The update state in one line, e.g. up to date, downloaded, installed, or why it failed
     RestartDaemonRequest:
       type: object
       additionalProperties: false
@@ -2688,6 +2751,8 @@ components:
           $ref: '#/components/schemas/BluetoothState'
         listen:
           $ref: '#/components/schemas/Listen'
+        update:
+          $ref: '#/components/schemas/UpdateStatus'
     BluetoothState:
       type: object
       required: [state]
@@ -2925,7 +2990,8 @@ components:
             `trust`: unlock the iPhone and tap Trust. `unlock`: trusted, needs its passcode.
             `usbUnreadable`: trusted, but the lock state or Bluetooth address could not be read over USB.
             Bluetooth mode: `bluetoothUnavailable`: Bluetooth is not ready on this Mac (see `bluetooth`).
-            `pair`: pair the Mac from iPhone Settings > Bluetooth. `connecting`: paired, the link
+            `pair`: pair the Mac from iPhone Settings > Bluetooth; if the Mac is not listed,
+            turn Bluetooth off and on again on the iPhone. `connecting`: paired, the link
             is down; the Mac reconnects.
             XCTest mode: `developerMode`: turn on Developer Mode on the iPhone. `xctestStarting`:
             WebDriverAgent builds or starts. `xctestFailed`: its start failed (`xctest.error`).
@@ -2950,11 +3016,14 @@ components:
           description: Only in `remotePhones`. Name of that Mac, e.g. `Tommy's Mac Studio`
     SetupStatus:
       type: object
-      required: [ready, overview]
+      required: [ready, next, overview]
       properties:
         ready:
           type: boolean
           description: True only when this Mac is signed in (`overview.account.state` is `signed-in`) and one selected phone has Camera access, USB capture, is unlocked and has connected Bluetooth.
+        next:
+          type: string
+          description: The one thing the user must do next, in words an agent can pass on (the step the setup window shows), e.g. `Plug the iPhone into Tommy's Mac with a USB data cable, then unlock it.` When ready, says so.
         device:
           type: string
           description: Selected USB id. Absent if no phone matches or selection is ambiguous.

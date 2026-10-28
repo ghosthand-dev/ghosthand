@@ -45,7 +45,8 @@ Rules:
 - Long press (context menus, previews): `ghosthand hold`. Move an item after a long
   press: `ghosthand hold-drag`.
 First use: pair the Mac from iPhone Settings &gt; Bluetooth (tap the Mac's name, then
-Pair); the command waits for it. Each tap turns AssistiveTouch on over USB if off.
+Pair); the command waits for it. If the Mac is not listed, turn Bluetooth off and on
+again on the iPhone. Each tap turns AssistiveTouch on over USB if off.
 A paired iPhone reconnects in about 2 s after a daemon start.
 - Approaches accelerate then slow at the target. Timing varies; tap coordinates do not.
 - The first pointer input of a lease moves the pointer to 2 spots first (+0.4 s, no

@@ -32,7 +32,8 @@ always under a `mac <slug>:` header (`this Mac:` while signed out). Each line:
 - bluetooth disconnected: paired; the Mac reconnects it in about 2 s. If it stays so,
   Bluetooth is off on the iPhone or it is out of range: tell the user to turn it on.
 - bluetooth not paired: the next input command waits while the user pairs the Mac
-  from iPhone Settings &gt; Bluetooth (tap the Mac's name, then Pair).
+  from iPhone Settings &gt; Bluetooth (tap the Mac's name, then Pair). If the Mac is not
+  listed, turn Bluetooth off and on again on the iPhone.
 - pointer: absolute, or relative when the first tap proved absolute does not move
   the pointer (seen on iOS 15 over BLE). Shown after the first tap.
 - (xctest &lt;state&gt;) instead of bluetooth: the iPhone uses XCTest mode (`control --help`).

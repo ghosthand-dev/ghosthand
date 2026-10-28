@@ -42,6 +42,7 @@
         "items": [
           { "label": "Privacy", "href": "/docs/privacy" },
           { "label": "Terms", "href": "/docs/terms" },
+          { "label": "Source license", "href": "/docs/source-license" },
           { "label": "Support", "href": "/docs/support" }
         ]
       }
@@ -78,7 +79,7 @@
             // Hidden from the sidebar, still served and indexed. Linked from the footer.
             "group": "Legal",
             "hidden": true,
-            "pages": ["docs/privacy", "docs/terms", "docs/support"]
+            "pages": ["docs/privacy", "docs/terms", "docs/source-license", "docs/support"]
           }
         ]
       },

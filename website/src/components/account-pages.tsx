@@ -168,7 +168,12 @@ function SourceAccess({ isPro, access, request, remove }: {
   remove: (formData: FormData) => Promise<void>
 }) {
   if (!isPro) {
-    return <p className='text-sm text-muted-foreground'>Pro subscribers get read access to the daemon repo and the private skills on GitHub.</p>
+    return (
+      <p className='text-sm text-muted-foreground'>
+        Pro subscribers get read access to the daemon repo and the private skills on GitHub, under the{' '}
+        <a href='/docs/source-license' className='underline underline-offset-4 hover:text-foreground'>source license</a>.
+      </p>
+    )
   }
   return (
     <div className='flex flex-col gap-4'>
@@ -183,6 +188,11 @@ function SourceAccess({ isPro, access, request, remove }: {
         </div>
       ) : null}
       <SourceAccessForm action={request} defaultLogin={access?.login} />
+      <p className='text-xs text-muted-foreground'>
+        By requesting access you accept the{' '}
+        <a href='/docs/source-license' className='underline underline-offset-4 hover:text-foreground'>source license</a>:
+        do not publish, share or redistribute the code.
+      </p>
     </div>
   )
 }

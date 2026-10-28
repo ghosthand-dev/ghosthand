@@ -10,13 +10,14 @@ const call = (args: Record<string, unknown>, name = 'screenshot') => ({ jsonrpc:
 
 describe('routeMcpCall', () => {
   test('tools/call targets', () => {
-    const route = (args: Record<string, unknown>, online: OnlineMac[], name?: string) => routeMcpCall({ message: call(args, name), online, offline: [], now: NOW })
+    const route = (args: Record<string, unknown>, online: OnlineMac[], name?: string, offline: OfflineMac[] = []) => routeMcpCall({ message: call(args, name), online, offline, now: NOW })
     expect({
       lease: route({ lease: 'studio:42' }, [air, studio]),
       leaseOverMac: route({ lease: 'studio:42', mac: 'air' }, [air, studio]),
       leaseWithoutSlug: route({ lease: '42' }, [air]),
       mac: route({ mac: 'air' }, [air, studio]),
-      offline: route({ lease: 'mini:3' }, [air, studio]),
+      offline: route({ lease: 'mini:3' }, [air, studio], undefined, [mini]),
+      unknownMac: route({ lease: 'typo:3' }, [air, studio], undefined, [mini]),
       offlineNone: route({ mac: 'mini' }, []),
       single: route({}, [air]),
       none: route({}, []),
@@ -77,7 +78,7 @@ describe('routeMcpCall', () => {
             "result": {
               "content": [
                 {
-                  "text": "Mac mini is offline. Online: air (MacBook Air), studio (Mac Studio)",
+                  "text": "Mac mini (mini) is offline. Online: air (MacBook Air), studio (Mac Studio). Ask the user to wake Mac mini and open the Ghosthand app, then try again; or call \`list\` and acquire an iPhone on an online Mac (a lease works only on the Mac that gave it).",
                   "type": "text",
                 },
               ],
@@ -127,6 +128,24 @@ describe('routeMcpCall', () => {
         "single": {
           "kind": "forward",
           "slug": "air",
+        },
+        "unknownMac": {
+          "body": {
+            "id": 7,
+            "jsonrpc": "2.0",
+            "result": {
+              "content": [
+                {
+                  "text": "This account has no Mac "typo". Online: air (MacBook Air), studio (Mac Studio). Call \`list\` for the Macs and their iPhones.",
+                  "type": "text",
+                },
+              ],
+              "isError": true,
+            },
+          },
+          "kind": "reply",
+          "offline": false,
+          "status": 200,
         },
       }
     `)

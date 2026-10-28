@@ -63,6 +63,7 @@ CLI ──daemon.sock──> daemon (laptop) ──/macs/studio/v1/..., session 
 - **A new route or capability gets both.** Add the HTTP route (`openapi.yaml` + `api.swift`), the CLI command or flag (`main.swift`), and the MCP tool or argument (`tools` in `mcp.swift`) in the same change. A tool name is the CLI command name, words joined by `-` (`file push` is the tool `file-push`, see `MCPDocs.toolName`).
 - **A new CLI flag needs its MCP argument:** add it to the tool's `properties`, and to `MCPDescription.arguments` (flag -> argument) or `MCPDescription.positionals`. Otherwise its examples are dropped from the tool description without an error.
 - **Leases in MCP carry the Mac:** print them with `MCPArgs.remote`, read them with `MCPArgs.lease`. The hub sends the Mac slug in the `ghosthand-mac` header.
+- **Onboarding:** every empty state (no Mac, Mac offline, no iPhone, setup not done, plan limit) tells the agent the user's next step; `setup-status` returns it as `next`, also from the hub before any Mac exists. Read `docs/onboarding-flows.md` before changing setup, MCP empty states or their text.
 - **Check both:** `swift test` in `daemon/` covers the MCP protocol, lease prefixes and the description conversion. For a real check, run `pnpm dev` in website/, start the daemon with `GHOSTHAND_SERVER=http://localhost:8047`, and connect `npx @modelcontextprotocol/inspector` to http://localhost:8047/mcp.
 
 # Publishing to npm

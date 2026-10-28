@@ -320,7 +320,8 @@ if (release) {
 }
 log(`wrote release/${pkgName}${installerIdentity ? ` (signed by ${installerIdentity})` : ' (unsigned)'}`)
 
-const latest = { version, pkg: pkgName, zip: zipName, publishedAt: new Date().toISOString() }
+// `build`: the daemon's updater installs the zip when it is newer than the installed app.
+const latest = { version, build: `${version}+${buildNumber}`, pkg: pkgName, zip: zipName, publishedAt: new Date().toISOString() }
 fs.writeFileSync(path.join(releaseDir, 'latest.json'), JSON.stringify(latest, null, 2) + '\n')
 fs.rmSync(tmp, { recursive: true, force: true })
 log(`ghosthand ${version} ready: ${app}`)

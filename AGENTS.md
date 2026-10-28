@@ -75,7 +75,10 @@ npm/scripts/build.ts ──> dist/Ghosthand.app (npm bin) ── --release: Deve
                      └─> release/Ghosthand-<v>.pkg (current user, ~/Applications, opens the app) + .zip
                          --upload ──wrangler──> R2 ghosthand-releases (pkg, zip, then latest.json)
 website: /download page, /download/ghosthand.pkg and /releases/:file read that bucket
+daemon updater (updater.swift): hourly latest.json ──newer build──> zip, checked, installed when no lease
 ```
+
+- **Uploading latest.json ships the release to every Mac**, .pkg and npm alike: daemons with auto-update on download the zip within an hour and install it once no lease is active. Only `--release` builds may reach R2 (the updater requires our notarized Developer ID). Read the "Auto-update" section of `docs/install-paths.md` before changing it.
 
 **Release checklist**, in this order (each outward step needs the user's go):
 

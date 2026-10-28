@@ -249,11 +249,13 @@ export type PhoneTools = ReturnType<typeof createPhoneTools>
 
 const WEBFETCH_MAX_CHARS = 20_000
 const WEBFETCH_TIMEOUT_MS = 15_000
+// Docs only: text on the phone screen can tell the model to fetch https://evil/?otp=..., so any other host is an exfiltration channel.
+const WEBFETCH_DOMAINS = ['ghosthand.dev']
 
 /** streamText options shared by the Durable Object and the bench script. */
 export function taskStreamOptions({ apiKey, daemon, lease, phone }: { apiKey: string; daemon: DaemonClient; lease: string; phone?: TaskPhone }) {
   // AI SDK web fetch: markdown or HTML converted by defuddle, `offset` for long pages, no private addresses.
-  const webfetch = createWebFetchTool({ maxLength: WEBFETCH_MAX_CHARS, timeout: WEBFETCH_TIMEOUT_MS })
+  const webfetch = createWebFetchTool({ allowedDomains: WEBFETCH_DOMAINS, maxLength: WEBFETCH_MAX_CHARS, timeout: WEBFETCH_TIMEOUT_MS })
   return {
     model: createTaskModel(apiKey),
     system: taskSystemPrompt(phone),

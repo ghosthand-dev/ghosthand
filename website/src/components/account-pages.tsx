@@ -247,7 +247,7 @@ export function DashboardPage({
         <p className='text-sm text-muted-foreground'>{email}</p>
       </div>
 
-      <Section title='Plan' description='Free for one iPhone. Pro is $99 per month per Mac, for unlimited iPhones on it.'>
+      <Section title='Plan' description='Free for one iPhone and 10 phone tasks per month. Pro is $99 per month per Mac, for unlimited iPhones on it and unlimited tasks.'>
         <PlanStatus entitlement={entitlement} subscription={subscription} />
         <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
           <SubscribeLink className={cn(isPro ? SECONDARY : PRIMARY, 'w-auto px-5')}>

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { entitlementFor, leaseDecision, type BoundDevice } from './billing.ts'
+import { entitlementFor, leaseDecision, taskDecision, taskMonthStart, type BoundDevice } from './billing.ts'
 
 const now = new Date('2026-10-27T10:00:00Z')
 const periodEnd = new Date('2026-11-08T00:00:00Z')
@@ -22,6 +22,30 @@ test('entitlement: free without a live subscription, Pro counts paid Macs', () =
     pro macs=3 source=true until=2026-11-11 | null
     pro macs=1 source=true until=2026-11-11 | Your ghosthand plan ends on Nov 8, 2026.
     pro macs=1 source=true until=2026-11-11 | Your last ghosthand payment failed. Update the card before Stripe cancels the plan."
+  `)
+})
+
+test('task decision: 10 prompts per UTC month on Free, unlimited on Pro', () => {
+  const free = entitlementFor({ subscriptions: [], now })
+  const pro = entitlementFor({ subscriptions: [sub('active')], now })
+  const december = new Date('2026-12-31T23:59:00Z')
+  const show = (label: string, entitlement: typeof free, used: number, at = now) => {
+    const d = taskDecision({ entitlement, used, now: at, subscribeUrl: 'https://ghosthand.dev/subscribe' })
+    return `${label}: ${d.allowed ? 'allowed' : `refused | ${d.message}`}`
+  }
+  expect('\n' + [
+    `month start: ${taskMonthStart(now).toISOString()}`,
+    show('free, 9 used', free, 9),
+    show('free, 10 used', free, 10),
+    show('free, 10 used on Dec 31', free, 10, december),
+    show('pro, 500 used', pro, 500),
+  ].join('\n')).toMatchInlineSnapshot(`
+    "
+    month start: 2026-10-01T00:00:00.000Z
+    free, 9 used: allowed
+    free, 10 used: refused | The free plan includes 10 phone tasks per month, and this month's are used up (they reset on Nov 1, 2026). Subscribe to Pro ($99/month per Mac) for unlimited tasks: https://ghosthand.dev/subscribe
+    free, 10 used on Dec 31: refused | The free plan includes 10 phone tasks per month, and this month's are used up (they reset on Jan 1, 2027). Subscribe to Pro ($99/month per Mac) for unlimited tasks: https://ghosthand.dev/subscribe
+    pro, 500 used: allowed"
   `)
 })
 

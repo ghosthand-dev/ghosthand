@@ -23,7 +23,7 @@ import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import pg from 'pg'
 import { getAuth, getBaseUrl, getCallerUserId, getDb, getPersonalOrg, getSessionStrict, type Org } from './db.ts'
-import { entitlementFor, leaseDecision, type DeviceRef, type LeaseDecision } from './lib/billing.ts'
+import { entitlementFor, leaseDecision, taskDecision, taskMonthStart, type DeviceRef, type LeaseDecision } from './lib/billing.ts'
 import { createUpload } from './uploads.ts'
 import { getTask, TASK_LEASE_PATTERN } from './task.ts'
 import { TaskPhone } from './task-agent.ts'
@@ -48,13 +48,23 @@ async function requireCaller(request: Request): Promise<{ userId: string; org: O
   return { userId, org: await getPersonalOrg(userId) }
 }
 
-/** Phone tasks spend AI tokens with no time limit, so they need Pro. */
-async function requirePro(request: Request): Promise<{ userId: string; orgId: string }> {
+/** Each prompt spends AI tokens: Free gets FREE_TASKS_PER_MONTH per month, Pro is unlimited.
+ *  Records the prompt when allowed. Two prompts racing past the last free one can both pass. */
+async function takeTaskPrompt({ request, taskId }: { request: Request; taskId: string }): Promise<{ userId: string; orgId: string }> {
   const { userId, org } = await requireCaller(request)
-  if (entitlementFor({ subscriptions: org.subscriptions, now: new Date() }).plan !== 'pro') {
-    const subscribeUrl = new URL('/subscribe', getBaseUrl()).toString()
-    throw json({ message: `Phone tasks need ghosthand Pro ($99/month per Mac). Subscribe: ${subscribeUrl}` }, { status: 402 })
+  const db = getDb()
+  const now = new Date()
+  const entitlement = entitlementFor({ subscriptions: org.subscriptions, now })
+  const used = entitlement.plan === 'pro' ? 0 : await db.$count(schema.taskRun, orm.and(
+    orm.eq(schema.taskRun.orgId, org.orgId),
+    orm.gte(schema.taskRun.createdAt, taskMonthStart(now)),
+  ))
+  const decision = taskDecision({ entitlement, used, now, subscribeUrl: new URL('/subscribe', getBaseUrl()).toString() })
+  if (!decision.allowed) {
+    trackEvent('task_limit_reached', { org_id: org.orgId, used }, { userId })
+    throw json({ message: decision.message }, { status: 402 })
   }
+  await db.insert(schema.taskRun).values({ orgId: org.orgId, taskId, userId })
   return { userId, orgId: org.orgId }
 }
 
@@ -251,12 +261,12 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       phone: TaskPhone.optional(),
     }),
     async handler({ request }) {
-      const { userId, orgId } = await requirePro(request)
       const body = await request.json()
       const [message] = await validateUIMessages({ messages: [body.messages.at(-1)] }).catch((cause) => {
         throw json({ message: `invalid message: ${cause instanceof Error ? cause.message : cause}` }, { status: 400 })
       })
       if (message!.role !== 'user') throw json({ message: 'the last message must be a user message' }, { status: 400 })
+      const { userId, orgId } = await takeTaskPrompt({ request, taskId: body.id })
       const stream = await getTask({ orgId, taskId: body.id }).send({ orgId, taskId: body.id, lease: body.lease, phone: body.phone, message: message! })
       trackEvent('task_started', { org_id: orgId, task_id: body.id }, { userId })
       return new Response(stream, { headers: UI_MESSAGE_STREAM_HEADERS })
@@ -270,7 +280,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     detail: { hide: true },
     query: z.object({ from: z.coerce.number().int().min(0).optional(), message: z.string().optional() }),
     async handler({ request, params, query }) {
-      const { orgId } = await requirePro(request)
+      const { org: { orgId } } = await requireCaller(request)
       const stream = await getTask({ orgId, taskId: parseTaskId(params.id) }).resume({ from: query.from, messageId: query.message })
       if (stream === 'gone') throw json({ message: 'a newer turn of this task replaced that stream' }, { status: 410 })
       if (!stream) return new Response(null, { status: HTTP_NO_CONTENT })
@@ -282,7 +292,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     path: '/tasks/:id',
     detail: { hide: true },
     async handler({ request, params }) {
-      const { orgId } = await requirePro(request)
+      const { org: { orgId } } = await requireCaller(request)
       return { messages: await getTask({ orgId, taskId: parseTaskId(params.id) }).messages() }
     },
   })
@@ -293,7 +303,7 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     // `prompt`: the user message id of the turn to stop; another turn keeps running.
     query: z.object({ prompt: z.string().optional() }),
     async handler({ request, params, query }) {
-      const { orgId } = await requirePro(request)
+      const { org: { orgId } } = await requireCaller(request)
       return { aborted: await getTask({ orgId, taskId: parseTaskId(params.id) }).abort({ prompt: query.prompt }) }
     },
   })

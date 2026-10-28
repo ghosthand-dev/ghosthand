@@ -1,5 +1,5 @@
 // POST /api/cli/lease-check against the real Worker and a fresh Postgres: binding, limits
-// and the race for the last paid Mac slot.
+// and the race for the last paid Mac slot. Also the free plan's monthly task prompt limit.
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import crypto from 'node:crypto'
 import { startTestRuntime } from './test-runtime.ts'
@@ -59,6 +59,23 @@ test('free binds one iPhone; Pro takes any iPhone on its paid Mac', async () => 
     iPhone C on laptop: pro refused | laptop is not a paid Mac: the plan pays for 1 Mac (studio). Here only the free iPhone (iPhone A) can be leased. Add a Mac in billing, or remove one on the dashboard.
     iPhone A on laptop: pro allowed"
   `)
+})
+
+test('free task prompts: the 11th this month gets 402 with the subscribe link, and is not counted', async () => {
+  const { user, session } = await newAccount()
+  // Last month's prompt does not count; ten this month use up the free ones.
+  await runtime.sql(`INSERT INTO task_run (task_run_id, org_id, task_id, created_at) VALUES ($1, $2, 'old', date_trunc('month', now()) - interval '1 day')`, [crypto.randomUUID(), user.id])
+  for (let i = 0; i < 10; i++) {
+    await runtime.sql(`INSERT INTO task_run (task_run_id, org_id, task_id, created_at) VALUES ($1, $2, 'used', now())`, [crypto.randomUUID(), user.id])
+  }
+  const response = await runtime.worker.fetch('/api/cli/tasks', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${session.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: 'task-over-limit', lease: 'studio:7', messages: [{ id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Open Settings' }] }] }),
+  })
+  const body = await response.json() as { message: string }
+  expect(`${response.status} ${body.message.replace(/reset on [^)]+/, 'reset on <date>').replace(/https?:\/\/[^/]+/, '<origin>')}`).toMatchInlineSnapshot(`"402 The free plan includes 10 phone tasks per month, and this month's are used up (they reset on <date>). Subscribe to Pro ($99/month per Mac) for unlimited tasks: <origin>/subscribe"`)
+  expect(await runtime.sql(`SELECT count(*)::int AS n FROM task_run WHERE org_id = $1`, [user.id])).toEqual([{ n: 11 }])
 })
 
 test('two Macs racing for the last paid slot: exactly one wins', async () => {

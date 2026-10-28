@@ -6,6 +6,7 @@
 //   user ──< org_member >── org ──< stripe_customer  one per (org, Stripe account)
 //                               ──< subscription     mirrored from Stripe webhooks
 //                               ──< org_device       the free iPhone and the paid Macs
+//                               ──< task_run         one row per phone task prompt (Free monthly limit)
 //                               ──  source_access    GitHub account with read access to the daemon repo
 //
 // Identity (sessions, OAuth tokens) belongs to the user; plans, devices and the Macs'
@@ -377,6 +378,18 @@ export const orgDevice = p.pgTable('org_device', {
   p.uniqueIndex('org_device_org_kind_slot_unique').on(table.orgId, table.kind, table.slot),
 ])
 
+/** One row per phone task prompt (POST /api/cli/tasks): Free counts them per UTC month. */
+export const taskRun = p.pgTable('task_run', {
+  taskRunId: p.text('task_run_id').primaryKey().$defaultFn(() => ulid()),
+  orgId: p.text('org_id').notNull().references(() => org.orgId, { onDelete: 'cascade' }),
+  /** Chosen by the client; follow-up prompts to the same task repeat it. */
+  taskId: p.text('task_id').notNull(),
+  userId: p.text('user_id').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+}, (table) => [
+  p.index('task_run_org_id_created_at_idx').on(table.orgId, table.createdAt),
+])
+
 /** The GitHub account an org asked read access for. GitHub holds the actual access. */
 export const sourceAccess = p.pgTable('source_access', {
   orgId: p.text('org_id').primaryKey().references(() => org.orgId, { onDelete: 'cascade' }),
@@ -390,7 +403,7 @@ export const relations = defineRelations(
   {
     user, session, account, verification, deviceCode, apikey,
     jwks, oauthClient, oauthResource, oauthClientResource, oauthRefreshToken, oauthAccessToken, oauthConsent, oauthClientAssertion,
-    org, orgMember, stripeCustomer, subscription, orgDevice, sourceAccess,
+    org, orgMember, stripeCustomer, subscription, orgDevice, taskRun, sourceAccess,
   },
   (r) => ({
     user: {
@@ -459,6 +472,7 @@ export const relations = defineRelations(
       stripeCustomers: r.many.stripeCustomer(),
       subscriptions: r.many.subscription(),
       devices: r.many.orgDevice(),
+      taskRuns: r.many.taskRun(),
       sourceAccess: r.one.sourceAccess(),
     },
     orgMember: {
@@ -473,6 +487,9 @@ export const relations = defineRelations(
     },
     orgDevice: {
       org: r.one.org({ from: r.orgDevice.orgId, to: r.org.orgId }),
+    },
+    taskRun: {
+      org: r.one.org({ from: r.taskRun.orgId, to: r.org.orgId }),
     },
     sourceAccess: {
       org: r.one.org({ from: r.sourceAccess.orgId, to: r.org.orgId }),

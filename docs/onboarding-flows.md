@@ -25,6 +25,9 @@ sign in ──> permissions ──> connect ──> trust ──> unlock ──>
             Bluetooth)      cable)      Trust)    or code)  > Bluetooth) link up)     prompt)
 ```
 
+The **pair** screen, `next`, `ghosthand` input help and the pairing steps all carry one tip:
+"If the Mac is not listed, turn Bluetooth off and on again on the iPhone."
+
 `setup status` returns the same screen as `next`, one sentence for the user, so an agent that
 cannot see the Mac still guides the user. The text lives in `Controller.nextStep`
 (`daemon/Sources/ghosthand/controller.swift`), the screen choice in `SetupScreen`.

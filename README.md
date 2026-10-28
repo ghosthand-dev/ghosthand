@@ -130,6 +130,7 @@ ghosthand key home
 On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "MacBook Pro") under Other Devices, then **Pair**.
 
 - The Mac is discoverable only while a command waits for pairing.
+- **The Mac is not listed?** Turn Bluetooth off and on again on the iPhone.
 - After Pair, the iPhone opens the connection itself. The command continues by itself.
 - Later runs reconnect the paired iPhone from the Mac in about 2 s.
 - **After a report map change**, forget the Mac on the iPhone and pair again: the iPhone keeps the map it read at pairing.
@@ -1118,7 +1119,7 @@ grep -iE 'error|fail' ~/.ghosthand/daemon.log | tail  # recent errors only
 3. Run any input command, for example `ghosthand key home`. It makes the Mac discoverable and waits.
 4. iPhone: Settings > Bluetooth, tap the Mac under Other Devices, then **Pair**.
 
-The Mac is listed on the iPhone **only while a command waits for pairing**. With no command waiting, it is not discoverable, and a new iPhone does not see it.
+The Mac is listed on the iPhone **only while a command waits for pairing**. With no command waiting, it is not discoverable, and a new iPhone does not see it. If the Mac is not listed while a command waits, turn Bluetooth off and on again on the iPhone.
 
 ### USB screen capture stops (iOS bug): restart the daemon, then the iPhone
 

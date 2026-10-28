@@ -42,6 +42,13 @@ const MODERN_VERSION_KEY = 'io.modelcontextprotocol/protocolVersion'
 const TOOLS_TTL_MS = 300_000
 const LEASE_PATTERN = /^([a-z0-9-]+):(.+)$/
 
+// The bot cannot see the Mac: it polls setup-status, which answers here until a Mac
+// connects and then from the daemon, with the same `ready` and `next` fields.
+const WAIT_HINT = [
+  'To wait, call `setup-status` every 10 seconds, for up to 15 minutes. It returns `ready` and `next`, the step the user must do now; tell the user `next` each time it changes. When ready is true, call `list` and acquire the iPhone.',
+  'If you cannot wait within this reply, ask the user to tell you when the Ghosthand window says the iPhone is ready.',
+].join(' ')
+
 /** What the bot must tell the user when no Mac of the account is online. */
 export function noMacMessage({ offline, now }: { offline: OfflineMac[]; now: number }): string {
   if (!offline.length) {
@@ -49,15 +56,28 @@ export function noMacMessage({ offline, now }: { offline: OfflineMac[]; now: num
       'No Mac is set up for this ghosthand account yet. Ghosthand controls an iPhone that is plugged into a Mac with a USB cable, so the user must install the Ghosthand app on a Mac first.',
       `Send the user the link ${DOWNLOAD_URL} and ask them to open it on their Mac, not on the phone.`,
       'The installer opens Ghosthand. In its window the user signs in with Google, with the same account they connected to this AI app, then plugs in the iPhone, taps Trust on it and pairs Bluetooth. The window shows each step.',
-      'Do not ask the user to run commands in a terminal, and do not try to do the setup for them. When they say it is done, call `list` again.',
+      'Do not ask the user to run commands in a terminal, and do not try to do the setup for them.',
+      WAIT_HINT,
     ].join(' ')
   }
-  const macs = offline.map((mac) => `${mac.name} (${mac.slug}, last seen ${ago(now - mac.lastSeenAt)})`).join(', ')
   return [
-    `This ghosthand account has ${offline.length === 1 ? 'a Mac' : 'Macs'} but none is online: ${macs}.`,
+    `This ghosthand account has ${offline.length === 1 ? 'a Mac' : 'Macs'} but none is online: ${describeOffline({ offline, now })}.`,
     'Ghosthand needs that Mac awake, on the internet, with the iPhone plugged in. Ask the user to wake the Mac (or turn it on and log in) and open the Ghosthand app from Applications; it starts the background service and reconnects in a few seconds.',
-    `To use a different Mac, they install Ghosthand on it from ${DOWNLOAD_URL} and sign in with the same Google account. Then call \`list\` again.`,
+    `To use a different Mac, they install Ghosthand on it from ${DOWNLOAD_URL} and sign in with the same Google account.`,
+    WAIT_HINT,
   ].join(' ')
+}
+
+/** `setup-status` with no Mac online: not an error, so a bot keeps polling it. Same fields as the daemon's. */
+export function noMacSetupStatus({ offline, now }: { offline: OfflineMac[]; now: number }): object {
+  const next = offline.length
+    ? `Wake ${offline.map((mac) => `${mac.name} (last seen ${ago(now - mac.lastSeenAt)})`).join(' or ')} and open the Ghosthand app from Applications. To use another Mac, install Ghosthand on it from ${DOWNLOAD_URL}.`
+    : `On your Mac, open ${DOWNLOAD_URL}, install Ghosthand and sign in with Google, with the same account you use in this AI app.`
+  return { ready: false, next, macs: offline.map((mac) => ({ slug: mac.slug, name: mac.name, online: false })) }
+}
+
+function describeOffline({ offline, now }: { offline: OfflineMac[]; now: number }): string {
+  return offline.map((mac) => `${mac.name} (${mac.slug}, last seen ${ago(now - mac.lastSeenAt)})`).join(', ')
 }
 
 export function parseJsonRpc(text: string): { ok: true; message: JsonRpcMessage } | { ok: false; status: number; body: object } {
@@ -109,14 +129,19 @@ export function routeMcpCall({ message, online, offline, now }: {
     const args = (params.arguments ?? {}) as Record<string, unknown>
     const leaseSlug = typeof args.lease === 'string' ? args.lease.match(LEASE_PATTERN)?.[1] : undefined
     const target = leaseSlug ?? (typeof args.mac === 'string' ? args.mac : undefined)
+    const noMac = (): McpRoute => {
+      if (params.name !== 'setup-status') return toolError(noMacMessage({ offline, now }), true)
+      const value = { content: [{ type: 'text', text: JSON.stringify(noMacSetupStatus({ offline, now })) }], isError: false }
+      return { kind: 'reply', status: 200, body: result({ id, modern, value }), offline: true }
+    }
     if (target !== undefined) {
       if (online.some((mac) => mac.slug === target)) return { kind: 'forward', slug: target }
-      if (!online.length) return toolError(noMacMessage({ offline, now }), true)
+      if (!online.length) return noMac()
       return toolError(`Mac ${target} is offline. Online: ${describe(online)}`, true)
     }
     if (params.name === 'list' && online.length > 1) return { kind: 'fanout', slugs: online.map((mac) => mac.slug) }
     if (online.length === 1) return { kind: 'forward', slug: online[0]!.slug }
-    if (online.length === 0) return toolError(noMacMessage({ offline, now }), true)
+    if (online.length === 0) return noMac()
     return toolError(`Several Macs are online: pass mac (one of: ${describe(online)})`)
   }
 

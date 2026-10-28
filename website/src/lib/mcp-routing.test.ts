@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { macSlug, mergeListReplies, parseJsonRpc, parseSseMessage, routeMcpCall, type OfflineMac, type OnlineMac } from './mcp-routing.ts'
+import { macSlug, mergeListReplies, parseJsonRpc, parseSseMessage, routeMcpCall, type McpRoute, type OfflineMac, type OnlineMac } from './mcp-routing.ts'
 
 const air: OnlineMac = { slug: 'air', name: 'MacBook Air' }
 const studio: OnlineMac = { slug: 'studio', name: 'Mac Studio' }
@@ -59,7 +59,7 @@ describe('routeMcpCall', () => {
             "result": {
               "content": [
                 {
-                  "text": "No Mac is set up for this ghosthand account yet. Ghosthand controls an iPhone that is plugged into a Mac with a USB cable, so the user must install the Ghosthand app on a Mac first. Send the user the link https://ghosthand.dev/download and ask them to open it on their Mac, not on the phone. The installer opens Ghosthand. In its window the user signs in with Google, with the same account they connected to this AI app, then plugs in the iPhone, taps Trust on it and pairs Bluetooth. The window shows each step. Do not ask the user to run commands in a terminal, and do not try to do the setup for them. When they say it is done, call \`list\` again.",
+                  "text": "No Mac is set up for this ghosthand account yet. Ghosthand controls an iPhone that is plugged into a Mac with a USB cable, so the user must install the Ghosthand app on a Mac first. Send the user the link https://ghosthand.dev/download and ask them to open it on their Mac, not on the phone. The installer opens Ghosthand. In its window the user signs in with Google, with the same account they connected to this AI app, then plugs in the iPhone, taps Trust on it and pairs Bluetooth. The window shows each step. Do not ask the user to run commands in a terminal, and do not try to do the setup for them. To wait, call \`setup-status\` every 10 seconds, for up to 15 minutes. It returns \`ready\` and \`next\`, the step the user must do now; tell the user \`next\` each time it changes. When ready is true, call \`list\` and acquire the iPhone. If you cannot wait within this reply, ask the user to tell you when the Ghosthand window says the iPhone is ready.",
                   "type": "text",
                 },
               ],
@@ -95,7 +95,7 @@ describe('routeMcpCall', () => {
             "result": {
               "content": [
                 {
-                  "text": "No Mac is set up for this ghosthand account yet. Ghosthand controls an iPhone that is plugged into a Mac with a USB cable, so the user must install the Ghosthand app on a Mac first. Send the user the link https://ghosthand.dev/download and ask them to open it on their Mac, not on the phone. The installer opens Ghosthand. In its window the user signs in with Google, with the same account they connected to this AI app, then plugs in the iPhone, taps Trust on it and pairs Bluetooth. The window shows each step. Do not ask the user to run commands in a terminal, and do not try to do the setup for them. When they say it is done, call \`list\` again.",
+                  "text": "No Mac is set up for this ghosthand account yet. Ghosthand controls an iPhone that is plugged into a Mac with a USB cable, so the user must install the Ghosthand app on a Mac first. Send the user the link https://ghosthand.dev/download and ask them to open it on their Mac, not on the phone. The installer opens Ghosthand. In its window the user signs in with Google, with the same account they connected to this AI app, then plugs in the iPhone, taps Trust on it and pairs Bluetooth. The window shows each step. Do not ask the user to run commands in a terminal, and do not try to do the setup for them. To wait, call \`setup-status\` every 10 seconds, for up to 15 minutes. It returns \`ready\` and \`next\`, the step the user must do now; tell the user \`next\` each time it changes. When ready is true, call \`list\` and acquire the iPhone. If you cannot wait within this reply, ask the user to tell you when the Ghosthand window says the iPhone is ready.",
                   "type": "text",
                 },
               ],
@@ -139,13 +139,17 @@ describe('routeMcpCall', () => {
     const oldModern = { ...call({}), params: { name: 'list', _meta: { ...modernMeta, 'io.modelcontextprotocol/protocolVersion': '2020-01-01' } } }
     const noCapabilities = { ...toolsList, params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } } }
     const route = (message: object, online: OnlineMac[], offline: OfflineMac[] = []) => routeMcpCall({ message, online, offline, now: NOW })
-    const text = (r: ReturnType<typeof routeMcpCall>) => (r.kind === 'reply' ? (r.body as any).result.content[0].text : r)
+    const text = (r: McpRoute) => (r.kind === 'reply' ? (r.body as any).result.content[0].text : r)
     const init = route(initialize, [])
     const list = route(toolsList, [])
     expect({
       callNoMac: text(route(call({}), [])),
       callMacOffline: text(route(call({ lease: 'mini:3' }), [], [mini])),
       callShape: route(call({}), [], [mini]).kind === 'reply' && Object.keys((route(call({}), [], [mini]) as any).body.result),
+      // A status poll is a result, not an error, so the bot keeps polling until a Mac connects.
+      setupStatusNoMac: (route(call({}, 'setup-status'), []) as any).body.result,
+      setupStatusOffline: text(route(call({ mac: 'mini' }, 'setup-status'), [], [mini])),
+      setupStatusOnline: route(call({}, 'setup-status'), [air]),
       initialize: init.kind === 'reply' && { ...(init.body as any).result, instructions: (init.body as any).result.instructions.slice(0, 60) },
       toolsList: list.kind === 'reply' && { ...(list.body as any).result, tools: (list.body as any).result.tools.length, _meta: undefined },
       unsupported: route(oldModern, []),
@@ -156,8 +160,8 @@ describe('routeMcpCall', () => {
       ping: route({ jsonrpc: '2.0', id: 2, method: 'ping' }, []),
     }).toMatchInlineSnapshot(`
       {
-        "callMacOffline": "This ghosthand account has a Mac but none is online: Mac mini (mini, last seen 3 hours ago). Ghosthand needs that Mac awake, on the internet, with the iPhone plugged in. Ask the user to wake the Mac (or turn it on and log in) and open the Ghosthand app from Applications; it starts the background service and reconnects in a few seconds. To use a different Mac, they install Ghosthand on it from https://ghosthand.dev/download and sign in with the same Google account. Then call \`list\` again.",
-        "callNoMac": "No Mac is set up for this ghosthand account yet. Ghosthand controls an iPhone that is plugged into a Mac with a USB cable, so the user must install the Ghosthand app on a Mac first. Send the user the link https://ghosthand.dev/download and ask them to open it on their Mac, not on the phone. The installer opens Ghosthand. In its window the user signs in with Google, with the same account they connected to this AI app, then plugs in the iPhone, taps Trust on it and pairs Bluetooth. The window shows each step. Do not ask the user to run commands in a terminal, and do not try to do the setup for them. When they say it is done, call \`list\` again.",
+        "callMacOffline": "This ghosthand account has a Mac but none is online: Mac mini (mini, last seen 3 hours ago). Ghosthand needs that Mac awake, on the internet, with the iPhone plugged in. Ask the user to wake the Mac (or turn it on and log in) and open the Ghosthand app from Applications; it starts the background service and reconnects in a few seconds. To use a different Mac, they install Ghosthand on it from https://ghosthand.dev/download and sign in with the same Google account. To wait, call \`setup-status\` every 10 seconds, for up to 15 minutes. It returns \`ready\` and \`next\`, the step the user must do now; tell the user \`next\` each time it changes. When ready is true, call \`list\` and acquire the iPhone. If you cannot wait within this reply, ask the user to tell you when the Ghosthand window says the iPhone is ready.",
+        "callNoMac": "No Mac is set up for this ghosthand account yet. Ghosthand controls an iPhone that is plugged into a Mac with a USB cable, so the user must install the Ghosthand app on a Mac first. Send the user the link https://ghosthand.dev/download and ask them to open it on their Mac, not on the phone. The installer opens Ghosthand. In its window the user signs in with Google, with the same account they connected to this AI app, then plugs in the iPhone, taps Trust on it and pairs Bluetooth. The window shows each step. Do not ask the user to run commands in a terminal, and do not try to do the setup for them. To wait, call \`setup-status\` every 10 seconds, for up to 15 minutes. It returns \`ready\` and \`next\`, the step the user must do now; tell the user \`next\` each time it changes. When ready is true, call \`list\` and acquire the iPhone. If you cannot wait within this reply, ask the user to tell you when the Ghosthand window says the iPhone is ready.",
         "callShape": [
           "content",
           "isError",
@@ -174,7 +178,7 @@ describe('routeMcpCall', () => {
           "protocolVersion": "2025-11-25",
           "serverInfo": {
             "name": "ghosthand",
-            "version": "0.12.0",
+            "version": "0.13.0",
           },
         },
         "noCapabilities": {
@@ -206,6 +210,20 @@ describe('routeMcpCall', () => {
           },
           "kind": "reply",
           "status": 200,
+        },
+        "setupStatusNoMac": {
+          "content": [
+            {
+              "text": "{"ready":false,"next":"On your Mac, open https://ghosthand.dev/download, install Ghosthand and sign in with Google, with the same account you use in this AI app.","macs":[]}",
+              "type": "text",
+            },
+          ],
+          "isError": false,
+        },
+        "setupStatusOffline": "{"ready":false,"next":"Wake Mac mini (last seen 3 hours ago) and open the Ghosthand app from Applications. To use another Mac, install Ghosthand on it from https://ghosthand.dev/download.","macs":[{"slug":"mini","name":"Mac mini","online":false}]}",
+        "setupStatusOnline": {
+          "kind": "forward",
+          "slug": "air",
         },
         "toolsList": {
           "_meta": undefined,

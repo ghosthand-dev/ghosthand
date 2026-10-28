@@ -104,7 +104,7 @@ daemon/.build/Ghosthand.app/Contents/MacOS/ghosthand list   # copies it to ~/App
 
 # Account and billing
 
-Every lease needs a ghosthand.dev account. **Free**: one iPhone. **Pro**: $99/month per Mac (Stripe quantity), unlimited iPhones on each paid Mac, phone tasks, read access to the daemon repo. No time or request limits. The daemon owns the account (`daemon/Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
+Every lease needs a ghosthand.dev account. **Free**: one iPhone, 10 phone task prompts per UTC month. **Pro**: $99/month per Mac (Stripe quantity), unlimited iPhones on each paid Mac, unlimited phone tasks, read access to the daemon repo. No time limits. The daemon owns the account (`daemon/Sources/ghosthand/account.swift`); the setup app and CLI only call the daemon.
 
 Remote MCP uses resource-bound opaque OAuth tokens, checked against current grants and sessions. Before deleting a session, delete its refresh grants (revoked-token reuse can end other sessions' grants); then close its hub sockets. Hub session deadlines use alarms, not polling, so idle sockets still hibernate.
 
@@ -117,6 +117,8 @@ Stripe webhook / dashboard / daily cron ──> syncSourceAccess (lib/github.ts)
 ```
 
 - The daemon never decides the plan: `lease-check` answers `allowed`, a `message` and `validUntil`. Only acquire and wait check, so a running lease is never stopped. Devices bind on first lease into `org_device` slots (unique per kind, so racing Macs cannot both take the last one); a Mac is paid while its slot is below the quantity. Unreachable server: the daemon allows only iPhones it cached as allowed, until `validUntil`.
+- Phone tasks: every `POST /api/cli/tasks` prompt is a `task_run` row. Free orgs get `FREE_TASKS_PER_MONTH` (10) per UTC month (`taskDecision`, billing.ts); past it the route answers 402 with the `/subscribe` link, which the daemon passes to CLI, MCP and chat as `subscription-required`.
+- `/subscribe` works signed out (login, then Checkout) and from any plan; the pricing page and dashboard link it directly, so nobody needs to hit a limit to buy Pro.
 - Source access: Postgres (`source_access`) is the desired state, GitHub the actual one; every sync is safe to repeat. Only org-owned repos give read-only (`pull`) collaborators.
 - `GHOSTHAND_SERVER` at daemon start picks the server (default https://ghosthand.dev; `http://localhost:8047` for `pnpm dev` in website/). A saved account counts only for its own server. Restart the daemon after changing it.
 - Orgs: identity (sessions, OAuth tokens) belongs to the user; the plan, the bound devices and the Mac hub (`getHub(orgId)`) belong to the org. A signup hook creates a personal org with `org_id = user.id`. Always resolve it with `getPersonalOrg(userId)` (through `org_member`); never pass a user id as an org id, or team orgs break later.

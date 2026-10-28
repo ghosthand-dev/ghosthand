@@ -68,6 +68,8 @@ export type WebsiteEvents = {
   device_removed: { org_id: string; kind: string }
   /** lease-check refused a lease: `limit` phone (free plan) or mac (no paid Mac slot left). */
   device_limit_reached: { org_id: string; plan: string; limit: string }
+  /** A free org asked for a task prompt past FREE_TASKS_PER_MONTH. */
+  task_limit_reached: { org_id: string; used: number }
   source_access_requested: { org_id: string }
   source_access_granted: { org_id: string }
   source_access_revoked: { org_id: string }

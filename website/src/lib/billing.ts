@@ -1,8 +1,8 @@
-// Plan rules: pure functions, no I/O. Plans limit devices, never time.
+// Plan rules: pure functions, no I/O. Plans limit devices and phone tasks, never time.
 //
-//   free ── one iPhone (any Mac) ──▶ subscribe ──▶ pro: $99/month per Mac, unlimited
-//                                                       iPhones on each paid Mac, plus
-//                                                       read access to the daemon source
+//   free ── one iPhone (any Mac), ──▶ subscribe ──▶ pro: $99/month per Mac, unlimited
+//           10 task prompts/month                       iPhones on each paid Mac and tasks,
+//                                                       plus read access to the daemon source
 //
 // The daemon asks /api/cli/lease-check at every acquire and does what `leaseDecision`
 // says, so a running lease is never stopped. Devices bind on their first lease; the
@@ -117,6 +117,33 @@ export function leaseDecision({ entitlement, devices, phone, mac }: {
     limit: 'phone',
     message: `The free plan covers one iPhone: ${freePhone.name}. Remove it on the dashboard to switch, `
       + `or subscribe to Pro ($99/month per Mac) for unlimited iPhones.`,
+  }
+}
+
+/** Phone task prompts per UTC calendar month on Free. Each prompt runs the model, so it costs us tokens. */
+export const FREE_TASKS_PER_MONTH = 10
+
+/** First instant of `now`'s UTC month: Free task prompts count from here. */
+export function taskMonthStart(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+}
+
+export type TaskDecision = { allowed: true } | { allowed: false; message: string }
+
+/** May the org start one more task prompt? `used`: prompts since `taskMonthStart(now)`. */
+export function taskDecision({ entitlement, used, now, subscribeUrl }: {
+  entitlement: Entitlement
+  used: number
+  now: Date
+  subscribeUrl: string
+}): TaskDecision {
+  if (entitlement.plan === 'pro' || used < FREE_TASKS_PER_MONTH) return { allowed: true }
+  const start = taskMonthStart(now)
+  const reset = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1))
+  return {
+    allowed: false,
+    message: `The free plan includes ${FREE_TASKS_PER_MONTH} phone tasks per month, and this month's are used up (they reset on ${formatDay(reset)}). `
+      + `Subscribe to Pro ($${PRO_PRICE_PER_MAC}/month per Mac) for unlimited tasks: ${subscribeUrl}`,
   }
 }
 

@@ -2,17 +2,19 @@
 $schema: https://holocron.so/frontmatter.json
 title: "Pricing: free for one iPhone, $99 per Mac"
 sidebarTitle: "Pricing"
-description: "ghosthand is free for one iPhone, with no time limit. Pro is $99 per month per Mac: unlimited iPhones on that Mac, phone tasks, and read access to the daemon source code."
+description: "ghosthand is free for one iPhone, with no time limit and 10 phone tasks per month. Pro is $99 per month per Mac: unlimited iPhones on that Mac, unlimited phone tasks, and read access to the daemon source code."
 icon: lucide:dollar-sign
 prompt: |
   Write the pricing page from @/website/src/lib/billing.ts, @/website/src/lib/stripe.ts,
   @/website/src/lib/github.ts, @/daemon/Sources/ghosthand/account.swift and
   @/website/src/components/account-pages.tsx. Explain the free plan (one iPhone), Pro
-  ($99/month per Mac), how devices bind and switch, offline rules, source access, and
-  billing through Stripe.
+  ($99/month per Mac), how devices bind and switch, the free phone task limit, offline
+  rules, source access, and billing through Stripe.
 ---
 
-ghosthand is **free for one iPhone**, with every core feature and no time limit. **Pro is $99 per month per Mac**: your agents can use every iPhone plugged into a paid Mac. [Subscribe from your dashboard](/dashboard).
+ghosthand is **free for one iPhone**, with every core feature and no time limit. **Pro is $99 per month per Mac**: your agents can use every iPhone plugged into a paid Mac.
+
+You can subscribe at any time, before you reach a limit: **[Subscribe to Pro](/subscribe)**. The link signs you in with Google if needed, then opens Stripe Checkout.
 
 ## Plans
 
@@ -24,7 +26,7 @@ ghosthand is **free for one iPhone**, with every core feature and no time limit.
 | Screenshots, OCR, taps, typing, recording | ✓                     | ✓                                         |
 | Remote MCP from anywhere                  | ✓                     | ✓                                         |
 | Control plane app                         | ✓                     | ✓                                         |
-| Phone tasks (`ghosthand task`)            |                       | ✓                                         |
+| Phone tasks (`ghosthand task`)            | 10 per month          | Unlimited                                 |
 | Daemon source code and private skills     |                       | Read access on GitHub                     |
 | Price                                     | **$0**                | **$99 / month per Mac**                   |
 
@@ -44,6 +46,12 @@ The Mac sends a one-way hash of the iPhone and Mac ids, never the ids themselves
 ```bash
 ghosthand account   # who is signed in, the plan and the subscribe link
 ```
+
+## Phone tasks
+
+**A phone task is one prompt** to the agent on ghosthand.dev: one `ghosthand task` command, one `task` MCP call or one message in the control plane chat. A follow-up prompt to the same task counts again, because each prompt runs the model.
+
+Free includes **10 phone tasks per calendar month** (UTC); the count resets on the 1st. The 11th fails with `subscription-required`, and the error has the [subscribe link](/subscribe). Pro has no task limit.
 
 ## Offline
 
@@ -73,6 +81,6 @@ Features in development reach Pro subscribers first, with **no price change** fo
 
 ## Billing
 
-**Billing runs on Stripe.** Subscribe from the [dashboard](/dashboard) and pick how many Macs to pay for. After you subscribe, the same button opens the Stripe portal, where you change the number of Macs or the card, download invoices or cancel. A canceled plan stays active until the end of the paid month.
+**Billing runs on Stripe.** [Subscribe](/subscribe) from this page or the [dashboard](/dashboard) and pick how many Macs to pay for. After you subscribe, the same button opens the Stripe portal, where you change the number of Macs or the card, download invoices or cancel. A canceled plan stays active until the end of the paid month.
 
 Your screenshots, screen text and typed text **never reach ghosthand.dev**: the Mac sends only the plan check. See the [privacy policy](./privacy.mdx).

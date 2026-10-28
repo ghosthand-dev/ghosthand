@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1
+
+1. **Fixed a crash at launch on macOS 14 and 15** (Intel and Apple silicon): `Library not loaded: @rpath/libswiftCompatibilitySpan.dylib`. The app now ships this Swift library in `Ghosthand.app/Contents/Frameworks`; macOS 26 and later keep using their built-in copy. No Xcode or Swift toolchain is needed. https://github.com/ghosthand-dev/ghosthand/issues/1
+
 ## 0.13.0
 
 1. **New plans: free for one iPhone, Pro per Mac.** Free accounts lease one iPhone, with no time or request limits; switch it with Remove on the dashboard. Pro is $99 per Mac per month: every iPhone on a paid Mac works, plus phone tasks and read access to the daemon source code. See https://ghosthand.dev/docs/pricing.

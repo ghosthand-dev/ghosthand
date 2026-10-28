@@ -21,4 +21,5 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 The daemon in daemon/ (ghosthand-dev/ghosthand-daemon) is not covered by this
-license; see its own LICENSE.
+license; see its own LICENSE, also published at
+https://ghosthand.dev/docs/source-license.

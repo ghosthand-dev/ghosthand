@@ -21,7 +21,7 @@ ghosthand --help # NEVER pipe to head/tail, read the full output
 
 The help output is the full agent manual: leases, coordinates, the screenshot feedback loop, and what to do on each error. Read `ghosthand <command> --help` before using a command for the first time.
 
-If `ghosthand` is not found, use `npx -y ghosthand@latest` instead.
+If `ghosthand` is not found, use `npx -y ghosthand@latest` instead. Without Node.js (installed from the download page), use `~/Applications/Ghosthand.app/Contents/MacOS/ghosthand`.
 
 Pro subscribers also get the task skills `ghosthand-accounts` (Google, Apple, App Store and social account signup) and `tiktok-warmup` (watch and like TikTok videos for a niche) in the private daemon repo: https://ghosthand.dev/docs/pricing
 

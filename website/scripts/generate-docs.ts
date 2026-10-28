@@ -65,7 +65,7 @@ const groups: { group: string; icon: string; commands: string[] }[] = [
   },
   { group: 'Setup and account', icon: 'lucide:user-round', commands: ['setup', 'setup status', 'account', 'account login', 'account logout', 'dashboard'] },
   { group: 'Tunnel and scripts', icon: 'lucide:cable', commands: ['tunnel url', 'tunnel revoke'] },
-  { group: 'Daemon', icon: 'lucide:server', commands: ['daemon start', 'daemon stop', 'daemon restart', 'daemon status', 'daemon run'] },
+  { group: 'Daemon', icon: 'lucide:server', commands: ['daemon start', 'daemon stop', 'daemon restart', 'daemon status', 'daemon update', 'daemon run'] },
   { group: 'Random values', icon: 'lucide:dices', commands: ['random'] },
 ]
 

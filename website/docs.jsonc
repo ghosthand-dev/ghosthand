@@ -208,6 +208,7 @@
               "docs/cli/daemon-stop",
               "docs/cli/daemon-restart",
               "docs/cli/daemon-status",
+              "docs/cli/daemon-update",
               "docs/cli/daemon-run"
             ]
           },

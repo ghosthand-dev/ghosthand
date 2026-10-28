@@ -197,7 +197,7 @@ describe('routeMcpCall', () => {
           "protocolVersion": "2025-11-25",
           "serverInfo": {
             "name": "ghosthand",
-            "version": "0.13.0",
+            "version": "0.13.1",
           },
         },
         "noCapabilities": {

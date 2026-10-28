@@ -54,6 +54,10 @@ function safeCallback(value: string | undefined): string {
   return value
 }
 
+function urlHost(value: string): string | null {
+  return URL.canParse(value) ? new URL(value).host || null : null
+}
+
 async function accountLayout({ children }: { children?: React.ReactNode }) {
   const { AccountDocument } = await import('./components/account-pages.tsx')
   return <AccountDocument>{children}</AccountDocument>
@@ -229,11 +233,16 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
       Redirect: searchParams.get('redirect_uri') || '',
     }
     console.log('mcp consent', { name: client?.name, ...details })
+    // The client writes its own name in its metadata document; only the host of that URL is verified.
+    const host = urlHost(clientId) ?? urlHost(details.Redirect) ?? clientId
     const { ConsentButtons } = await import('./components/account-client.tsx')
     return (
       <AuthShell
         title={`Allow ${client?.name || 'this MCP client'}?`}
-        description='It can use the iPhones on every Mac signed in with this account: screenshots, taps and typing. Allow only clients you trust.'
+        description={<>
+          From <span className='font-mono font-semibold text-foreground'>{host}</span>. It can use the iPhones on every Mac signed
+          in with this account: screenshots, taps and typing. Allow only if you started this from that site's app.
+        </>}
       >
         <ConsentButtons oauthQuery={search.slice(1)} consent={consentMcp} />
         <details className='group w-full pt-2 text-xs'>

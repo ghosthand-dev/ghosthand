@@ -277,8 +277,6 @@ fs.writeFileSync(postinstall, dedent`
   # running, and the old daemon would stay (the new instance moves it to this build).
   APP="$2/Applications/Ghosthand.app"
   [ -d "$APP" ] || APP="$HOME/Applications/Ghosthand.app"
-  # The installed app no longer comes from the npm package or dev build recorded there.
-  rm -f "$2/.ghosthand/app-source"
   if [ "$(id -u)" = 0 ]; then
     USER_NAME="$(stat -f %Su /dev/console)"
     launchctl asuser "$(id -u "$USER_NAME")" sudo -u "$USER_NAME" open -n "$APP" || true

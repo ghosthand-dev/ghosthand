@@ -26,7 +26,7 @@
 //   idle                         one day after the last activity: deleteAll()
 
 import { DurableObject, env } from 'cloudflare:workers'
-import { convertToModelMessages, generateId, readUIMessageStream, streamText, type UIMessage, type UIMessageChunk } from 'ai'
+import { convertToModelMessages, generateId, isToolUIPart, readUIMessageStream, streamText, type UIMessage, type UIMessageChunk } from 'ai'
 import { createDaemonClient, taskStreamOptions, type TaskPhone } from './task-agent.ts'
 import { getHub } from './tunnel.ts'
 import { captureException, reportErrors, trackEvent } from './telemetry.ts'
@@ -38,6 +38,14 @@ const MAX_RECOVERIES = 2
 const KEEPALIVE_MS = 15_000
 const KEY_DIGITS = 8
 const INTERRUPTED = 'Interrupted by a server restart: this action may or may not have run. Read the screen before you continue.'
+// No "continue": the model would take it as an order to go on with the stopped task.
+const STOPPED_ACTION = 'Stopped by the user while this action ran: it may or may not have happened on the iPhone.'
+// Like Claude Code's "[Request interrupted by user]": without it the model reads the stopped
+// prompt and the next one as one user message, and goes on with the stopped task.
+const STOPPED_NOTE = '[The user stopped the task above before it finished.]'
+
+/** `stopped`: the user stopped this answer (Stop, or a new prompt) before it finished. */
+type TaskMetadata = { stopped?: boolean }
 
 /** `studio:42`: the Mac's slug and the lease on it. */
 export const TASK_LEASE_PATTERN = /^([a-z0-9-]+):([^:/]+)$/
@@ -145,10 +153,15 @@ export class GhosthandTask extends DurableObject<Env> {
     })
     try {
       const options = taskStreamOptions({ apiKey: this.env.AI_GATEWAY_API_KEY, daemon, lease: meta.lease, phone: meta.phone })
+      // The history the model reads: a note from the user after each answer they stopped.
+      const modelHistory = history.flatMap((message): UIMessage[] => {
+        if (!(message.metadata as TaskMetadata | undefined)?.stopped) return [message]
+        return [message, { id: `${message.id}-stopped`, role: 'user', parts: [{ type: 'text', text: STOPPED_NOTE }] }]
+      })
       const result = streamText({
         ...options,
         // With the tools, old screenshots in the history tell the model they were not kept.
-        messages: await convertToModelMessages(history, { tools: options.tools, ignoreIncompleteToolCalls: true }),
+        messages: await convertToModelMessages(modelHistory, { tools: options.tools, ignoreIncompleteToolCalls: true }),
         abortSignal: signal,
         // Model and gateway failures. Tool errors are the daemon's answers: the model reads them.
         onError: ({ error }) => {
@@ -161,7 +174,12 @@ export class GhosthandTask extends DurableObject<Env> {
         generateMessageId: generateId,
         // Tool errors are daemon problems for this account's own Mac: show them as they are.
         onError: (error) => (error instanceof Error ? error.message : String(error)),
-        onFinish: ({ responseMessage }) => this.saveMessage(responseMessage),
+        // A stopped answer is kept, with its open action failed, and marked for modelHistory.
+        onEnd: ({ responseMessage, isAborted }) => {
+          if (!isAborted) return this.saveMessage(responseMessage)
+          failOpenToolCalls(responseMessage, STOPPED_ACTION)
+          this.saveMessage({ ...responseMessage, metadata: { stopped: true } satisfies TaskMetadata })
+        },
       })
       for await (const chunk of stream) this.push(chunk)
     } catch (error) {
@@ -213,10 +231,8 @@ export class GhosthandTask extends DurableObject<Env> {
       },
     })
     for await (const message of readUIMessageStream({ stream })) partial = message
-    for (const part of partial?.parts ?? []) {
-      if (!('toolCallId' in part) || part.state === 'output-available' || part.state === 'output-error') continue
-      this.push({ type: 'tool-output-error', toolCallId: part.toolCallId, errorText: INTERRUPTED })
-      Object.assign(part, { state: 'output-error', errorText: INTERRUPTED })
+    for (const toolCallId of partial ? failOpenToolCalls(partial, INTERRUPTED) : []) {
+      this.push({ type: 'tool-output-error', toolCallId, errorText: INTERRUPTED })
     }
     await this.run(partial?.parts.length ? [...history, partial] : history)
   }
@@ -302,6 +318,18 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
     promise,
     new Promise<never>((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })),
   ])
+}
+
+/** Fails the tool calls that started but have no result, so the model knows they may have run.
+ *  Calls still streaming their input never ran: ignoreIncompleteToolCalls drops them. */
+function failOpenToolCalls(message: UIMessage, errorText: string): string[] {
+  const failed: string[] = []
+  for (const part of message.parts) {
+    if (!isToolUIPart(part) || part.state !== 'input-available') continue
+    Object.assign(part, { state: 'output-error', errorText })
+    failed.push(part.toolCallId)
+  }
+  return failed
 }
 
 function newTurn(number: number, chunks: UIMessageChunk[]): Turn {

@@ -211,6 +211,42 @@ test('a new prompt stops the running turn and starts at once, with the stopped a
   expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
 }, 60_000)
 
+test('Stop keeps the stopped answer in the history: the next prompt can ask about it, then continue', async () => {
+  // The first action never answers: Stop comes while it runs.
+  const mac = await fakeMac({ hold: (op) => op !== 'text' && op !== 'screenshot' && mac.held.length === 0 })
+  const taskId = 'task-stopped'
+  const first = startTask({ mac, taskId, prompt: PROMPT }).then(readStream)
+  await expect.poll(() => mac.held.length, { timeout: 30_000 }).toBe(1)
+  const auth = { headers: { authorization: `Bearer ${mac.token}` } }
+  const stop = await runtime.worker.fetch(`/api/cli/tasks/${taskId}/abort?prompt=m1`, { method: 'POST', ...auth })
+  expect(await stop.json()).toEqual({ aborted: true })
+  expect((await first).at(-1)).toMatchObject({ type: 'abort' })
+
+  // The stopped answer is marked, and its action in flight failed: it may have run on the iPhone.
+  const { messages } = await (await runtime.worker.fetch(`/api/cli/tasks/${taskId}`, auth)).json() as { messages: UIMessage[] }
+  expect(messages.map((m) => [m.role, m.metadata ?? null])).toEqual([['user', null], ['assistant', { stopped: true }]])
+  expect(messages[1]!.parts).toContainEqual(expect.objectContaining({ state: 'output-error', errorText: expect.stringContaining('Stopped by the user') }))
+
+  const ask = async (id: string, text: string) => {
+    const response = await runtime.worker.fetch('/api/cli/tasks', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${mac.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: taskId, lease: 'studio:7', messages: [{ id, role: 'user', parts: [{ type: 'text', text }] }] }),
+    })
+    const chunks = await readStream(response)
+    expect(chunks.at(-1)).toMatchObject({ type: 'finish' })
+    return chunks.flatMap((c) => (c.type === 'text-delta' ? [c.delta] : [])).join('')
+  }
+  const inputs = () => mac.ops.filter((op) => !['text', 'screenshot'].includes(op))
+  // A question about the stopped task is answered, not taken as the stopped task again.
+  const answer = await ask('m2', 'What were you doing when I stopped you?')
+  expect(inputs()).toEqual([])
+  expect(answer).toMatch(/settings/i)
+  // Asked to, it goes on with the stopped task.
+  await ask('m3', 'Ok, continue.')
+  expect(mac.screen).toBe('about')
+}, 90_000)
+
 test('a task stopped by a restart continues from its stored chunks', async () => {
   // The first tap never answers before the restart, like an action in flight during a deploy.
   let holding = true

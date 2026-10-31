@@ -217,6 +217,55 @@ test('the HTTP API accepts a session or a live API token', async () => {
   expect((await macs(apiToken.token)).status).toBe(401)
 })
 
+test('a client without CIMD registers dynamically, asks for consent and calls MCP', async () => {
+  const identity = await session()
+  const metadata = await runtime.worker.fetch('/api/auth/.well-known/oauth-authorization-server')
+  const { registration_endpoint } = await metadata.json() as { registration_endpoint?: string }
+  expect(registration_endpoint).toBe(new URL('/api/auth/oauth2/register', runtime.baseUrl).href)
+  // Clients omit application_type. Codex, OpenCode and mcp-remote use a loopback redirect, Cursor its own scheme.
+  const register = (redirectUri: string) => runtime.worker.fetch(new URL(registration_endpoint!).pathname, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      client_name: 'Claude', redirect_uris: [redirectUri], token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'],
+    }),
+  })
+  const cursor = await register('cursor://anysphere.cursor-mcp/oauth/callback')
+  expect(cursor.status, await cursor.clone().text()).toBe(201)
+  const redirectUri = 'http://127.0.0.1:8766/callback'
+  const registered = await register(redirectUri)
+  expect(registered.status, await registered.clone().text()).toBe(201)
+  const { client_id: clientId } = await registered.json() as { client_id: string }
+  const [client] = await runtime.sql('SELECT skip_consent, user_id FROM oauth_client WHERE client_id = $1', [clientId])
+  expect(client).toMatchObject({ skip_consent: null, user_id: null })
+
+  const resource = new URL('/mcp', runtime.baseUrl).href
+  const verifier = crypto.randomBytes(32).toString('base64url')
+  const query = new URLSearchParams({
+    client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid offline_access',
+    resource, code_challenge: crypto.createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
+  })
+  const authorize = await runtime.worker.fetch(`/api/auth/oauth2/authorize?${query}`, {
+    headers: { authorization: `Bearer ${identity.session.token}` }, redirect: 'manual',
+  })
+  const { url: consentUrl } = await authorize.json() as { url: string }
+  // A self-registered client never skips the consent page.
+  expect(new URL(consentUrl, runtime.baseUrl).pathname).toBe('/consent')
+  const consent = await runtime.worker.fetch('/api/auth/oauth2/consent', {
+    method: 'POST', headers: { authorization: `Bearer ${identity.session.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ accept: true, oauth_query: new URL(consentUrl, runtime.baseUrl).search.slice(1) }),
+  })
+  expect(consent.status, await consent.clone().text()).toBe(200)
+  const code = new URL((await consent.json() as { url: string }).url).searchParams.get('code')!
+  const token = await runtime.worker.fetch('/api/auth/oauth2/token', {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirectUri, client_id: clientId }),
+  })
+  expect(token.status, await token.clone().text()).toBe(200)
+  const { access_token } = await token.json() as { access_token: string }
+  expect((await mcp(access_token)).status).toBe(200)
+})
+
 test('MCP requires its audience and an unexpired, session-bound access token', async () => {
   const identity = await session()
   const grant = await oauth({ identity })

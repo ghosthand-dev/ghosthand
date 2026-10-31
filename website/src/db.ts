@@ -5,7 +5,8 @@
 // authenticates with the session token as a bearer header (bearer plugin), which it
 // gets from the device flow (deviceAuthorization plugin, see cli-api.ts).
 // Remote MCP clients get OAuth access tokens instead: mcp() is the OAuth provider,
-// opaque tokens can be revoked immediately; cimd() loads clients from their metadata URL.
+// opaque tokens can be revoked immediately; cimd() loads clients from their metadata URL,
+// clients without CIMD register at /api/auth/oauth2/register (open DCR).
 // API tokens (api-key plugin, prefix ghk_) are for scripts that call the HTTP API through
 // the Mac tunnel (tunnel.ts): the daemon mints them with its session, hub checks them.
 // A signup hook creates the user's personal org: it owns the plan, devices and Mac hub.
@@ -55,9 +56,15 @@ export function getMcpResource(): string {
 
 export function getAuth() {
   // JWTs are not stored or grant-revocable, even with online introspection.
+  // Open dynamic registration (RFC 7591) for clients without CIMD (Cursor, Codex, OpenCode,
+  // mcp-remote...): their name is self-asserted, so /consent shows the redirect host and
+  // never skips consent for them. 'infer': they omit application_type, and a loopback or
+  // cursor:// redirect would fail the default "web" rules.
   const provider = mcp({
     loginPage: '/login', consentPage: '/consent', resource: getMcpResource(),
     disableJwtPlugin: true, prefix: { opaqueAccessToken: 'ghm_' },
+    allowDynamicClientRegistration: true, allowUnauthenticatedClientRegistration: true,
+    clientRegistrationDefaultApplicationType: 'infer',
   })
   return betterAuth({
     baseURL: getBaseUrl(),

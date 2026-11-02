@@ -23,6 +23,13 @@ pnpm tsx scripts/render.ts --entry launch --stills 6,22 # PNGs in out/stills/ to
 pnpm tsx scripts/render.ts --entry launch --preview     # out/launch-preview.html with play button and scrubber
 ```
 
+The Open Graph image of ghosthand.dev comes from the same fonts and hero background:
+
+```bash
+pnpm tsx scripts/og-image.ts                                                  # variants in out/og/
+pnpm tsx scripts/og-image.ts --variant hero-dark --out ../website/public/og-image.png
+```
+
 `launch` plays `demo-video/out/tiktok-launch.mp4` (the TikTok run with the intro's prompt). Render it first in `demo-video/`: `pnpm exec remotion render src/root.tsx tiktok-launch out/tiktok-launch.mp4`.
 
 ## Launch video

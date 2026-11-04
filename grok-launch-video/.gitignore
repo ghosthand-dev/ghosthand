@@ -1,0 +1,6 @@
+.hyperframes/
+.waveform-cache/
+renders/
+# cut from demo-video/public/tiktok/phone.mp4 (gitignored there too); commands in AGENTS.md
+assets/demo-phone.mp4
+assets/tiktok-caption.mp4

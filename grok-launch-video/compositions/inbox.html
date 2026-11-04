@@ -1,0 +1,315 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #f6fafd;
+      font-family: "Inter", sans-serif;
+    }
+    #inbox-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+      transform-origin: 0 0;
+      scale: 1.5;
+    }
+    /* camera: everything below is laid out as in source frame 410, then moved and zoomed */
+    #inbox-cam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+      transform-origin: 0 0;
+    }
+    .inbox-word {
+      position: absolute;
+      top: 157.8px;
+      font-weight: 600;
+      font-size: 60px;
+      line-height: 60px;
+      height: 60px;
+      letter-spacing: -0.6px;
+      color: #090a0e;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    #inbox-window {
+      position: absolute;
+      left: 100px;
+      top: 327px;
+      width: 1081px;
+      height: 760px;
+      border-radius: 22px;
+      overflow: hidden;
+      background: #111113;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.3),
+        0 18px 50px rgba(20, 20, 40, 0.25);
+    }
+    #inbox-side {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 402px;
+      height: 100%;
+      background: #18181b;
+      border-right: 1px solid #26262b;
+    }
+    .inbox-light {
+      position: absolute;
+      top: 21px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+    }
+    #inbox-search {
+      position: absolute;
+      left: 16px;
+      top: 66px;
+      width: 371px;
+      height: 45px;
+      border-radius: 14px;
+      background: #232327;
+      color: #77777e;
+      font-size: 20px;
+      line-height: 45px;
+      padding-left: 43px;
+    }
+    #inbox-search svg {
+      position: absolute;
+      left: 13px;
+      top: 12px;
+    }
+    .inbox-row {
+      position: absolute;
+      left: 16px;
+      width: 371px;
+      height: 77px;
+      border-radius: 12px;
+    }
+    .inbox-row .name {
+      position: absolute;
+      left: 74px;
+      top: 12px;
+      font-size: 20px;
+      color: #f2f2f4;
+    }
+    .inbox-row .time {
+      position: absolute;
+      right: 12px;
+      top: 15px;
+      font-size: 16px;
+      color: #808088;
+    }
+    .inbox-row .preview {
+      position: absolute;
+      left: 74px;
+      top: 40px;
+      font-size: 18.5px;
+      color: #8b8b93;
+      white-space: nowrap;
+    }
+    .inbox-row .app,
+    .inbox-avatar {
+      position: absolute;
+      left: 6px;
+      top: 10px;
+      width: 58px;
+      height: 58px;
+      overflow: visible;
+    }
+    .inbox-row .app {
+      border-radius: 15px;
+      overflow: hidden;
+    }
+    .inbox-row .app svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #inbox-header {
+      position: absolute;
+      left: 659px;
+      top: 20px;
+      width: 167px;
+      height: 50px;
+      border-radius: 25px;
+      background: #222226;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      font-size: 19.5px;
+      color: #f2f2f4;
+      line-height: 50px;
+      padding-left: 55px;
+    }
+    #inbox-header canvas {
+      position: absolute;
+      left: 10px;
+      top: 7px;
+      width: 36px;
+      height: 36px;
+      overflow: visible;
+    }
+    #inbox-stamp {
+      position: absolute;
+      left: 692px;
+      top: 90px;
+      width: 100px;
+      text-align: center;
+      font-size: 16px;
+      color: #77777e;
+    }
+    .inbox-msg {
+      position: absolute;
+      border-radius: 19px;
+      background: #232327;
+      color: #ededf0;
+      font-size: 19.8px;
+      line-height: 27px;
+      padding: 13px 18px 0;
+      opacity: 0;
+    }
+    #inbox-mine {
+      position: absolute;
+      left: 783px;
+      top: 371px;
+      width: 229px;
+      height: 47px;
+      border-radius: 24px;
+      background: #5b54ee;
+      color: #fff;
+      font-size: 18.4px;
+      line-height: 47px;
+      white-space: nowrap;
+      overflow: hidden;
+      opacity: 0;
+    }
+    #inbox-mine span {
+      position: absolute;
+      left: 19px;
+    }
+  </style>
+  <div data-hf-id="hf-a1hk" id="root" data-composition-id="inbox" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-llrd" id="inbox-stage">
+      <div data-hf-id="hf-okmq" id="inbox-cam">
+        <span data-hf-id="hf-5mbk" id="inbox-w1" class="inbox-word" style="left: 390px">Keeps</span>
+        <span data-hf-id="hf-5nbq" id="inbox-w2" class="inbox-word" style="left: 579px">you</span>
+        <span data-hf-id="hf-r01u" id="inbox-w3" class="inbox-word" style="left: 697px">posted</span>
+        <div data-hf-id="hf-ymlh" id="inbox-window">
+          <div data-hf-id="hf-8ne4" id="inbox-side">
+            <i data-hf-id="hf-t357" class="inbox-light" style="left: 17px; background: #ee4f62"></i>
+            <i data-hf-id="hf-wpec" class="inbox-light" style="left: 51px; background: #f6bf2c"></i>
+            <i data-hf-id="hf-qzap" class="inbox-light" style="left: 85px; background: #2bcb4b"></i>
+            <svg data-hf-id="hf-et1v" viewBox="0 0 20 20" width="20" height="20" style="position: absolute; left: 359px; top: 22px">
+              <path data-hf-id="hf-56k1" d="M10 3v14M3 10h14" stroke="#9a9a9a" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            <div data-hf-id="hf-ndd5" id="inbox-search">
+              <svg data-hf-id="hf-62gc" viewBox="0 0 22 22" width="22" height="22" fill="none" stroke="#9c9c9c" stroke-width="2">
+                <circle data-hf-id="hf-bzjz" cx="9.5" cy="9.5" r="7" />
+                <path data-hf-id="hf-i39n" d="M15 15l5 5" stroke-linecap="round" />
+              </svg>
+              Search
+            </div>
+            <div data-hf-id="hf-4ttp" class="inbox-row" style="top: 123px; background: #2a2a30">
+              <canvas data-hf-id="hf-kvoc" id="inbox-av1" class="inbox-avatar"></canvas>
+              <span data-hf-id="hf-49jg" class="name">Grok Bot</span><span data-hf-id="hf-i8hb" class="time">6:42 PM</span>
+              <span data-hf-id="hf-ipap" class="preview">12 new comments on your Ti...</span>
+            </div>
+            <div data-hf-id="hf-3gyn" class="inbox-row" style="top: 202px">
+              <div data-hf-id="hf-dvhn" class="app" data-app="whatsapp"></div>
+              <span data-hf-id="hf-g7po" class="name">WhatsApp replies</span><span data-hf-id="hf-xaeb" class="time">6:15 PM</span>
+              <span data-hf-id="hf-h3vs" class="preview">Answered Mia about the trip</span>
+            </div>
+            <div data-hf-id="hf-iqjs" class="inbox-row" style="top: 270px">
+              <div data-hf-id="hf-1o5n" class="app" data-app="settings"></div>
+              <span data-hf-id="hf-98yq" class="name">iPhone settings</span><span data-hf-id="hf-2oxr" class="time">4:31 PM</span>
+              <span data-hf-id="hf-0juu" class="preview">Dark Mode and Focus are on</span>
+            </div>
+          </div>
+          <div data-hf-id="hf-nxm2" id="inbox-header"><canvas data-hf-id="hf-v839" id="inbox-av2"></canvas>Grok Bot</div>
+          <div data-hf-id="hf-yjwg" id="inbox-stamp">9:41 AM</div>
+          <div data-hf-id="hf-0ibq" id="inbox-m1" class="inbox-msg" style="left: 417px; top: 132px; width: 440px; height: 79px">
+            12 new comments on your TikTok. I replied to each one.
+          </div>
+          <div data-hf-id="hf-dslw" id="inbox-m2" class="inbox-msg" style="left: 417px; top: 218px; width: 440px; height: 51px">
+            Sam asked if you're in for Friday.
+          </div>
+          <div data-hf-id="hf-hh9k" id="inbox-m3" class="inbox-msg" style="left: 417px; top: 279px; width: 427px; height: 77px">
+            Want me to say yes on WhatsApp and send him the TikTok?
+          </div>
+          <div data-hf-id="hf-bc5g" id="inbox-mine"><span data-hf-id="hf-k9ca">Yes, tell Sam I'm in.</span></div>
+          <div data-hf-id="hf-1tei" id="inbox-m5" class="inbox-msg" style="left: 414px; top: 448px; width: 406px; height: 73px">
+            Done. Sam got your reply and the link on WhatsApp.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const { FPS, keyframes, popWord, everyFrame, stretchTo } = window.Kit
+      const F0 = 386
+      // slowed so the title and each message can be read
+      const time = stretchTo(F0, 476, 10, [[400, 412, 0.3], [438, 447, 0.35], [455, 468, 0.35]])
+      const lt = time.lt
+      const tl = gsap.timeline({ paused: true })
+
+      window.AppIcons.fill(document.getElementById("inbox-side"))
+      // little avatars: the same mascot, frozen in a three-quarter pose (rendered once, sharp at 3x zoom)
+      const pose = { yaw: 0.35, pitch: 0.05, roll: -0.15, blink: 1, accessory: true }
+      for (const [id, size, R] of [["inbox-av1", 58, 21], ["inbox-av2", 36, 12.5]]) {
+        const stage = window.Mascot.create({ canvas: document.getElementById(id), width: size, height: size, pixelRatio: 4 })
+        stage.add({ palette: "light" }).pose({ ...pose, x: size / 2, y: size / 2 + 1, R })
+        stage.render()
+      }
+
+      // camera measured from the first message bubble: frame, scale, tx, ty (1280x720 px)
+      const CAM = [
+        [386, 1, 0, 94.1], [388, 1, 0, 70], [390, 1, 0, 54], [392, 1, 0, 43], [393, 1, 0, 38], [396, 1, 0, 27],
+        [398, 1, 0, 22], [399, 1, 0, 19], [402, 1, 0, 14], [405, 1, 0, 9], [407, 1, 0, 6], [409, 1, 0, 3],
+        [410, 1, 0, 0], [412, 1, 0, -2], [414, 1, 0, -5], [415, 1, -2, -6], [416, 1.0023, -5.2, -8],
+        [417, 1.0068, -12.5, -10.1], [419, 1.0227, -36.8, -19.4], [420, 1.0386, -57, -29.7], [421, 1.0591, -83.5, -43.1],
+        [422, 1.1, -133, -75], [423, 1.15, -195, -110], [424, 1.2, -268.4, -150.8], [425, 1.31, -400, -270],
+        [426, 1.41, -500, -370], [427, 1.4886, -576.6, -435.3], [428, 1.5318, -612.9, -484.1], [429, 1.5636, -638.4, -521.7],
+        [430, 1.5841, -655, -547.1], [431, 1.6023, -668.4, -568.4], [432, 1.6159, -678.4, -585.7], [433, 1.6273, -686.3, -600.9],
+        [434, 1.6364, -693, -611.1], [436, 1.6455, -699.7, -625.3], [437, 1.6477, -700.9, -630.3], [440, 1.6477, -700.9, -636.3],
+        [444, 1.6477, -700.9, -646.3], [446, 1.6477, -700.9, -655.3], [447, 1.6477, -700.9, -661.3], [448, 1.65, -702, -672.3],
+        [449, 1.65, -702, -684.3], [450, 1.65, -702, -694.3], [451, 1.65, -702, -701.3], [452, 1.65, -702, -706.3],
+        [454, 1.65, -702, -713.3], [456, 1.65, -702, -718.3], [458, 1.6477, -700.9, -721.3], [462, 1.6477, -700.9, -725.3],
+        [465, 1.65, -702, -729.3], [467, 1.6523, -704.2, -732.4], [468, 1.6545, -706.4, -735.4], [469, 1.6614, -711.9, -740.6],
+        [470, 1.6705, -719.6, -746.7], [471, 1.6773, -725.1, -752.9], [472, 1.6909, -736.2, -763.1], [473, 1.7114, -752.8, -777.5],
+        [474, 1.7341, -771.5, -792.9], [475, 1.7705, -800.3, -809.6], [476, 1.81, -830, -827],
+      ]
+      const cam = document.getElementById("inbox-cam")
+      const mine = document.getElementById("inbox-mine")
+      // the reply bubble grows to the right while it is typed: frame, width
+      const MINE_W = [[427.5, 0], [428, 53], [430, 123], [432, 172], [434, 207], [436, 224], [438, 229]]
+      function draw(t) {
+        const frame = time.frameAt(t)
+        const [, s, tx, ty] = keyframes(CAM, frame)
+        cam.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`
+        mine.style.width = `${keyframes(MINE_W, frame)[1]}px`
+        mine.style.opacity = frame >= 427.5 ? 1 : 0
+      }
+
+      tl.set(["#inbox-w1", "#inbox-w2"], { opacity: 1 }, 0)
+      popWord(tl, "#inbox-w3", lt(389))
+      // while the camera dives into the chat, the sidebar and window chrome fall away
+      // the dark window fills the frame, so the page behind it turns dark too (leads into the outro)
+      tl.fromTo("#root", { backgroundColor: "#f6fafd" }, { backgroundColor: "#111113", duration: 0.3, ease: "power1.in" }, lt(419))
+      tl.fromTo("#inbox-side", { opacity: 1 }, { opacity: 0, duration: 0.25, ease: "power1.in" }, lt(419))
+      tl.fromTo("#inbox-window", { boxShadow: "0 0 0 1px rgba(0,0,0,0.3), 0 18px 50px rgba(20,20,40,0.25)" }, { boxShadow: "0 0 0 1px rgba(0,0,0,0), 0 18px 50px rgba(20,20,40,0)", duration: 0.25 }, lt(419))
+      tl.fromTo(["#inbox-header", "#inbox-stamp"], { y: 0 }, { y: -78, duration: 0.35, ease: "power2.inOut" }, lt(418))
+      tl.set("#inbox-m1", { opacity: 1 }, 0)
+      for (const [sel, f] of [["#inbox-m2", 397], ["#inbox-m3", 413], ["#inbox-m5", 449]]) {
+        tl.fromTo(sel, { opacity: 0, y: 10 }, { opacity: 1, y: 0, duration: 0.25, ease: "power2.out" }, lt(f))
+      }
+
+      everyFrame(tl, time.duration, draw)
+      window.__timelines["inbox"] = tl
+    })()
+  </script>
+</template>

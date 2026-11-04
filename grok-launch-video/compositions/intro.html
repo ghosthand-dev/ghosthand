@@ -1,0 +1,220 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #f6fafd;
+    }
+    /* authored in the source video's 1280x720 space, scaled to the 1920x1080 canvas */
+    #intro-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+      transform-origin: 0 0;
+      scale: 1.5;
+    }
+    #intro-mascot {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+    }
+    .intro-line {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+    }
+    .intro-word {
+      position: absolute;
+      font-family: "Inter", sans-serif;
+      font-weight: 600;
+      font-size: 60px;
+      line-height: 60px;
+      height: 60px;
+      letter-spacing: -0.6px;
+      color: #090a0e;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    #intro-pill {
+      position: absolute;
+      left: 736px;
+      top: 208.5px;
+      width: 0;
+      height: 0;
+      border-radius: 40px;
+      background: #5b54ee;
+      overflow: hidden;
+    }
+    #intro-pill-content {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      height: 32px;
+      margin-top: -16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .intro-app {
+      width: 32px;
+      height: 32px;
+      flex: none;
+      border-radius: 8px;
+      overflow: hidden;
+      opacity: 0;
+    }
+    .intro-app svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+  </style>
+  <div data-hf-id="hf-ypfn" id="root" data-composition-id="intro" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-d85w" id="intro-stage">
+      <div data-hf-id="hf-lcp3" id="intro-line1" class="intro-line">
+        <span data-hf-id="hf-etq8" id="intro-give" class="intro-word" style="left: 246px; top: 323px">Give</span>
+        <span data-hf-id="hf-j1dd" id="intro-your" class="intro-word" style="left: 386px; top: 323px">your</span>
+        <span data-hf-id="hf-51yn" id="intro-a" class="intro-word" style="left: 790px; top: 323px">an</span>
+        <span data-hf-id="hf-uqgl" id="intro-phone" class="intro-word" style="left: 873px; top: 323px">iPhone</span>
+      </div>
+      <div data-hf-id="hf-cot8" id="intro-line2" class="intro-line">
+        <span data-hf-id="hf-2yck" id="intro-its" class="intro-word" style="left: 432px; top: 175.7px">Opens</span>
+        <span data-hf-id="hf-hnca" id="intro-own" class="intro-word" style="left: 628px; top: 175.7px">any</span>
+        <div data-hf-id="hf-9k0n" id="intro-pill">
+          <div data-hf-id="hf-9r53" id="intro-pill-content">
+            <i data-hf-id="hf-k6ks" class="intro-app" data-app="tiktok"></i>
+            <i data-hf-id="hf-rxwk" class="intro-app" data-app="instagram"></i>
+            <i data-hf-id="hf-qqzh" class="intro-app" data-app="whatsapp"></i>
+            <i data-hf-id="hf-r5ai" class="intro-app" data-app="youtube"></i>
+            <i data-hf-id="hf-t4tn" class="intro-app" data-app="airbnb"></i>
+            <i data-hf-id="hf-tj4o" class="intro-app" data-app="uber"></i>
+          </div>
+        </div>
+        <span data-hf-id="hf-f5vq" id="intro-number" class="intro-word" style="left: 742px; top: 175.7px">app</span>
+      </div>
+      <canvas data-hf-id="hf-y9pg" id="intro-mascot"></canvas>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const { FPS, keyframes, trackPose, popWord, everyFrame, stretchTo } = window.Kit
+      // slowed so "Give your [bot] an iPhone" and the app pill can be read
+      const time = stretchTo(0, 189, 14, [[99, 115, 0.45], [171, 186, 0.55]])
+      const at = (sec) => time.lt(sec * FPS) // source seconds -> scene seconds
+      const tl = gsap.timeline({ paused: true })
+      const stage = window.Mascot.create({ canvas: document.getElementById("intro-mascot"), width: 1280, height: 720 })
+      const bot = stage.add({ palette: "dark" })
+
+      // The accessory flies in on its own before it lands on the head at frame 69.
+      // frame, center x, center y, size (head radii of 62 px), yaw, pitch, roll
+      const ACCESSORY_FLIGHT = [
+        [47, 905, 96, 0.05, -0.76, -0.52, 0.35],
+        [48, 876, 104, 0.22, -0.76, -0.52, 0.3],
+        [50, 784, 138, 0.62, -0.76, -0.52, 0.25],
+        [52, 712, 148, 0.86, -0.76, -0.52, 0.2],
+        [54, 662, 144, 0.97, -0.76, -0.52, 0.17],
+        [56, 630, 136, 1, -0.76, -0.52, 0.15],
+        [58, 606, 126, 1, -0.76, -0.52, 0.13],
+        [60, 588, 116, 1, -0.76, -0.52, 0.12],
+        [62, 575, 113, 1, -0.7, -0.48, 0.06],
+        [64, 565, 125, 1, -0.6, -0.42, 0],
+        [66, 548, 170, 1, -0.4, -0.3, -0.15],
+        [67, 546, 230, 1, -0.2, -0.15, -0.22],
+        [68, 585, 320, 1, 0.1, -0.05, -0.25],
+      ]
+      const ACCESSORY_IN = 47
+      const ACCESSORY_LANDS = 69
+
+      function draw(t) {
+        const frame = time.frameAt(t)
+        if (frame < 2) return bot.pose({ hidden: true }), stage.render()
+        const s = trackPose("s1", frame)
+        s.accessory = frame >= ACCESSORY_IN
+        if (s.accessory && frame < ACCESSORY_LANDS) {
+          const [, x, y, size, yaw, pitch, roll] = keyframes(ACCESSORY_FLIGHT, frame)
+          s.detached = { x, y, R: 62 * size, yaw, pitch, roll }
+        }
+        bot.pose(s)
+        stage.render()
+      }
+
+      // "Give your [bot] an iPhone": words pop in, drift up, then fly up and vanish.
+      tl.fromTo("#intro-line1", { y: 7 }, { y: -13, duration: at(4.333) - at(2.8), ease: "none" }, at(2.8))
+      for (const [sel, tin, tout] of [
+        ["#intro-give", 2.8, 3.88],
+        ["#intro-your", 2.933, 3.95],
+        ["#intro-a", 3.067, 4.02],
+        ["#intro-phone", 3.133, 4.087],
+      ]) {
+        popWord(tl, sel, at(tin), { dy: 16 })
+        tl.to(sel, { y: -48, duration: 0.24, ease: "power3.in" }, at(tout))
+        tl.set(sel, { opacity: 0 }, at(tout) + 0.24)
+      }
+
+      // "Opens any [apps pill] app": the words part to make room for the pill.
+      popWord(tl, "#intro-its", at(4.333), { dy: 15, duration: 0.4 })
+      popWord(tl, "#intro-own", at(4.467), { dy: 15, duration: 0.4 })
+      popWord(tl, "#intro-number", at(4.6), { dy: 15, duration: 0.4 })
+      tl.to(["#intro-its", "#intro-own"], { x: -139, duration: 0.6, ease: "expo.inOut" }, at(5.0))
+      tl.to("#intro-number", { x: 139, duration: 0.6, ease: "expo.inOut" }, at(5.0))
+      tl.fromTo(
+        "#intro-line2",
+        { y: 0 },
+        {
+          keyframes: [
+            { y: 0, duration: 0.2 },
+            { y: 11, duration: 0.33, ease: "sine.inOut" },
+            { y: 17, duration: 0.7 + time.duration - 6.3, ease: "sine.out" },
+            { y: 14, duration: 0.1, ease: "sine.in" },
+            { y: -3, duration: 0.14, ease: "power2.in" },
+            { y: -10, duration: 0.03, ease: "none" },
+          ],
+          immediateRender: false,
+        },
+        at(4.8),
+      )
+
+      // the pill grows from a dot (size measured per frame)
+      const PILL = [
+        [152, 0, 0], [153, 10, 10], [154, 16, 16], [155, 24, 24], [156, 33, 32], [157, 66, 42],
+        [158, 104, 50], [159, 139, 57], [160, 170, 64], [161, 196, 70], [162, 216, 73], [163, 227, 74],
+        [164, 234, 75], [166, 243, 75], [168, 249, 75], [170, 252, 75], [171, 254, 75],
+      ]
+      const pill = document.getElementById("intro-pill")
+      const pillContent = document.getElementById("intro-pill-content")
+      const pillClock = { f: 152 }
+      tl.fromTo(
+        pillClock,
+        { f: 152 },
+        {
+          f: 171,
+          duration: 19 / FPS,
+          ease: "none",
+          onUpdate: () => {
+            const [, w, h] = keyframes(PILL, pillClock.f)
+            Object.assign(pill.style, { width: `${w}px`, height: `${h}px`, marginLeft: `${-w / 2}px`, marginTop: `${-h / 2}px` })
+            pillContent.style.opacity = w > 60 ? 1 : 0
+          },
+        },
+        at(152 / FPS),
+      )
+      // app icons pop into the pill one by one
+      window.AppIcons.fill(pill)
+      const APP_FRAMES = [156.5, 158, 159.5, 161, 163, 165.5]
+      document.querySelectorAll(".intro-app").forEach((app, k) => {
+        tl.fromTo(app, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2.4)", immediateRender: false }, time.lt(APP_FRAMES[k]))
+      })
+
+      everyFrame(tl, time.duration, draw)
+      window.__timelines["intro"] = tl
+    })()
+  </script>
+</template>

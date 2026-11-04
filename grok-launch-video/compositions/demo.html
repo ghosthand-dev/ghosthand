@@ -1,0 +1,435 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(60% 70% at 18% 40%, rgba(107, 99, 242, 0.16) 0%, rgba(107, 99, 242, 0) 70%),
+        radial-gradient(50% 60% at 85% 75%, rgba(79, 70, 229, 0.12) 0%, rgba(79, 70, 229, 0) 70%),
+        #f6fafd;
+      font-family: "Inter", sans-serif;
+    }
+    /* camera: everything below is laid out in 1920x1080 scene px, then moved and zoomed */
+    #demo-cam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 1080px;
+      transform-origin: 0 0;
+    }
+    #demo-dots {
+      position: absolute;
+      left: -400px;
+      top: -300px;
+      width: 2720px;
+      height: 1680px;
+      background-image: radial-gradient(rgba(79, 70, 229, 0.13) 1.2px, transparent 1.8px);
+      background-size: 28px 28px;
+    }
+
+    /* the real iPhone: home button model, like the recorded one */
+    #demo-phone {
+      position: absolute;
+      left: 252px;
+      top: 60px;
+      width: 476px;
+      height: 960px;
+      border-radius: 72px;
+      background: linear-gradient(90deg, #5d6064 0%, #2a2b2e 2%, #1c1c1f 6%, #1c1c1f 94%, #2a2b2e 98%, #5d6064 100%);
+      box-shadow:
+        0 40px 90px rgba(30, 28, 90, 0.28),
+        inset 0 2px 0 #6b6f72;
+    }
+    .demo-side {
+      position: absolute;
+      left: -6px;
+      width: 7px;
+      border-radius: 3px 0 0 3px;
+      background: #3a3b3f;
+    }
+    #demo-speaker {
+      position: absolute;
+      left: 188px;
+      top: 46px;
+      width: 100px;
+      height: 10px;
+      border-radius: 5px;
+      background: #0b0b0d;
+    }
+    #demo-camdot {
+      position: absolute;
+      left: 160px;
+      top: 44px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #101018;
+      box-shadow: inset 0 0 0 3px #1d1d29;
+    }
+    #demo-screen {
+      position: absolute;
+      left: 22px;
+      top: 96px;
+      width: 432px;
+      height: 768px;
+      overflow: hidden;
+      background: #000;
+    }
+    #demo-screen video {
+      position: absolute;
+      inset: 0;
+      width: 432px;
+      height: 768px;
+    }
+    #demo-home {
+      position: absolute;
+      left: 203px;
+      top: 885px;
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      box-shadow: inset 0 0 0 3px #3a3b40;
+    }
+    #demo-ripple {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 80px;
+      height: 80px;
+      margin: -40px 0 0 -40px;
+      border-radius: 50%;
+      box-shadow:
+        inset 0 0 0 4px rgba(107, 99, 242, 0.95),
+        0 0 24px rgba(107, 99, 242, 0.6);
+      opacity: 0;
+    }
+    #demo-label {
+      position: absolute;
+      left: 252px;
+      top: 1036px;
+      width: 476px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 24px;
+      color: #4f46e5;
+    }
+
+    /* beam from the running step to the phone */
+    #demo-beam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 1080px;
+      overflow: visible;
+    }
+    #demo-pulse {
+      opacity: 0;
+    }
+
+    /* the Grok Bot chat */
+    #demo-chat {
+      position: absolute;
+      left: 820px;
+      top: 150px;
+      width: 880px;
+      height: 780px;
+      border-radius: 30px;
+      background: #111113;
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.3),
+        0 40px 90px rgba(20, 20, 60, 0.3);
+      overflow: hidden;
+      color: #ededf0;
+    }
+    #demo-head {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 880px;
+      height: 88px;
+      border-bottom: 1px solid #232327;
+    }
+    #demo-avatar {
+      position: absolute;
+      left: 26px;
+      top: 20px;
+      width: 48px;
+      height: 48px;
+    }
+    #demo-name {
+      position: absolute;
+      left: 88px;
+      top: 27px;
+      font-weight: 600;
+      font-size: 27px;
+      color: #f4f4f6;
+    }
+    #demo-chip {
+      position: absolute;
+      right: 26px;
+      top: 24px;
+      height: 40px;
+      padding: 0 16px 0 10px;
+      border-radius: 20px;
+      background: #1f1e2c;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 500;
+      font-size: 19px;
+      color: #c9c6f7;
+    }
+    #demo-chip svg {
+      width: 26px;
+      height: 26px;
+    }
+    #demo-chip i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #34d399;
+    }
+    #demo-attach {
+      position: absolute;
+      right: 32px;
+      top: 116px;
+      width: 220px;
+      height: 124px;
+      border-radius: 18px;
+      background: #05060f url("assets/tiktok-post.jpg") center / cover;
+      opacity: 0;
+    }
+    #demo-attach svg {
+      position: absolute;
+      left: 94px;
+      top: 46px;
+    }
+    #demo-ask {
+      position: absolute;
+      right: 32px;
+      top: 252px;
+      height: 60px;
+      padding: 0 28px;
+      border-radius: 30px 30px 8px 30px;
+      background: #5b54ee;
+      color: #fff;
+      font-weight: 500;
+      font-size: 27px;
+      line-height: 60px;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    .demo-step {
+      position: absolute;
+      left: 32px;
+      width: 560px;
+      height: 54px;
+      border-radius: 14px;
+      background: #1a1a1f;
+      opacity: 0;
+    }
+    .demo-step .ico {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .demo-step .ico svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .demo-step .txt {
+      position: absolute;
+      left: 56px;
+      top: 0;
+      line-height: 54px;
+      font-size: 23px;
+      color: #e4e4e9;
+      white-space: nowrap;
+    }
+    .demo-step .spin,
+    .demo-step .done {
+      position: absolute;
+      right: 14px;
+      top: 13px;
+      width: 28px;
+      height: 28px;
+    }
+    #demo-final {
+      position: absolute;
+      left: 32px;
+      top: 650px;
+      width: 480px;
+      padding: 16px 22px;
+      border-radius: 22px 22px 22px 8px;
+      background: #232327;
+      font-size: 25px;
+      line-height: 35px;
+      color: #ededf0;
+      opacity: 0;
+    }
+    #demo-final b {
+      font-weight: 600;
+      color: #fff;
+    }
+  </style>
+  <div data-hf-id="hf-dm01" id="root" data-composition-id="demo" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-dm02" id="demo-cam" data-layout-allow-overflow>
+      <div data-hf-id="hf-dm03" id="demo-dots" data-layout-allow-overflow></div>
+
+      <div data-hf-id="hf-dm04" id="demo-phone">
+        <div data-hf-id="hf-dm05" class="demo-side" style="top: 150px; height: 46px"></div>
+        <div data-hf-id="hf-dm06" class="demo-side" style="top: 230px; height: 80px"></div>
+        <div data-hf-id="hf-dm07" class="demo-side" style="top: 330px; height: 80px"></div>
+        <div data-hf-id="hf-dm08" id="demo-camdot"></div>
+        <div data-hf-id="hf-dm09" id="demo-speaker"></div>
+        <div data-hf-id="hf-dm10" id="demo-screen">
+          <video
+            data-hf-id="hf-dm11"
+            id="demo-recording"
+            class="clip"
+            src="assets/demo-phone.mp4"
+            muted
+            playsinline
+            data-start="0"
+            data-duration="7.88"
+            data-track-index="3"
+          ></video>
+          <div data-hf-id="hf-dm12" id="demo-ripple"></div>
+        </div>
+        <div data-hf-id="hf-dm13" id="demo-home"></div>
+      </div>
+      <div data-hf-id="hf-dm14" id="demo-label">Your real iPhone</div>
+
+      <svg data-hf-id="hf-dm15" id="demo-beam" viewBox="0 0 1920 1080" data-layout-allow-overflow>
+        <path id="demo-beam-path" d="M 820 400 C 780 400 770 540 730 540" fill="none" stroke="rgba(91, 84, 238, 0.35)" stroke-width="3" stroke-dasharray="6 9" />
+        <circle id="demo-pulse" r="9" fill="#6b63f2" />
+      </svg>
+
+      <div data-hf-id="hf-dm16" id="demo-chat">
+        <div data-hf-id="hf-dm17" id="demo-head">
+          <canvas data-hf-id="hf-dm18" id="demo-avatar"></canvas>
+          <span data-hf-id="hf-dm19" id="demo-name">Grok Bot</span>
+          <div data-hf-id="hf-dm20" id="demo-chip">
+            <svg viewBox="100 100 824 824"><rect x="100" y="100" width="824" height="824" rx="185" fill="#5b54ee" /><path fill="#fff" d="M 512 250 C 650 250 730 350 730 480 L 730 744 Q 675.5 812 621 744 Q 566.5 812 512 744 Q 457.5 812 403 744 Q 348.5 812 294 744 L 294 480 C 294 350 374 250 512 250 Z" /></svg>
+            ghosthand<i></i>
+          </div>
+        </div>
+        <div data-hf-id="hf-dm21" id="demo-attach"><svg viewBox="0 0 22 24" width="32" height="34"><path d="M2 1.5v21l19-10.5z" fill="#fff" /></svg></div>
+        <div data-hf-id="hf-dm22" id="demo-ask">Post this video on TikTok</div>
+        <div data-hf-id="hf-dm23" class="demo-step" style="top: 340px"><i class="ico" data-app="tiktok"></i><span class="txt">Opening TikTok</span><svg class="spin" viewBox="0 0 28 28"><circle cx="14" cy="14" r="10" fill="none" stroke="#3a3a44" stroke-width="3" /><path d="M14 4a10 10 0 0 1 10 10" fill="none" stroke="#8b84ff" stroke-width="3" stroke-linecap="round" /></svg><svg class="done" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="#34d399" /><path d="M8.5 14.5l3.8 3.8 7.4-8" fill="none" stroke="#0b2b1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="20" /></svg></div>
+        <div data-hf-id="hf-dm24" class="demo-step" style="top: 402px"><i class="ico" data-app="photos"></i><span class="txt">Picking the video from Photos</span><svg class="spin" viewBox="0 0 28 28"><circle cx="14" cy="14" r="10" fill="none" stroke="#3a3a44" stroke-width="3" /><path d="M14 4a10 10 0 0 1 10 10" fill="none" stroke="#8b84ff" stroke-width="3" stroke-linecap="round" /></svg><svg class="done" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="#34d399" /><path d="M8.5 14.5l3.8 3.8 7.4-8" fill="none" stroke="#0b2b1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="20" /></svg></div>
+        <div data-hf-id="hf-dm25" class="demo-step" style="top: 464px"><i class="ico" data-app="tiktok"></i><span class="txt">Typing the caption</span><svg class="spin" viewBox="0 0 28 28"><circle cx="14" cy="14" r="10" fill="none" stroke="#3a3a44" stroke-width="3" /><path d="M14 4a10 10 0 0 1 10 10" fill="none" stroke="#8b84ff" stroke-width="3" stroke-linecap="round" /></svg><svg class="done" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="#34d399" /><path d="M8.5 14.5l3.8 3.8 7.4-8" fill="none" stroke="#0b2b1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="20" /></svg></div>
+        <div data-hf-id="hf-dm26" class="demo-step" style="top: 526px"><i class="ico" data-app="tiktok"></i><span class="txt">Posting it publicly</span><svg class="spin" viewBox="0 0 28 28"><circle cx="14" cy="14" r="10" fill="none" stroke="#3a3a44" stroke-width="3" /><path d="M14 4a10 10 0 0 1 10 10" fill="none" stroke="#8b84ff" stroke-width="3" stroke-linecap="round" /></svg><svg class="done" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="#34d399" /><path d="M8.5 14.5l3.8 3.8 7.4-8" fill="none" stroke="#0b2b1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="20" /></svg></div>
+        <div data-hf-id="hf-dm27" class="demo-step" style="top: 588px"><i class="ico" data-app="tiktok"></i><span class="txt">Checking the post is live</span><svg class="spin" viewBox="0 0 28 28"><circle cx="14" cy="14" r="10" fill="none" stroke="#3a3a44" stroke-width="3" /><path d="M14 4a10 10 0 0 1 10 10" fill="none" stroke="#8b84ff" stroke-width="3" stroke-linecap="round" /></svg><svg class="done" viewBox="0 0 28 28"><circle cx="14" cy="14" r="12" fill="#34d399" /><path d="M8.5 14.5l3.8 3.8 7.4-8" fill="none" stroke="#0b2b1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="20" /></svg></div>
+        <div data-hf-id="hf-dm28" id="demo-final"><b>Done!</b> Your video is live on TikTok.</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const { BEAT, everyFrame } = window.Kit
+      const DURATION = 15 * BEAT
+      const tl = gsap.timeline({ paused: true })
+      window.AppIcons.fill(document.getElementById("demo-chat"))
+      const avatarStage = window.Mascot.create({ canvas: document.getElementById("demo-avatar"), width: 48, height: 48, pixelRatio: 4 })
+      avatarStage.add({ palette: "light", accessory: null }).pose({ x: 24, y: 25, R: 21, yaw: 0.35, pitch: 0.05, roll: -0.15, blink: 1 })
+      avatarStage.render()
+
+      // assets/demo-phone.mp4 is demo-video/public/tiktok/phone.mp4 cut into these parts:
+      // [source from, source to, speed], after LEAD s of the first frame
+      const LEAD = 0.5
+      const PARTS = [[0, 3.4, 4.5], [4.2, 13.2, 5], [13.2, 16.4, 2.2], [16.4, 17.6, 3], [24.6, 27, 1.2]]
+      function clipTime(src) {
+        let t = LEAD
+        for (const [a, b, speed] of PARTS) {
+          if (src >= a && src <= b) return t + (src - a) / speed
+          t += (b - a) / speed
+        }
+        return null // cut out
+      }
+      const partStart = (k) => clipTime(PARTS[k][0])
+      const partEnd = (k) => clipTime(PARTS[k][1])
+
+      // taps the agent made in the recording: source time, x, y in iPhone points (375x667)
+      const TAPS = [[4.45, 187, 641], [6.15, 32, 634], [7.95, 32, 634], [8.75, 60, 265], [10.35, 277, 627], [11.85, 277, 627], [13.45, 100, 105], [16.25, 282, 625], [25.35, 61, 402]]
+        .map(([s, x, y]) => [clipTime(s), x * (432 / 375), y * (768 / 667)])
+      // chat steps follow the parts of the recording: appears, done
+      const STEPS = [[0.55, partEnd(0)], [partStart(1), partEnd(1)], [partStart(2), partEnd(2)], [partStart(3), partEnd(3)], [partStart(4), partStart(4) + 0.45]]
+      const FINAL = STEPS[4][1] + 0.1
+
+      // camera: focus point (scene px) and zoom; eased between keys, always drifting a little
+      const CAM = [
+        [0, 1420, 350, 1.55], [0.8, 1330, 430, 1.32], [1.8, 975, 545, 1.0], [3.0, 940, 525, 1.04],
+        [3.7, 500, 400, 1.42], [4.6, 540, 440, 1.36], [5.4, 1000, 545, 1.02], [6.4, 1240, 720, 1.28], [8.2, 1235, 745, 1.36],
+      ]
+      const ease = (k) => k * k * k * (k * (k * 6 - 15) + 10)
+      function camera(t) {
+        let i = 1
+        while (i < CAM.length - 1 && t > CAM[i][0]) i++
+        const [a, b] = [CAM[i - 1], CAM[i]]
+        const k = ease(Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0]))))
+        const [cx, cy, s] = [1, 2, 3].map((j) => a[j] + (b[j] - a[j]) * k)
+        return { cx: cx + Math.sin(t * 0.9) * 8, cy: cy + Math.cos(t * 0.7) * 6, s, rot: Math.sin(t * 0.6) * 0.5 }
+      }
+
+      const cam = document.getElementById("demo-cam")
+      const ripple = document.getElementById("demo-ripple")
+      const beam = document.getElementById("demo-beam-path")
+      const pulse = document.getElementById("demo-pulse")
+      const steps = [...document.querySelectorAll(".demo-step")]
+
+      everyFrame(tl, DURATION, (t) => {
+        const { cx, cy, s, rot } = camera(t)
+        cam.style.transform = `translate(${960 - cx * s}px, ${540 - cy * s}px) scale(${s}) rotate(${rot}deg)`
+
+        const tap = TAPS.find(([at]) => at != null && t >= at && t < at + 0.35)
+        ripple.style.opacity = tap ? 1 - (t - tap[0]) / 0.35 : 0
+        if (tap) ripple.style.transform = `translate(${tap[1]}px, ${tap[2]}px) scale(${0.5 + ((t - tap[0]) / 0.35) * 1.1})`
+
+        // running step: spinner turns, beam points at it, a pulse runs to the phone when it starts
+        const running = STEPS.findIndex(([a, b]) => t >= a && t < b)
+        steps.forEach((el, k) => (el.querySelector(".spin").style.transform = `rotate(${t * 540}deg)`))
+        if (running >= 0) {
+          const y = 150 + 340 + running * 62 + 27
+          beam.setAttribute("d", `M 820 ${y} C 770 ${y} 790 540 730 540`)
+          const k = (t - STEPS[running][0]) / 0.4
+          const len = beam.getTotalLength()
+          const p = beam.getPointAtLength(len * Math.min(1, k))
+          pulse.setAttribute("cx", p.x)
+          pulse.setAttribute("cy", p.y)
+          pulse.style.opacity = k < 1 ? 1 : 0
+          beam.style.opacity = 1
+        } else {
+          pulse.style.opacity = 0
+          beam.style.opacity = 0
+        }
+      })
+
+      // the request, then one row per step: in with a slide, spinner, then a drawn check
+      tl.fromTo("#demo-attach", { opacity: 0, y: 24, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.35, ease: "back.out(1.8)", immediateRender: false }, 0)
+      tl.fromTo("#demo-ask", { opacity: 0, y: 24, scale: 0.92 }, { opacity: 1, y: 0, scale: 1, duration: 0.35, ease: "back.out(1.8)", immediateRender: false }, 0.1)
+      steps.forEach((el, k) => {
+        const [a, b] = STEPS[k]
+        const spin = el.querySelector(".spin")
+        const done = el.querySelector(".done")
+        const check = done.querySelector("path")
+        tl.set(done, { opacity: 0 }, 0)
+        tl.fromTo(el, { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out", immediateRender: false }, a)
+        tl.set(spin, { opacity: 0 }, b)
+        tl.fromTo(done, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.25, ease: "back.out(3)", immediateRender: false }, b)
+        tl.fromTo(check, { strokeDashoffset: 20 }, { strokeDashoffset: 0, duration: 0.25, ease: "power2.out", immediateRender: false }, b + 0.05)
+      })
+      tl.fromTo("#demo-final", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out", immediateRender: false }, FINAL)
+
+      window.__timelines["demo"] = tl
+    })()
+  </script>
+</template>

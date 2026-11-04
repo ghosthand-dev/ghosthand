@@ -267,7 +267,10 @@
         phone.style.transform = `translateY(${top - 43}px)`
 
         if (frame < JUMP_START) {
-          bot.pose({ ...trackPose("phone", frame), accessory: true })
+          // in: the bot rises in from below with the phone
+          const enter = 1 - Math.pow(1 - Math.min(1, t / 0.6), 3)
+          const s = trackPose("phone", frame)
+          bot.pose({ ...s, y: s.y + (1 - enter) * 320, accessory: true })
         } else if (frame < IN_PHONE) {
           const [, x, y, R, yaw, pitch, roll] = keyframes(JUMP, frame)
           bot.pose({ x, y, R, yaw, pitch, roll, accessory: true })
@@ -309,7 +312,9 @@
       popWord(tl, "#apps-taps", lt(261), { dy: 11, duration: 0.3 })
       popWord(tl, "#apps-scrolls", lt(264), { dy: 11, duration: 0.3 })
       popWord(tl, "#apps-types", lt(267), { dy: 11, duration: 0.3 })
-      tl.fromTo("#apps-title", { y: 0 }, { y: -13, duration: 0.4, ease: "power2.in" }, lt(280))
+      // out: the title lifts away, the phone and the pointer sink out of frame
+      window.Kit.slideOut(tl, "#apps-stage", time.duration, { y: 260 })
+      window.Kit.slideOut(tl, "#apps-title", time.duration, { y: -320 })
 
       everyFrame(tl, time.duration, draw)
       window.__timelines["apps"] = tl

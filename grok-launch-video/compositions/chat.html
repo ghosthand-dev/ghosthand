@@ -279,7 +279,7 @@
           </div>
           <div data-hf-id="hf-y1sz" id="chat-reply">
             <div data-hf-id="hf-jy7k" id="chat-reply-dots"><i data-hf-id="hf-wt6k"></i><i data-hf-id="hf-zeb8"></i><i data-hf-id="hf-y7e5"></i></div>
-            <div data-hf-id="hf-xmfg" id="chat-reply-mask"><span data-hf-id="hf-swgi" id="chat-reply-text">Now reply to the comments</span></div>
+            <div data-hf-id="hf-xmfg" id="chat-reply-mask"><span data-hf-id="hf-swgi" id="chat-reply-text">Share it on Instagram too</span></div>
           </div>
         </div>
       </div>
@@ -370,6 +370,9 @@
       tl.fromTo("#chat-card", { opacity: 0 }, { opacity: 1, duration: 0.33, ease: "power1.in" }, lt(334))
       tl.fromTo("#chat-reply-dots", { opacity: 1 }, { opacity: 0, duration: 0.05 }, lt(363))
       tl.fromTo("#chat-reply-text", { opacity: 0 }, { opacity: 1, duration: 0.05 }, lt(363))
+
+      // out: the chat and its bot slide off to the left, the next chat comes in from the right
+      window.Kit.slideOut(tl, ["#chat-b", "#chat-mascot"], time.duration, { x: -300 })
 
       everyFrame(tl, time.duration, draw)
       window.__timelines["chat"] = tl

@@ -45,7 +45,7 @@
     #intro-pill {
       position: absolute;
       left: 736px;
-      top: 208.5px;
+      top: 462.8px;
       width: 0;
       height: 0;
       border-radius: 40px;
@@ -86,8 +86,8 @@
         <span data-hf-id="hf-uqgl" id="intro-phone" class="intro-word" style="left: 873px; top: 323px">iPhone</span>
       </div>
       <div data-hf-id="hf-cot8" id="intro-line2" class="intro-line">
-        <span data-hf-id="hf-2yck" id="intro-its" class="intro-word" style="left: 432px; top: 175.7px">Opens</span>
-        <span data-hf-id="hf-hnca" id="intro-own" class="intro-word" style="left: 628px; top: 175.7px">any</span>
+        <span data-hf-id="hf-2yck" id="intro-its" class="intro-word" style="left: 432px; top: 430px">Opens</span>
+        <span data-hf-id="hf-hnca" id="intro-own" class="intro-word" style="left: 628px; top: 430px">any</span>
         <div data-hf-id="hf-9k0n" id="intro-pill">
           <div data-hf-id="hf-9r53" id="intro-pill-content">
             <i data-hf-id="hf-k6ks" class="intro-app" data-app="tiktok"></i>
@@ -98,7 +98,7 @@
             <i data-hf-id="hf-tj4o" class="intro-app" data-app="uber"></i>
           </div>
         </div>
-        <span data-hf-id="hf-f5vq" id="intro-number" class="intro-word" style="left: 742px; top: 175.7px">app</span>
+        <span data-hf-id="hf-f5vq" id="intro-number" class="intro-word" style="left: 742px; top: 430px">app</span>
       </div>
       <canvas data-hf-id="hf-y9pg" id="intro-mascot"></canvas>
     </div>
@@ -113,33 +113,43 @@
       const stage = window.Mascot.create({ canvas: document.getElementById("intro-mascot"), width: 1280, height: 720 })
       const bot = stage.add({ palette: "dark" })
 
-      // The accessory flies in on its own before it lands on the head at frame 69.
-      // frame, center x, center y, size (head radii of 62 px), yaw, pitch, roll
-      const ACCESSORY_FLIGHT = [
-        [47, 905, 96, 0.05, -0.76, -0.52, 0.35],
-        [48, 876, 104, 0.22, -0.76, -0.52, 0.3],
-        [50, 784, 138, 0.62, -0.76, -0.52, 0.25],
-        [52, 712, 148, 0.86, -0.76, -0.52, 0.2],
-        [54, 662, 144, 0.97, -0.76, -0.52, 0.17],
-        [56, 630, 136, 1, -0.76, -0.52, 0.15],
-        [58, 606, 126, 1, -0.76, -0.52, 0.13],
-        [60, 588, 116, 1, -0.76, -0.52, 0.12],
-        [62, 575, 113, 1, -0.7, -0.48, 0.06],
-        [64, 565, 125, 1, -0.6, -0.42, 0],
-        [66, 548, 170, 1, -0.4, -0.3, -0.15],
-        [67, 546, 230, 1, -0.2, -0.15, -0.22],
-        [68, 585, 320, 1, 0.1, -0.05, -0.25],
-      ]
+      // The phone drops from above the frame and lands on the head at frame 69, falling faster
+      // as it goes (k^2) and turning upright. Returns center x, y, size (head radii of 62 px), yaw, pitch, roll.
+      const DROP_FROM = [628, -170]
+      const DROP_TO = [635.6, 343.3] // the head at frame 68
+      function accessoryFlight(frame) {
+        const k = Math.max(0, Math.min(1, (frame - ACCESSORY_IN) / (ACCESSORY_LANDS - 1 - ACCESSORY_IN)))
+        const x = DROP_FROM[0] + (DROP_TO[0] - DROP_FROM[0]) * k * k * k
+        const y = DROP_FROM[1] + (DROP_TO[1] - DROP_FROM[1]) * k * k
+        return [x, y, 1, -0.25 * (1 - k), -0.05, 0.9 * (1 - k) * (1 - k) - 0.08 * k]
+      }
       const ACCESSORY_IN = 47
       const ACCESSORY_LANDS = 69
+      const MIRROR_UNTIL = 16 // the entrance, mirrored left to right
+      const RISE_FROM = 110 // from here the tracked vertical motion is mirrored around REST_Y
+      const REST_Y = 373
 
       function draw(t) {
         const frame = time.frameAt(t)
         if (frame < 2) return bot.pose({ hidden: true }), stage.render()
         const s = trackPose("s1", frame)
+        // the source enters from the top right; mirrored, the bot comes in from the left
+        const m = 1 - Math.max(0, Math.min(1, (frame - MIRROR_UNTIL) / 4))
+        if (m > 0) {
+          s.x += m * (1280 - 2 * s.x)
+          s.yaw *= 1 - 2 * m
+          s.roll *= 1 - 2 * m
+          s.ang = m === 1 ? 180 - s.ang : s.ang
+        }
+        // the source drops the bot and looks up at the second line; here it rises and looks down at it
+        const k = Math.max(0, Math.min(1, (frame - RISE_FROM) / 6))
+        if (k > 0) {
+          s.y += 2 * k * (REST_Y - s.y)
+          s.pitch *= 1 - 2 * k
+        }
         s.accessory = frame >= ACCESSORY_IN
         if (s.accessory && frame < ACCESSORY_LANDS) {
-          const [, x, y, size, yaw, pitch, roll] = keyframes(ACCESSORY_FLIGHT, frame)
+          const [x, y, size, yaw, pitch, roll] = accessoryFlight(frame)
           s.detached = { x, y, R: 62 * size, yaw, pitch, roll }
         }
         bot.pose(s)
@@ -155,7 +165,7 @@
         ["#intro-phone", 3.133, 4.087],
       ]) {
         popWord(tl, sel, at(tin), { dy: 16 })
-        tl.to(sel, { y: -48, duration: 0.24, ease: "power3.in" }, at(tout))
+        tl.to(sel, { y: 48, duration: 0.24, ease: "power3.in" }, at(tout)) // they drop while the bot rises
         tl.set(sel, { opacity: 0 }, at(tout) + 0.24)
       }
 
@@ -212,6 +222,10 @@
       document.querySelectorAll(".intro-app").forEach((app, k) => {
         tl.fromTo(app, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.2, ease: "back.out(2.4)", immediateRender: false }, time.lt(APP_FRAMES[k]))
       })
+
+      // out: the line drops away while the bot flies up out of frame
+      window.Kit.slideOut(tl, "#intro-line2", time.duration, { yPercent: 14 })
+      window.Kit.slideOut(tl, "#intro-mascot", time.duration, { yPercent: -30 })
 
       everyFrame(tl, time.duration, draw)
       window.__timelines["intro"] = tl

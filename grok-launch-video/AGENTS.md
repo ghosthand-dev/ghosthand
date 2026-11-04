@@ -123,6 +123,7 @@ index.html  three.js, MASCOT_CONFIG (accessory "phone"), shared scripts, scene h
  ├─ compositions/chat.html   9.73-12.87 mirrored "On it!" bubble, then the chat: request, TikTok post card, follow-up
  ├─ compositions/demo.html  (15 beats)  the real iPhone recording next to the Grok Bot chat, camera always moving
  ├─ compositions/inbox.html  12.87-15.87 dark Grok Bot window, camera dives into the WhatsApp follow-up
+ ├─ compositions/uses.html  (16 beats)  bento grid of uses that grows tile by tile, the camera pulls back to frame them
  └─ compositions/outro.html  15.87-20.29 ghosthand icon + wordmark, "Connect ghosthand to [bot] Grok Bot", ghosthand.dev
 
 assets/app-icons.js           AppIcons.fill(root): real brand glyphs (simple-icons) on brand tiles for [data-app]

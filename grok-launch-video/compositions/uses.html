@@ -1,0 +1,577 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #111113;
+      font-family: "Inter", sans-serif;
+    }
+    #uses-dots {
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(200, 196, 255, 0.06) 1px, transparent 1.6px);
+      background-size: 9px 9px;
+    }
+    /* camera: the grid is laid out in a 1920x1080 world, then framed around the tiles shown so far */
+    #uses-cam {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1920px;
+      height: 1080px;
+      transform-origin: 0 0;
+    }
+    .uses-tile {
+      position: absolute;
+      border-radius: 34px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #1a1a21 0%, #131318 100%);
+      box-shadow:
+        inset 0 0 0 1.5px rgba(255, 255, 255, 0.07),
+        0 30px 80px rgba(0, 0, 0, 0.45);
+      opacity: 0;
+    }
+    .uses-glow {
+      position: absolute;
+      left: -20%;
+      top: -45%;
+      width: 140%;
+      height: 120%;
+      border-radius: 50%;
+      opacity: 0.32;
+    }
+    .uses-title {
+      position: absolute;
+      left: 40px;
+      right: 40px;
+      bottom: 36px;
+      font-weight: 600;
+      font-size: 42px;
+      line-height: 48px;
+      letter-spacing: -0.8px;
+      color: #f5f5f7;
+    }
+    .uses-app {
+      position: absolute;
+      border-radius: 24%;
+      overflow: hidden;
+    }
+    .uses-app svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .uses-check {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px #17171d;
+      opacity: 0;
+    }
+    .uses-check svg {
+      position: absolute;
+      left: 9px;
+      top: 10px;
+    }
+    /* phone number tile */
+    #uses-number {
+      position: absolute;
+      left: 60px;
+      top: 66px;
+      height: 84px;
+      border-radius: 42px;
+      background: #24242c;
+      padding: 0 34px 0 92px;
+      font-size: 38px;
+      line-height: 84px;
+      font-weight: 600;
+      color: #f5f5f7;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+    #uses-number i {
+      position: absolute;
+      left: 16px;
+      top: 14px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #22c55e;
+    }
+    #uses-number i svg {
+      position: absolute;
+      left: 14px;
+      top: 14px;
+    }
+    #uses-sms {
+      position: absolute;
+      left: 60px;
+      top: 176px;
+      width: 480px;
+      height: 112px;
+      border-radius: 26px;
+      background: rgba(44, 44, 54, 0.92);
+      opacity: 0;
+    }
+    #uses-sms .uses-app {
+      left: 18px;
+      top: 18px;
+      width: 46px;
+      height: 46px;
+    }
+    #uses-sms b {
+      position: absolute;
+      left: 80px;
+      top: 18px;
+      font-size: 22px;
+      font-weight: 600;
+      color: #c9c9d2;
+    }
+    #uses-sms span {
+      position: absolute;
+      left: 80px;
+      top: 52px;
+      font-size: 27px;
+      color: #f5f5f7;
+      white-space: nowrap;
+    }
+    #uses-sms em {
+      font-style: normal;
+      font-weight: 700;
+      letter-spacing: 2px;
+    }
+    /* reddit tile */
+    #uses-post {
+      position: absolute;
+      left: 48px;
+      top: 54px;
+      width: 480px;
+      height: 236px;
+      border-radius: 26px;
+      background: #22222a;
+    }
+    #uses-post .uses-app {
+      left: 24px;
+      top: 22px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+    }
+    #uses-post b {
+      position: absolute;
+      left: 86px;
+      top: 33px;
+      font-size: 24px;
+      font-weight: 600;
+      color: #e6e6ec;
+    }
+    .uses-bar {
+      position: absolute;
+      left: 24px;
+      height: 18px;
+      border-radius: 9px;
+      background: #34343e;
+    }
+    #uses-votes {
+      position: absolute;
+      left: 24px;
+      top: 168px;
+      height: 46px;
+      border-radius: 23px;
+      background: #2e2e38;
+      padding: 0 22px 0 56px;
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 46px;
+      color: #e6e6ec;
+      white-space: nowrap;
+    }
+    #uses-votes svg {
+      position: absolute;
+      left: 16px;
+      top: 9px;
+    }
+    #uses-comment {
+      position: absolute;
+      left: 270px;
+      top: 168px;
+      height: 46px;
+      border-radius: 23px;
+      background: #ff4500;
+      padding: 0 22px;
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 46px;
+      color: #fff;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    /* tiktok warm-up tile */
+    #uses-feed {
+      position: absolute;
+      left: 0;
+      top: 40px;
+      height: 260px;
+    }
+    .uses-video {
+      position: absolute;
+      top: 0;
+      width: 150px;
+      height: 250px;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+    .uses-video i {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      width: 70px;
+      height: 10px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.55);
+    }
+    .uses-heart {
+      position: absolute;
+      width: 54px;
+      height: 54px;
+      opacity: 0;
+    }
+    #uses-liked {
+      position: absolute;
+      right: 36px;
+      top: 36px;
+      height: 64px;
+      border-radius: 32px;
+      background: rgba(10, 10, 14, 0.82);
+      padding: 0 26px 0 78px;
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 64px;
+      color: #fff;
+      white-space: nowrap;
+    }
+    #uses-liked .uses-app {
+      left: 10px;
+      top: 8px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+    }
+    /* iOS app testing tile */
+    #uses-phone {
+      position: absolute;
+      left: 70px;
+      top: 30px;
+      width: 168px;
+      height: 320px;
+      border-radius: 34px;
+      background: #0b0b0e;
+      box-shadow: inset 0 0 0 5px #3a3a44;
+    }
+    #uses-screen {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      width: 144px;
+      height: 296px;
+      border-radius: 24px;
+      background: #f4f4f8;
+      overflow: hidden;
+    }
+    .uses-field {
+      position: absolute;
+      left: 14px;
+      width: 116px;
+      height: 30px;
+      border-radius: 8px;
+      background: #e2e2ea;
+    }
+    #uses-button {
+      position: absolute;
+      left: 14px;
+      top: 214px;
+      width: 116px;
+      height: 36px;
+      border-radius: 18px;
+      background: #4f46e5;
+    }
+    #uses-ripple {
+      position: absolute;
+      width: 70px;
+      height: 70px;
+      margin: -35px 0 0 -35px;
+      border-radius: 50%;
+      border: 4px solid #4f46e5;
+      opacity: 0;
+    }
+    .uses-test {
+      position: absolute;
+      left: 300px;
+      width: 520px;
+      height: 64px;
+      border-radius: 20px;
+      background: #22222a;
+      font-size: 28px;
+      font-weight: 600;
+      line-height: 64px;
+      color: #e6e6ec;
+      padding-left: 74px;
+      opacity: 0;
+    }
+    .uses-test .uses-check {
+      left: 16px;
+      top: 12px;
+      box-shadow: none;
+    }
+    .uses-test small {
+      position: absolute;
+      right: 22px;
+      font-size: 22px;
+      font-weight: 500;
+      color: #8e8e99;
+    }
+  </style>
+  <div data-hf-id="hf-us01" id="root" data-composition-id="uses" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-us02" id="uses-dots"></div>
+    <div data-hf-id="hf-us03" id="uses-cam">
+      <!-- 1: phone number -->
+      <div data-hf-id="hf-us10" id="uses-t1" class="uses-tile" style="left: 60px; top: 60px; width: 600px; height: 470px">
+        <div data-hf-id="hf-us11" class="uses-glow" style="background: radial-gradient(closest-side, #22c55e, transparent)"></div>
+        <div data-hf-id="hf-us12" id="uses-number">
+          <i data-hf-id="hf-us13"><svg data-hf-id="hf-us14" viewBox="0 0 24 24" width="28" height="28"><path data-hf-id="hf-us15" fill="#fff" d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" /></svg></i>
+          <span data-hf-id="hf-us16" id="uses-digits"></span>
+        </div>
+        <div data-hf-id="hf-us17" id="uses-sms">
+          <div data-hf-id="hf-us18" class="uses-app" data-app="imessage"></div>
+          <b data-hf-id="hf-us19">Messages · now</b>
+          <span data-hf-id="hf-us1a">Your code is <em data-hf-id="hf-us1b">482 913</em></span>
+        </div>
+        <div data-hf-id="hf-us1c" class="uses-title">Give your agent a phone&nbsp;number</div>
+      </div>
+
+      <!-- 2: social accounts -->
+      <div data-hf-id="hf-us20" id="uses-t2" class="uses-tile" style="left: 684px; top: 60px; width: 576px; height: 470px">
+        <div data-hf-id="hf-us21" class="uses-glow" style="background: radial-gradient(closest-side, #d6249f, transparent)"></div>
+        <div data-hf-id="hf-us22" class="uses-app uses-acct" data-app="instagram" style="left: 44px; top: 96px; width: 104px; height: 104px"></div>
+        <div data-hf-id="hf-us23" class="uses-app uses-acct" data-app="tiktok" style="left: 172px; top: 96px; width: 104px; height: 104px"></div>
+        <div data-hf-id="hf-us24" class="uses-app uses-acct" data-app="x" style="left: 300px; top: 96px; width: 104px; height: 104px"></div>
+        <div data-hf-id="hf-us25" class="uses-app uses-acct" data-app="gmail" style="left: 428px; top: 96px; width: 104px; height: 104px"></div>
+        <div data-hf-id="hf-us26" class="uses-check" style="left: 124px; top: 76px"><svg data-hf-id="hf-us27" viewBox="0 0 24 24" width="22" height="20"><path data-hf-id="hf-us28" d="M4 12.5l5 5L20 6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+        <div data-hf-id="hf-us29" class="uses-check" style="left: 252px; top: 76px"><svg data-hf-id="hf-us2a" viewBox="0 0 24 24" width="22" height="20"><path data-hf-id="hf-us2b" d="M4 12.5l5 5L20 6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+        <div data-hf-id="hf-us2c" class="uses-check" style="left: 380px; top: 76px"><svg data-hf-id="hf-us2d" viewBox="0 0 24 24" width="22" height="20"><path data-hf-id="hf-us2e" d="M4 12.5l5 5L20 6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+        <div data-hf-id="hf-us2f" class="uses-check" style="left: 508px; top: 76px"><svg data-hf-id="hf-us2g" viewBox="0 0 24 24" width="22" height="20"><path data-hf-id="hf-us2h" d="M4 12.5l5 5L20 6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+        <div data-hf-id="hf-us2i" class="uses-title">Create accounts, no&nbsp;captchas</div>
+      </div>
+
+      <!-- 3: reddit -->
+      <div data-hf-id="hf-us30" id="uses-t3" class="uses-tile" style="left: 1284px; top: 60px; width: 576px; height: 470px">
+        <div data-hf-id="hf-us31" class="uses-glow" style="background: radial-gradient(closest-side, #ff4500, transparent)"></div>
+        <div data-hf-id="hf-us32" id="uses-post">
+          <div data-hf-id="hf-us33" class="uses-app" data-app="reddit"></div>
+          <b data-hf-id="hf-us34">r/iphone · 2m</b>
+          <div data-hf-id="hf-us35" class="uses-bar" style="top: 92px; width: 420px"></div>
+          <div data-hf-id="hf-us36" class="uses-bar" style="top: 124px; width: 300px"></div>
+          <div data-hf-id="hf-us37" id="uses-votes">
+            <svg data-hf-id="hf-us38" viewBox="0 0 24 24" width="28" height="28"><path data-hf-id="hf-us39" id="uses-arrow" d="M12 3l8 9h-5v9H9v-9H4z" fill="none" stroke="#9a9aa6" stroke-width="2.2" stroke-linejoin="round" /></svg>
+            <span data-hf-id="hf-us3a" id="uses-count">12</span>
+          </div>
+          <div data-hf-id="hf-us3b" id="uses-comment">Comment posted</div>
+        </div>
+        <div data-hf-id="hf-us3c" class="uses-title">Use Reddit without&nbsp;captchas</div>
+      </div>
+
+      <!-- 4: tiktok warm-up -->
+      <div data-hf-id="hf-us40" id="uses-t4" class="uses-tile" style="left: 60px; top: 554px; width: 880px; height: 466px">
+        <div data-hf-id="hf-us41" class="uses-glow" style="background: radial-gradient(closest-side, #fe2c55, transparent)"></div>
+        <div data-hf-id="hf-us42" id="uses-feed"></div>
+        <div data-hf-id="hf-us43" id="uses-hearts"></div>
+        <div data-hf-id="hf-us44" id="uses-liked"><div data-hf-id="hf-us45" class="uses-app" data-app="tiktok"></div><span data-hf-id="hf-us46" id="uses-likes">0</span> liked</div>
+        <div data-hf-id="hf-us47" class="uses-title">Warm up TikTok accounts</div>
+      </div>
+
+      <!-- 5: test iOS apps -->
+      <div data-hf-id="hf-us50" id="uses-t5" class="uses-tile" style="left: 964px; top: 554px; width: 896px; height: 466px">
+        <div data-hf-id="hf-us51" class="uses-glow" style="background: radial-gradient(closest-side, #4f46e5, transparent)"></div>
+        <div data-hf-id="hf-us52" id="uses-phone">
+          <div data-hf-id="hf-us53" id="uses-screen">
+            <div data-hf-id="hf-us54" class="uses-field" style="top: 40px; width: 70px; height: 14px; background: #1c1c22"></div>
+            <div data-hf-id="hf-us55" class="uses-field" style="top: 120px"></div>
+            <div data-hf-id="hf-us56" class="uses-field" style="top: 164px"></div>
+            <div data-hf-id="hf-us57" id="uses-button"></div>
+            <div data-hf-id="hf-us58" id="uses-ripple"></div>
+          </div>
+        </div>
+        <div data-hf-id="hf-us59" class="uses-test" style="top: 40px">
+          <div data-hf-id="hf-us5a" class="uses-check"><svg data-hf-id="hf-us5b" viewBox="0 0 24 24" width="22" height="20"><path data-hf-id="hf-us5c" d="M4 12.5l5 5L20 6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+          Onboarding<small data-hf-id="hf-us5d">1.2 s</small>
+        </div>
+        <div data-hf-id="hf-us5e" class="uses-test" style="top: 120px">
+          <div data-hf-id="hf-us5f" class="uses-check"><svg data-hf-id="hf-us5g" viewBox="0 0 24 24" width="22" height="20"><path data-hf-id="hf-us5h" d="M4 12.5l5 5L20 6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+          Sign in<small data-hf-id="hf-us5i">0.8 s</small>
+        </div>
+        <div data-hf-id="hf-us5j" class="uses-test" style="top: 200px">
+          <div data-hf-id="hf-us5k" class="uses-check"><svg data-hf-id="hf-us5l" viewBox="0 0 24 24" width="22" height="20"><path data-hf-id="hf-us5m" d="M4 12.5l5 5L20 6" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" /></svg></div>
+          Checkout<small data-hf-id="hf-us5n">2.1 s</small>
+        </div>
+        <div data-hf-id="hf-us5o" class="uses-title" style="left: 300px">Test your iOS apps</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const { BEAT, everyFrame, random, slideOut } = window.Kit
+      const DURATION = 16 * BEAT
+      const tl = gsap.timeline({ paused: true })
+      const $ = (id) => document.getElementById(id)
+      window.AppIcons.fill($("root"))
+
+      // The grid grows: each tile slides in from the side the grid grows to, and the camera
+      // pulls back to frame every tile shown so far.
+      const TILES = {
+        t1: { x: 60, y: 60, w: 600, h: 470, at: 0, from: { y: 90 } },
+        t2: { x: 684, y: 60, w: 576, h: 470, at: 3 * BEAT, from: { x: 160 } },
+        t3: { x: 1284, y: 60, w: 576, h: 470, at: 5.5 * BEAT, from: { x: 160 } },
+        t4: { x: 60, y: 554, w: 880, h: 466, at: 8 * BEAT, from: { y: 160 } },
+        t5: { x: 964, y: 554, w: 896, h: 466, at: 10 * BEAT, from: { y: 160 } },
+      }
+      const FRAME_FILL = 0.86
+      const MAX_ZOOM = 1.75
+      const CAM_MOVE_S = 0.95
+      const PUSH_PER_S = 0.004
+      const DRIFT_X_PER_S = 3
+      const DRIFT_Y_PER_S = 1.5
+      const CAM_LEAD_S = 0.12 // the camera starts moving just before the tile lands
+      function framing(ids) {
+        const x0 = Math.min(...ids.map((k) => TILES[k].x))
+        const y0 = Math.min(...ids.map((k) => TILES[k].y))
+        const x1 = Math.max(...ids.map((k) => TILES[k].x + TILES[k].w))
+        const y1 = Math.max(...ids.map((k) => TILES[k].y + TILES[k].h))
+        const s = Math.min((1920 * FRAME_FILL) / (x1 - x0), (1080 * FRAME_FILL) / (y1 - y0), MAX_ZOOM)
+        return { cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, s }
+      }
+      const SHOTS = [
+        { at: 0, ...framing(["t1"]) },
+        { at: TILES.t2.at - CAM_LEAD_S, ...framing(["t1", "t2"]) },
+        { at: TILES.t3.at - CAM_LEAD_S, ...framing(["t1", "t2", "t3"]) },
+        { at: TILES.t4.at - CAM_LEAD_S, ...framing(["t1", "t2", "t3", "t4", "t5"]) },
+      ]
+      const easeInOut = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2)
+      function camAt(t) {
+        let c = { ...SHOTS[0] }
+        for (const shot of SHOTS.slice(1)) {
+          const p = easeInOut(Math.min(1, Math.max(0, (t - shot.at) / CAM_MOVE_S)))
+          c = { cx: c.cx + (shot.cx - c.cx) * p, cy: c.cy + (shot.cy - c.cy) * p, s: c.s + (shot.s - c.s) * p }
+        }
+        // never still: a slow push in and drift on top of the framing
+        const s = c.s * (1 + PUSH_PER_S * t)
+        return { s, tx: 960 - s * (c.cx - DRIFT_X_PER_S * t), ty: 540 - s * (c.cy - DRIFT_Y_PER_S * t) }
+      }
+
+      for (const [id, tile] of Object.entries(TILES)) {
+        const el = $(`uses-${id}`)
+        tl.fromTo(el, { ...tile.from, scale: 0.92, opacity: 0 }, { x: 0, y: 0, scale: 1, opacity: 1, duration: 0.8, ease: "expo.out" }, tile.at)
+      }
+
+      // 1: the number types in, then the SMS code arrives
+      const NUMBER = "+1 415 555 0142"
+      const t1 = TILES.t1.at
+      tl.fromTo("#uses-sms", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.5, ease: "expo.out" }, t1 + 0.95)
+
+      // 2: the four sign-ups get a check one after another
+      document.querySelectorAll("#uses-t2 .uses-acct").forEach((el, k) => {
+        tl.fromTo(el, { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "back.out(2)" }, TILES.t2.at + 0.15 + k * 0.07)
+      })
+      document.querySelectorAll("#uses-t2 .uses-check").forEach((el, k) => {
+        tl.fromTo(el, { scale: 0.2, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(2.4)" }, TILES.t2.at + 0.55 + k * 0.16)
+      })
+
+      // 3: upvote turns orange and the count climbs, then a comment is posted
+      const t3 = TILES.t3.at
+      const UPVOTE_AT = t3 + 0.5
+      tl.to("#uses-arrow", { fill: "#ff4500", stroke: "#ff4500", duration: 0.15 }, UPVOTE_AT)
+      tl.fromTo("#uses-votes", { scale: 1 }, { scale: 1.12, duration: 0.12, yoyo: true, repeat: 1, ease: "power2.out" }, UPVOTE_AT)
+      tl.fromTo("#uses-comment", { x: 30, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, t3 + 1.1)
+
+      // 4: a feed of videos scrolls by, hearts fly up from each liked one
+      const t4 = TILES.t4.at
+      const feed = $("uses-feed")
+      const VIDEO_COLORS = [["#fe2c55", "#7b2ff7"], ["#25f4ee", "#1d4ed8"], ["#f59e0b", "#ef4444"], ["#10b981", "#0ea5e9"], ["#a855f7", "#ec4899"], ["#f97316", "#facc15"], ["#06b6d4", "#6366f1"], ["#84cc16", "#14b8a6"], ["#ec4899", "#f43f5e"], ["#3b82f6", "#22d3ee"]]
+      const VIDEO_STEP = 170
+      VIDEO_COLORS.forEach(([a, b], k) => {
+        const v = document.createElement("div")
+        v.className = "uses-video"
+        v.style.left = `${40 + k * VIDEO_STEP}px`
+        v.style.background = `linear-gradient(160deg, ${a}, ${b})`
+        v.innerHTML = "<i></i>"
+        feed.appendChild(v)
+      })
+      const rand = random(11)
+      const HEART_EVERY_S = 0.3
+      const HEART_RISE_S = 1.1
+      const hearts = Array.from({ length: 14 }, (_, k) => {
+        const el = document.createElement("div")
+        el.className = "uses-heart"
+        el.innerHTML = '<svg viewBox="0 0 24 24" width="54" height="54"><path fill="#fe2c55" d="M12 21s-7.5-4.6-9.6-9.2C.8 8.2 3 4.5 6.6 4.5c2.1 0 3.8 1.2 5.4 3.1 1.6-1.9 3.3-3.1 5.4-3.1 3.6 0 5.8 3.7 4.2 7.3C19.5 16.4 12 21 12 21z"/></svg>'
+        $("uses-hearts").appendChild(el)
+        return { el, at: t4 + 0.45 + k * HEART_EVERY_S, x: 120 + rand() * 600, sway: (rand() - 0.5) * 60 }
+      })
+      const LIKES_BASE = 23
+
+      // 5: three taps on the app under test, each test row turns green
+      const t5 = TILES.t5.at
+      const TAPS = [[72, 135], [72, 179], [72, 232]]
+      document.querySelectorAll("#uses-t5 .uses-test").forEach((el, k) => {
+        tl.fromTo(el, { x: 40, opacity: 0 }, { x: 0, opacity: 1, duration: 0.45, ease: "expo.out" }, t5 + 0.12 + k * 0.08)
+        tl.fromTo(el.querySelector(".uses-check"), { scale: 0.2, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: "back.out(2.4)" }, t5 + 0.6 + k * 0.38)
+      })
+      const ripple = $("uses-ripple")
+
+      const cam = $("uses-cam")
+      function draw(t) {
+        const c = camAt(t)
+        cam.style.transform = `translate(${c.tx}px, ${c.ty}px) scale(${c.s})`
+
+        const typed = Math.floor(Math.max(0, Math.min(1, (t - t1 - 0.25) / 0.55)) * NUMBER.length)
+        $("uses-digits").textContent = NUMBER.slice(0, typed)
+
+        const up = Math.max(0, Math.min(1, (t - UPVOTE_AT) / 1.2))
+        const votes = Math.round(12 + (1248 - 12) * (1 - Math.pow(1 - up, 3)))
+        $("uses-count").textContent = votes.toLocaleString("en-US")
+
+        feed.style.transform = `translateX(${-Math.max(0, t - t4) * 120}px)`
+        let liked = 0
+        for (const h of hearts) {
+          const p = (t - h.at) / HEART_RISE_S
+          if (p >= 0) liked++
+          const visible = p >= 0 && p <= 1
+          h.el.style.opacity = visible ? String(Math.min(1, p * 6) * (1 - Math.max(0, p - 0.6) / 0.4)) : "0"
+          if (!visible) continue
+          const pop = p < 0.15 ? 0.5 + (p / 0.15) * 0.7 : 1.2 - Math.min(0.2, (p - 0.15) * 0.6)
+          h.el.style.transform = `translate(${h.x + Math.sin(p * 3) * h.sway}px, ${250 - p * 200}px) scale(${pop})`
+        }
+        $("uses-likes").textContent = String(LIKES_BASE + liked)
+
+        // tap ripple: the latest tap grows and fades
+        const k = TAPS.findLastIndex((_, i) => t >= t5 + 0.45 + i * 0.38)
+        const rp = k < 0 ? 1 : (t - (t5 + 0.45 + k * 0.38)) / 0.35
+        ripple.style.opacity = rp < 1 ? String(1 - rp) : "0"
+        if (k >= 0) {
+          ripple.style.left = `${TAPS[k][0]}px`
+          ripple.style.top = `${TAPS[k][1]}px`
+          ripple.style.transform = `scale(${0.3 + rp * 0.9})`
+        }
+      }
+
+      // out: the tiles lift away row by row, the background darkens into the outro
+      slideOut(tl, ["#uses-t4", "#uses-t5"], DURATION - 0.06, { y: -140 })
+      slideOut(tl, ["#uses-t1", "#uses-t2", "#uses-t3"], DURATION, { y: -140 })
+      tl.fromTo("#root", { backgroundColor: "#111113" }, { backgroundColor: "#07061a", duration: 1.2, ease: "power1.inOut" }, DURATION - 1.2)
+
+      everyFrame(tl, DURATION, draw)
+      window.__timelines["uses"] = tl
+    })()
+  </script>
+</template>

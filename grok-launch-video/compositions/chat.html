@@ -1,0 +1,378 @@
+<template>
+  <style>
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #f6fafd;
+      font-family: "Inter", sans-serif;
+    }
+    #chat-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+      transform-origin: 0 0;
+      scale: 1.5;
+    }
+    #chat-mascot {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+    }
+    .chat-word {
+      position: absolute;
+      top: 176.2px;
+      font-weight: 600;
+      font-size: 60px;
+      line-height: 60px;
+      height: 60px;
+      letter-spacing: -0.6px;
+      color: #090a0e;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    #chat-a,
+    #chat-b {
+      position: absolute;
+      inset: 0;
+    }
+    /* phase A: big typing bubble next to the big character */
+    #chat-bubble {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 211px;
+      height: 120px;
+      border-radius: 60px 60px 14px 60px;
+      background: #5b54ee;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform-origin: 0 100%;
+      overflow: hidden;
+    }
+    #chat-bubble-in {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      white-space: nowrap;
+      font-weight: 500;
+      font-size: 36px;
+      transform-origin: 50% 50%;
+    }
+    .chat-dot {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: #fff;
+    }
+    #chat-hi {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 500;
+      font-size: 40px;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    /* phase B: the chat, scrolled with the character */
+    #chat-chat {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1280px;
+      height: 720px;
+    }
+    #chat-msg {
+      position: absolute;
+      left: 323px;
+      top: 100px;
+      width: 493px;
+      height: 72px;
+      border-radius: 36px 36px 36px 8px;
+      background: #5b54ee;
+      color: #fff;
+      font-weight: 500;
+      font-size: 29.5px;
+      letter-spacing: -0.2px;
+      line-height: 72px;
+      padding-left: 34px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    #chat-msg span {
+      opacity: 0;
+    }
+    #chat-card {
+      position: absolute;
+      left: 325px;
+      top: 183px;
+      width: 492px;
+      height: 287px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #5b54ee;
+      opacity: 0;
+    }
+    #chat-preview {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 492px;
+      height: 198px;
+      background: #05060f url("assets/tiktok-post.jpg") center / cover;
+    }
+    #chat-badge {
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      overflow: hidden;
+    }
+    #chat-badge svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    #chat-play {
+      position: absolute;
+      left: 216px;
+      top: 69px;
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.22);
+    }
+    #chat-play svg {
+      position: absolute;
+      left: 21px;
+      top: 18px;
+    }
+    #chat-card-foot {
+      position: absolute;
+      left: 0;
+      top: 198px;
+      width: 492px;
+      height: 89px;
+      color: #fff;
+    }
+    #chat-card-foot .t1 {
+      position: absolute;
+      left: 32px;
+      top: 18px;
+      font-weight: 500;
+      font-size: 21px;
+    }
+    #chat-card-foot .t2 {
+      position: absolute;
+      left: 32px;
+      top: 52px;
+      font-size: 13px;
+      color: #dcdafd;
+    }
+    #chat-card-foot svg {
+      position: absolute;
+      left: 420px;
+      top: 26px;
+      width: 36px;
+      height: 36px;
+    }
+    #chat-request {
+      position: absolute;
+      right: 181px;
+      top: 14px;
+      height: 68px;
+      border-radius: 34px 34px 8px 34px;
+      background: #000;
+      color: #fff;
+      line-height: 68px;
+      padding: 0 32px;
+      font-weight: 500;
+      font-size: 29.5px;
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+    }
+    #chat-reply {
+      position: absolute;
+      left: 726px;
+      top: 515px;
+      width: 373px;
+      height: 68px;
+      border-radius: 34px 34px 8px 34px;
+      background: #000;
+      color: #fff;
+      overflow: hidden;
+      opacity: 0;
+    }
+    #chat-reply-mask {
+      position: absolute;
+      inset: 0;
+      -webkit-mask-image: linear-gradient(90deg, transparent 0, transparent 20px, #000 70px);
+      mask-image: linear-gradient(90deg, transparent 0, transparent 20px, #000 70px);
+    }
+    #chat-reply-text {
+      position: absolute;
+      right: 32px;
+      top: 0;
+      line-height: 68px;
+      font-weight: 500;
+      font-size: 29.5px;
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+    }
+    #chat-reply-dots {
+      position: absolute;
+      right: 31px;
+      top: 27px;
+      display: flex;
+      gap: 6px;
+    }
+    #chat-reply-dots i {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: #fff;
+    }
+  </style>
+  <div data-hf-id="hf-j3v0" id="root" data-composition-id="chat" data-width="1920" data-height="1080">
+    <div data-hf-id="hf-3575" id="chat-stage">
+      <div data-hf-id="hf-qpti" id="chat-a">
+        <span data-hf-id="hf-nbxe" id="chat-text" class="chat-word" style="left: 418px">Posts</span>
+        <span data-hf-id="hf-yqbu" id="chat-your" class="chat-word" style="left: 588px">to</span>
+        <span data-hf-id="hf-19rj" id="chat-customers" class="chat-word" style="left: 657px">TikTok</span>
+        <div data-hf-id="hf-qn33" id="chat-bubble">
+          <div data-hf-id="hf-1dlp" id="chat-bubble-in"><i data-hf-id="hf-g2dx" class="chat-dot"></i><i data-hf-id="hf-b2o9" class="chat-dot"></i><i data-hf-id="hf-c9lc" class="chat-dot"></i></div>
+          <div data-hf-id="hf-ag7o" id="chat-hi"><span data-hf-id="hf-6sdn" id="chat-hi1">On</span><span data-hf-id="hf-q3ks" id="chat-hi2">&nbsp;it!</span></div>
+        </div>
+      </div>
+      <div data-hf-id="hf-mrph" id="chat-b">
+        <div data-hf-id="hf-4yd7" id="chat-chat">
+          <div data-hf-id="hf-rq01" id="chat-request">Post this video on TikTok</div>
+          <div data-hf-id="hf-u4y8" id="chat-msg">
+            <span data-hf-id="hf-00w6">Done!</span><span data-hf-id="hf-q406"> It's</span><span data-hf-id="hf-yxax"> live</span><span data-hf-id="hf-ziue"> on</span><span data-hf-id="hf-wwub"> TikTok:</span>
+          </div>
+          <div data-hf-id="hf-8scj" id="chat-card">
+            <div data-hf-id="hf-c51f" id="chat-preview">
+              <div data-hf-id="hf-bgk9" id="chat-badge" data-app="tiktok"></div>
+              <div data-hf-id="hf-6qi1" id="chat-play"><svg viewBox="0 0 22 24" width="22" height="24"><path d="M2 1.5v21l19-10.5z" fill="#fff"/></svg></div>
+            </div>
+            <div data-hf-id="hf-1eiw" id="chat-card-foot">
+              <span data-hf-id="hf-ddvl" class="t1">New post on TikTok</span>
+              <span data-hf-id="hf-tooi" class="t2">made by an AI agent controlling a real iPhone #ghosthand</span>
+              <svg data-hf-id="hf-s4sj" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round">
+                <path data-hf-id="hf-2bsb" d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2" />
+                <path data-hf-id="hf-vbde" d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2" />
+              </svg>
+            </div>
+          </div>
+          <div data-hf-id="hf-y1sz" id="chat-reply">
+            <div data-hf-id="hf-jy7k" id="chat-reply-dots"><i data-hf-id="hf-wt6k"></i><i data-hf-id="hf-zeb8"></i><i data-hf-id="hf-y7e5"></i></div>
+            <div data-hf-id="hf-xmfg" id="chat-reply-mask"><span data-hf-id="hf-swgi" id="chat-reply-text">Now reply to the comments</span></div>
+          </div>
+        </div>
+      </div>
+      <canvas data-hf-id="hf-zug7" id="chat-mascot"></canvas>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const { FPS, keyframes, trackPose, popWord, everyFrame, stretchTo } = window.Kit
+      const F0 = 292 // first source frame of this scene
+      const CUT = 326 // hard cut to the zoomed-out chat
+      // slowed on "On it!", the finished reply with its card, and the follow-up request
+      const time = stretchTo(F0, 386, 9, [[323, 326, 0.35], [337, 349, 0.3], [363, 386, 0.35]])
+      const lt = time.lt
+      const tl = gsap.timeline({ paused: true })
+      window.AppIcons.fill(document.getElementById("chat-card"))
+      const stage = window.Mascot.create({ canvas: document.getElementById("chat-mascot"), width: 1280, height: 720 })
+      const bot = stage.add({ palette: "dark" })
+
+      // phase A bubble bounds measured per frame (unmirrored): frame, left, top, right, bottom
+      const BUBBLE = [
+        [295, 683, 620, 683, 620], [296, 672, 604, 694, 620], [298, 674, 537, 816, 631],
+        [300, 675, 480, 888, 596], [302, 673, 452, 882, 572], [304, 674, 443, 882, 563],
+        [306, 677, 443, 886, 563], [308, 678, 443, 889, 563], [310, 678, 441, 891, 561],
+        [312, 678, 436, 890, 556], [314, 678, 431, 888, 549], [316, 676, 426, 884, 543],
+        [318, 673, 421, 885, 538], [320, 668, 418, 890, 531], [322, 657, 417, 896, 521],
+        [324, 644, 409, 920, 506], [326, 640, 405, 928, 501],
+      ]
+      // phase B message bubble width, card and reply bounds, per frame
+      const MSG_W = [[326, 257], [329, 333], [332, 369], [335, 390], [337, 407]]
+      const REPLY_W = 1.204 // the reply is longer than the source's, so its measured widths are scaled
+      const REPLY_L = [[349, 1098], [350, 987], [353, 980], [356, 977], [359, 975], [362, 975], [365, 895], [368, 787], [371, 749], [374, 732], [377, 726]].map(([f, l]) => [f, 1099 - (1099 - l) * REPLY_W])
+
+      const bubble = document.getElementById("chat-bubble")
+      const bubbleIn = document.getElementById("chat-bubble-in")
+      const msg = document.getElementById("chat-msg")
+      const chat = document.getElementById("chat-chat")
+      const reply = document.getElementById("chat-reply")
+
+      function draw(t) {
+        const frame = time.frameAt(t)
+        const A = frame < CUT
+        document.getElementById("chat-a").style.visibility = A ? "visible" : "hidden"
+        document.getElementById("chat-b").style.visibility = A ? "hidden" : "visible"
+        const s = trackPose(A ? "text1" : "text2", frame)
+        // phase A is mirrored from the source: the bot stands on the right, its bubble on the left
+        if (A) Object.assign(s, { x: 1280 - s.x, yaw: -s.yaw, roll: -s.roll })
+        bot.pose({ ...s, accessory: true })
+        stage.render()
+        if (A) {
+          const [, l0, tp, r0, b] = keyframes(BUBBLE, frame)
+          const [l, r] = [1280 - r0, 1280 - l0]
+          const h = Math.max(b - tp, 1)
+          const sc = h / 120
+          bubble.style.transform = `translate(${l}px, ${tp}px) scale(${sc})`
+          bubble.style.width = `${(r - l) / sc}px`
+          bubble.style.opacity = frame < 295.5 ? 0 : 1
+        } else {
+          // the chat scrolls with the character (laid out for frame 380, character y 157)
+          chat.style.transform = `translateY(${s.y - 157}px)`
+          msg.style.width = `${keyframes(MSG_W, frame)[1]}px`
+          const left = keyframes(REPLY_L, frame)[1]
+          reply.style.left = `${left}px`
+          reply.style.width = `${1099 - left}px`
+          reply.style.opacity = frame >= 349.5 ? 1 : 0
+        }
+      }
+
+      // title words
+      popWord(tl, "#chat-text", lt(293))
+      popWord(tl, "#chat-your", lt(296))
+      popWord(tl, "#chat-customers", lt(298))
+      tl.fromTo(".chat-word", { yPercent: 0 }, { yPercent: -6, duration: lt(326) - 0.35, ease: "none", immediateRender: false }, 0.35)
+
+      // typing dots bounce, then vanish one by one, then "On", "On it!"
+      document.querySelectorAll(".chat-dot").forEach((d, k) => {
+        tl.fromTo(d, { y: 0 }, { y: -6, duration: 0.15, ease: "sine.inOut", yoyo: true, repeat: 3 }, lt(300) + k * 0.08)
+        tl.set(d, { opacity: 0 }, lt(314 - k * 3))
+      })
+      tl.set("#chat-hi", { opacity: 1 }, lt(319.5))
+      tl.set("#chat-hi2", { opacity: 0 }, 0)
+      tl.set("#chat-hi2", { opacity: 1 }, lt(323))
+
+      // chat: words of the first message, card, reply typing then text
+      document.querySelectorAll("#chat-msg span").forEach((w, k) => {
+        tl.set(w, { opacity: 1 }, lt([326, 328, 332, 334, 336][k]))
+      })
+      tl.fromTo("#chat-card", { opacity: 0 }, { opacity: 1, duration: 0.33, ease: "power1.in" }, lt(334))
+      tl.fromTo("#chat-reply-dots", { opacity: 1 }, { opacity: 0, duration: 0.05 }, lt(363))
+      tl.fromTo("#chat-reply-text", { opacity: 0 }, { opacity: 1, duration: 0.05 }, lt(363))
+
+      everyFrame(tl, time.duration, draw)
+      window.__timelines["chat"] = tl
+    })()
+  </script>
+</template>

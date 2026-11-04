@@ -70,6 +70,8 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
+  grok-launch-video: {}
+
   npm:
     devDependencies:
       '@types/node':

@@ -182,3 +182,5 @@ ghosthand docs-json <file> (main.swift: docsJSON) ──> website/scripts/genera
 `promo-video/` has motion design videos rendered from plain HTML and three.js with headless Chrome (`seek(t)` per frame, no Remotion): the 2D promo (`src/video.ts`) and the toon-shaded 3D launch video (`src/launch.ts`). Read `promo-video/README.md` first.
 
 `demo-video/` is a Remotion package for 16:9 promo videos: a ghosthand screen recording (left) next to an animated Claude Code style terminal (right). Record with `record start` plus a `log.jsonl` of every command, then `scripts/prepare.ts` speeds up the recording and writes `timeline.json`. Read `demo-video/README.md` first.
+
+`grok-launch-video/` is a HyperFrames video (HTML + GSAP + a three.js Grok Bot mascot): the ghosthand launch for Grok Bot, with the real TikTok recording next to a Grok Bot chat. Read `grok-launch-video/AGENTS.md` first; render with `npx hyperframes render` inside it.

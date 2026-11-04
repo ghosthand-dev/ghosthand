@@ -429,6 +429,11 @@
       })
       tl.fromTo("#demo-final", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out", immediateRender: false }, FINAL)
 
+      // in: the chat slides in from the right, then the phone from the left; out: both lift away
+      window.Kit.slideIn(tl, "#demo-chat", 0, { x: 700 })
+      window.Kit.slideIn(tl, ["#demo-phone", "#demo-label"], 0.55, { x: -620 }, 0.8)
+      window.Kit.slideOut(tl, ["#demo-chat", "#demo-phone", "#demo-label"], DURATION, { y: -240 })
+
       window.__timelines["demo"] = tl
     })()
   </script>

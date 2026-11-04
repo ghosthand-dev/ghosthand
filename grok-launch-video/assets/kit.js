@@ -16,10 +16,41 @@
     return rows[rows.length - 1]
   }
 
+  // Tracking noise makes the mascot tremble: smooth position, size and rotation with a small
+  // gaussian, but never across a jump (a cut or a leap of more than JUMP px in one frame).
+  const SMOOTH_SIGMA = 1.8
+  const SMOOTH_RADIUS = 5
+  const JUMP = 40
+  const SMOOTHED_COLUMNS = [0, 1, 2, 3, 4, 6, 7, 8] // not the squash angle, not blink
+  const smoothed = {}
+  function smoothFrames(frames) {
+    const segment = [0]
+    for (let i = 1; i < frames.length; i++) {
+      const jump = Math.abs(frames[i][0] - frames[i - 1][0]) + Math.abs(frames[i][1] - frames[i - 1][1])
+      segment.push(segment[i - 1] + (jump > JUMP ? 1 : 0))
+    }
+    return frames.map((row, i) => {
+      const out = row.slice()
+      for (const c of SMOOTHED_COLUMNS) {
+        let sum = 0
+        let weight = 0
+        for (let d = -SMOOTH_RADIUS; d <= SMOOTH_RADIUS; d++) {
+          const j = i + d
+          if (j < 0 || j >= frames.length || segment[j] !== segment[i]) continue
+          const w = Math.exp(-(d * d) / (2 * SMOOTH_SIGMA * SMOOTH_SIGMA))
+          sum += frames[j][c] * w
+          weight += w
+        }
+        out[c] = sum / weight
+      }
+      return out
+    })
+  }
+
   // A tracked mascot pose at a source frame: { x, y, R, L, W, ang, yaw, pitch, roll, blink }.
   function trackPose(name, frame) {
     const track = window.MASCOT_TRACKS[name]
-    const fr = track.frames
+    const fr = (smoothed[name] ??= smoothFrames(track.frames))
     const i = Math.max(0, Math.min(fr.length - 1, frame - track.start))
     const i0 = Math.floor(i)
     const i1 = Math.min(fr.length - 1, i0 + 1)
@@ -96,5 +127,18 @@
     return timeMap(f0, f1, spans.map(([a, b, w]) => [a, b, (extra * w) / total]))
   }
 
-  window.Kit = { FPS, BEAT, keyframes, trackPose, popWord, everyFrame, random, timeMap, stretchTo }
+  // Scene transitions: what leaves eases in (accelerates out of frame), what enters eases out.
+  // Use them on elements that do not carry over to the next scene; never on the mascot when it
+  // continues from one scene into the next.
+  const EXIT_S = 0.38
+  const ENTER_S = 0.65
+  function slideOut(tl, targets, sceneEnd, props) {
+    tl.to(targets, { ...props, opacity: 0, duration: EXIT_S, ease: "power3.in" }, sceneEnd - EXIT_S)
+  }
+  function slideIn(tl, targets, at, from, duration = ENTER_S) {
+    const to = Object.fromEntries(Object.keys(from).map((k) => [k, 0]))
+    tl.fromTo(targets, { ...from, opacity: 0 }, { ...to, opacity: 1, duration, ease: "expo.out" }, at)
+  }
+
+  window.Kit = { FPS, BEAT, EXIT_S, slideOut, slideIn, keyframes, trackPose, popWord, everyFrame, random, timeMap, stretchTo }
 })()

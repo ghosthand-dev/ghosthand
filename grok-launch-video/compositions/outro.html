@@ -239,6 +239,8 @@
       // the website fades in under the line
       tl.fromTo("#outro-url", { opacity: 0, y: 8 }, { opacity: 1, y: 0, duration: 0.5, ease: "power2.out", immediateRender: false }, time.lt(548))
 
+      tl.fromTo(["#outro-glow-a", "#outro-glow-b", "#outro-dots"], { opacity: 0 }, { opacity: 1, duration: 0.7, ease: "power2.out" }, 0)
+
       everyFrame(tl, time.duration, draw)
       window.__timelines["outro"] = tl
     })()

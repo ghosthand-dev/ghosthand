@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- source of website/public/assets/diagram-tap-flow.png and diagram-tap-flow-dark.png. Render from the repo root:
+         bun ~/.config/opencode/skills/diagrams-and-charts/render.ts render website/diagrams/tap-flow.html -o website/public/assets/diagram-tap-flow.png, then again with -o website/public/assets/diagram-tap-flow-dark.png --dark nextjs-style -->
+    <link rel="stylesheet" href="/skill/claude-style/style.css" />
+  </head>
+  <body>
+    <div class="canvas" id="diagram">
+      <div class="flow" style="justify-content: space-between; --row-gap: 64px">
+        <div class="box green node" id="cli" style="grid-area: 1 / 1">
+          <div>ghosthand CLI</div>
+          <div class="sub mono" style="font-size: 12.5px">tap --text "Settings"</div>
+        </div>
+        <div class="box blue node" id="route" style="grid-area: 2 / 1">
+          <div>Daemon HTTP route</div>
+          <div class="sub mono" style="font-size: 12.5px">POST /v1/leases/42/tap</div>
+        </div>
+
+        <div class="box blue node" id="controller" style="grid-area: 1 / 2 / 3; align-self: stretch; display: flex; flex-direction: column; justify-content: center">
+          <div class="mono">Controller</div>
+          <div class="sub">OCR finds the text line<br />Center of the line<br />Convert to fractions</div>
+        </div>
+
+        <div class="box blue node" id="capture" style="grid-area: 1 / 3">
+          <div>Capture session</div>
+          <div class="sub">Per iPhone</div>
+        </div>
+        <div class="box blue node" id="driver" style="grid-area: 2 / 3">
+          <div class="mono">BluetoothDriver</div>
+          <div class="sub">HID mouse + keyboard</div>
+        </div>
+
+        <div class="box pink node" id="iphone" style="grid-area: 1 / 4 / 3; align-self: stretch; display: flex; flex-direction: column; justify-content: center">
+          <div>iPhone</div>
+          <div class="sub">AssistiveTouch<br />shows the pointer</div>
+        </div>
+      </div>
+    <svg class="wires"><path d="M 134 103.34375 L 134 162.34375" class="accent"/><path d="M 129 156.34375 L 134 162.34375 L 139 156.34375" class="accent"/><path d="M 234 203.015625 L 332.6875 203.015625" class="accent"/><path d="M 326.6875 208.015625 L 332.6875 203.015625 L 326.6875 198.015625" class="accent"/><path d="M 505.6875 202.3671875 L 604.375 202.3671875" class="accent"/><path d="M 598.375 207.3671875 L 604.375 202.3671875 L 598.375 197.3671875" class="accent"/><path d="M 780.578125 202.3671875 L 879.265625 202.3671875" class="accent"/><path d="M 873.265625 207.3671875 L 879.265625 202.3671875 L 873.265625 197.3671875" class="accent"/><path d="M 884.265625 67.671875 L 785.578125 67.671875" class="pink"/><path d="M 791.578125 62.671875 L 785.578125 67.671875 L 791.578125 72.671875" class="pink"/><path d="M 609.375 67.671875 L 510.6875 67.671875"/><path d="M 516.6875 62.671875 L 510.6875 67.671875 L 516.6875 72.671875"/></svg><div class="wire-label fg-accent" style="left: 146px; top: 132.844px; transform: translateY(-50%);">HTTP, unix socket</div><div class="wire-label fg-accent" style="left: 283.344px; top: 191.016px; transform: translate(-50%, -50%);">Request</div><div class="wire-label fg-accent mono" style="left: 555.031px; top: 190.367px; transform: translate(-50%, -50%);">tap(x, y)</div><div class="wire-label sub" style="left: 555.031px; top: 217.367px; transform: translate(-50%, -50%);">0…1 fractions</div><div class="wire-label fg-accent" style="left: 829.922px; top: 190.367px; transform: translate(-50%, -50%);">Bluetooth</div><div class="wire-label sub" style="left: 829.922px; top: 217.367px; transform: translate(-50%, -50%);">HID click</div><div class="wire-label fg-pink" style="left: 834.922px; top: 55.6719px; transform: translate(-50%, -50%);">USB</div><div class="wire-label sub" style="left: 834.922px; top: 82.6719px; transform: translate(-50%, -50%);">Screen frames</div><div class="wire-label " style="left: 560.031px; top: 55.6719px; transform: translate(-50%, -50%);">Frame</div><div class="wire-label sub" style="left: 560.031px; top: 82.6719px; transform: translate(-50%, -50%);">For OCR</div></div>
+  </body>
+</html>

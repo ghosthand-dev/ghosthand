@@ -12,7 +12,8 @@ prompt: |
 Every CLI command is an **MCP tool** with the same name and the same help text. Agents without a
 shell (Claude Code, Cursor, opencode, claude.ai) can lease an iPhone, read the screen and tap.
 
-![Remote MCP: the MCP client signs in once with OAuth and sends POST /mcp to the account hub on ghosthand.dev. The hub routes each call over the WebSocket tunnel to the Mac named by the lease prefix (studio:42), whose Controller and leases drive the iPhone over Bluetooth and USB. Each Mac also uses USB lockdown services and ImageCaptureCore.](/assets/diagram-remote-mcp.svg)
+<div className="dark:hidden"><img src="/assets/diagram-remote-mcp.png" alt="Remote MCP: the MCP client signs in once with OAuth and sends POST /mcp to the account hub on ghosthand.dev. The hub routes each call over the WebSocket tunnel to the Mac named by the lease prefix (studio:42), whose Controller and leases drive the iPhone over Bluetooth and USB. Each Mac also uses USB lockdown services and ImageCaptureCore." /></div>
+<div className="hidden dark:block"><img src="/assets/diagram-remote-mcp-dark.png" alt="Remote MCP: the MCP client signs in once with OAuth and sends POST /mcp to the account hub on ghosthand.dev. The hub routes each call over the WebSocket tunnel to the Mac named by the lease prefix (studio:42), whose Controller and leases drive the iPhone over Bluetooth and USB. Each Mac also uses USB lockdown services and ImageCaptureCore." /></div>
 
 ## Connect a client
 

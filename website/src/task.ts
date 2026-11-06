@@ -89,7 +89,7 @@ export class GhosthandTask extends DurableObject<Env> {
     const turn = (meta?.turn ?? 0) + 1
     this.ctx.storage.kv.put('meta', { orgId, taskId, lease, phone, running: true, turn, recoveries: 0, prompt: message.id } satisfies Meta)
     this.turn = newTurn(turn, [])
-    await this.run(history)
+    this.run(history)
     return this.follow(0)
   }
 
@@ -110,16 +110,16 @@ export class GhosthandTask extends DurableObject<Env> {
   }
 
   /** Stops the running turn. Its stream ends with an `abort` chunk. With `prompt`, only the
-   *  turn that user message started: a late abort of a replaced turn never stops its successor. */
-  abort({ prompt }: { prompt?: string } = {}): boolean {
+   *  turn that user message started: a late abort of a replaced turn never stops its successor.
+   *  A turn a restart stopped is rebuilt first, like in send(), so it ends through endTurn():
+   *  its partial answer is saved as stopped and the alarm becomes the expiry, not a heartbeat
+   *  that would find the task idle and delete it. */
+  async abort({ prompt }: { prompt?: string } = {}): Promise<boolean> {
     const meta = this.meta()
     if (!meta?.running) return false
     if (prompt && meta.prompt !== prompt) return false
-    if (this.turn) {
-      this.turn.abort.abort()
-      return true
-    }
-    this.ctx.storage.kv.put('meta', { ...meta, running: false } satisfies Meta)
+    await this.recover()
+    this.turn?.abort.abort()
     return true
   }
 
@@ -133,11 +133,10 @@ export class GhosthandTask extends DurableObject<Env> {
     })
   }
 
-  /** Runs `this.turn` detached from the request. The heartbeat alarm is set once here and
-   *  re-armed only by the alarm itself: one row per 30 s, not one per step. */
-  private async run(history: UIMessage[]): Promise<void> {
+  /** Runs `this.turn` detached from the request. Every step of it, the alarm too, runs inside
+   *  runTurn's try, so whatever fails, endTurn() ends the turn and nothing waits on it forever. */
+  private run(history: UIMessage[]): void {
     const meta = this.meta()!
-    await this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_MS)
     // A pending promise keeps the object in memory, also after the client disconnects.
     this.ctx.waitUntil(this.runTurn({ meta, history, signal: this.turn!.abort.signal }))
   }
@@ -152,6 +151,8 @@ export class GhosthandTask extends DurableObject<Env> {
       return untilAborted(hub.daemonFetch(mac!, request), signal)
     })
     try {
+      // The heartbeat is set once per turn and re-armed only by the alarm: one row per 30 s.
+      await this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_MS)
       const options = taskStreamOptions({ apiKey: this.env.AI_GATEWAY_API_KEY, daemon, lease: meta.lease, phone: meta.phone })
       // The history the model reads: a note from the user after each answer they stopped.
       const modelHistory = history.flatMap((message): UIMessage[] => {
@@ -230,11 +231,18 @@ export class GhosthandTask extends DurableObject<Env> {
         controller.close()
       },
     })
-    for await (const message of readUIMessageStream({ stream })) partial = message
+    try {
+      for await (const message of readUIMessageStream({ stream })) partial = message
+    } catch (error) {
+      // `this.turn` is set: without endTurn() every later send() would wait on it forever.
+      captureException(error, { tags: { handler: 'task.recover' } })
+      this.push({ type: 'error', errorText: 'The task could not continue after a server restart. Send it again.' })
+      return this.endTurn('failed')
+    }
     for (const toolCallId of partial ? failOpenToolCalls(partial, INTERRUPTED) : []) {
       this.push({ type: 'tool-output-error', toolCallId, errorText: INTERRUPTED })
     }
-    await this.run(partial?.parts.length ? [...history, partial] : history)
+    this.run(partial?.parts.length ? [...history, partial] : history)
   }
 
   /** SSE of the stored chunks from index `from`, then the live ones until the turn ends. */

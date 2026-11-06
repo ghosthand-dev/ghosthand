@@ -105,7 +105,7 @@ function startTask({ mac, taskId, prompt }: { mac: Awaited<ReturnType<typeof fak
 }
 
 /** TestTask hooks: `alarm` runs the real alarm now, `crash` resets the object like a deploy. */
-function testTask({ orgId, taskId, action }: { orgId: string; taskId: string; action: 'alarm' | 'crash' | 'keys' }) {
+function testTask({ orgId, taskId, action }: { orgId: string; taskId: string; action: 'alarm' | 'alarm-at' | 'crash' | 'keys' }) {
   return runtime.worker.fetch(`/__test/task/${action}?org=${orgId}&task=${taskId}`).catch(() => null)
 }
 
@@ -270,3 +270,24 @@ test('a task stopped by a restart continues from its stored chunks', async () =>
   expect(mac.screen).toBe('about')
   expect(chunks.flatMap((c) => (c.type === 'text-delta' ? [c.delta] : [])).join('')).toContain('Morse iPhone')
 }, 90_000)
+
+test('Stop after a restart keeps the history: the turn ends as stopped and the task expires in a day', async () => {
+  const mac = await fakeMac({ hold: (op) => op === 'tap' })
+  const taskId = 'task-restarted-stopped'
+  const first = startTask({ mac, taskId, prompt: PROMPT }).then(readStream)
+  await expect.poll(() => mac.held.length, { timeout: 30_000 }).toBe(1)
+  await testTask({ orgId: mac.orgId, taskId, action: 'crash' })
+  await first
+
+  // Before the fix, Stop only cleared `running` and the pending 30 s heartbeat deleted the task.
+  const auth = { headers: { authorization: `Bearer ${mac.token}` } }
+  const stop = await runtime.worker.fetch(`/api/cli/tasks/${taskId}/abort?prompt=m1`, { method: 'POST', ...auth })
+  expect(await stop.json()).toEqual({ aborted: true })
+  const roles = async () => {
+    const { messages } = await (await runtime.worker.fetch(`/api/cli/tasks/${taskId}`, auth)).json() as { messages: UIMessage[] }
+    return messages.map((m) => [m.role, m.metadata ?? null])
+  }
+  await expect.poll(roles, { timeout: 10_000 }).toEqual([['user', null], ['assistant', { stopped: true }]])
+  const { at } = await (await testTask({ orgId: mac.orgId, taskId, action: 'alarm-at' }))!.json() as { at: number }
+  expect(at - Date.now()).toBeGreaterThan(23 * 60 * 60 * 1000)
+}, 60_000)

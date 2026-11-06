@@ -9,7 +9,7 @@ import { Spiceflow } from 'spiceflow'
 import Stripe from 'stripe'
 import { stripeFor, syncSubscription } from './lib/stripe.ts'
 import { syncSourceAccess } from './lib/github.ts'
-import { captureException } from './telemetry.ts'
+import { captureException, trackEvent } from './telemetry.ts'
 
 export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
   .post('/webhook', async ({ request }) => {
@@ -44,9 +44,9 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
     })()
     if (!subscriptionId) return new Response('ignored')
 
-    let orgId: string | null
+    let synced: Awaited<ReturnType<typeof syncSubscription>>
     try {
-      orgId = await syncSubscription({ accountId, subscriptionId })
+      synced = await syncSubscription({ accountId, subscriptionId })
     } catch (cause) {
       console.error(`Stripe webhook ${event.type} failed:`, cause)
       captureException(cause, { tags: { route: '/api/stripe/webhook', stripe_event: event.type } })
@@ -55,8 +55,9 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
     // Pro gives read access to the daemon repo; cancel takes it away at period end. A GitHub
     // failure still answers 200: Stripe retrying cannot fix GitHub, the daily cron does, and
     // failing webhooks for days would make Stripe disable the endpoint.
-    if (orgId) {
-      await syncSourceAccess(orgId, request.signal).catch((cause) => {
+    if (synced) {
+      trackEvent('subscription_updated', { org_id: synced.orgId, status: synced.status, cancel_at_period_end: synced.cancelAtPeriodEnd })
+      await syncSourceAccess(synced.orgId, request.signal).catch((cause) => {
         captureException(cause, { tags: { route: '/api/stripe/webhook', handler: 'syncSourceAccess' } })
       })
     }

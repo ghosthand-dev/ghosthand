@@ -10,7 +10,7 @@ import Stripe from 'stripe'
 import * as schema from 'db/schema'
 import { getDb, type Org } from '../db.ts'
 import { EXISTING_STATUSES, isExistingStatus, MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP } from './billing.ts'
-import { captureException, trackEvent } from '../telemetry.ts'
+import { captureException } from '../telemetry.ts'
 
 /** Secret key per Stripe account id. */
 function stripeAccounts(): Record<string, string> {
@@ -108,9 +108,10 @@ export async function portalUrl({ accountId, customerId, returnUrl }: { accountI
 
 /**
  * Mirrors one subscription into Postgres. Re-fetches it, because events can arrive out of
- * order. Ignores subscriptions of other apps on the same Stripe account. Returns the org.
+ * order. Ignores subscriptions of other apps on the same Stripe account. Returns what it
+ * wrote, so the webhook can track the change (the daily reconcile must not).
  */
-export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<string | null> {
+export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<{ orgId: string; status: string; cancelAtPeriodEnd: boolean } | null> {
   const stripe = stripeFor(accountId)
   const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price.product'] })
   const item = sub.items.data[0]
@@ -141,8 +142,7 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
   await db.insert(schema.subscription)
     .values({ subscriptionId: sub.id, ...record })
     .onConflictDoUpdate({ target: schema.subscription.subscriptionId, set: record })
-  trackEvent('subscription_updated', { org_id: orgId, status: sub.status, cancel_at_period_end: sub.cancel_at_period_end })
-  return orgId
+  return { orgId, status: sub.status, cancelAtPeriodEnd: sub.cancel_at_period_end }
 }
 
 /**

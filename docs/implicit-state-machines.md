@@ -47,6 +47,25 @@ likelihood times damage.
 | 26 | Shutdown flags and install-to-restart gap | `daemon.swift`, `updater.swift` | medium-low | Daemon runs a replaced bundle for a whole lease |
 | | Lower risk | see [Lower risk](#lower-risk) | low | |
 
+## Fixed so far
+
+| # | Fix |
+|---|---|
+| 1, 8 | Stop on an orphaned task rebuilds the turn first, so it ends through `endTurn()`: stopped answer saved, alarm becomes the expiry. Every step of a turn, the heartbeat too, runs inside one try, and a failed rebuild ends the turn. |
+| 2 | Remove and account change revoke the old GitHub account before the row goes, so a failed revoke keeps the row and the cron retries. The cron skips past one failing account. |
+| 4 | Setup's background XCTest start is one explicit value per iPhone; `starting` is derived from it and ends with it. It no longer restarts a runner that already answers. |
+| 5 | On end of file, the ObjC host forgets the channel too, so a reconnect opens it again. |
+| 7 | A daily cron mirrors every live Stripe subscription again. A GitHub failure no longer fails the webhook. |
+| 10 | A lease's idle time starts when its command ends. |
+| 11 | A hub connect closes sockets of deleted sessions, not only their slug. |
+| 12 | `seen` counts like the server, reconnect delays restart after progress, a 204 after `finish` is success. |
+| 20 | Checkout idempotency key per minute, not per day. |
+| 25 | A new daemon waits for the old one's forced stop before it gives up on the lock. |
+
+Left on purpose (rare, or the fix costs more than the bug): #3 chat lease, #6 two new iPhones at once
+(capture names can differ from lockdown names, so names cannot decide), #9 relaunch, #13 to #19,
+#21 to #24, #26 and the lower-risk list.
+
 ## Patterns behind most of them
 
 ```

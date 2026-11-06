@@ -17,7 +17,7 @@ ghosthand screenshot
 | --- | --- |
 | `-o, --out [path]` | Output file, .png or .jpg (default: screenshot.png) |
 | `--settle` | Wait (up to 2s) until the screen stops changing; --screenshot on actions always does |
-| `--native` | Take a real iOS screenshot (cmd+shift+3), read it over USB, delete it from Photos. Shows dialogs USB capture hides |
+| `--native` | Last resort, slow (2-7 s): a real iOS screenshot (cmd+shift+3), read over USB and deleted from Photos. Only for dialogs USB capture hides |
 | `--scale [n]` | Image and coordinate size as a fraction of native pixels (default: screen points, 1/2 or 1/3; 1 = native). Env: GHOSTHAND_SCALE |
 
 Also takes the [global options](/docs/cli/overview#global-options).
@@ -39,8 +39,10 @@ enough for LLM vision, and the same coordinates `tap` and `swipe` take.
   the result after you submit (next screen or error).
 - Screen dimmed but no dialog in the image? Some system dialogs are hidden from USB
   capture (seen: App Store Install sheet, cellular data and location prompts).
-  --native takes a real iOS screenshot (about 2 s): the dialog shows, at the
-  same coordinates `tap` takes. It needs Bluetooth, an unlocked phone, and is deleted
+  --native takes a real iOS screenshot: the dialog shows, at the same coordinates
+  `tap` takes. It is a last resort: 2-7 s instead of 0.1 s (key press, file read,
+  Photos delete). Use it only when the normal screenshot is dimmed or misses a dialog,
+  never as the default screenshot. It needs Bluetooth, an unlocked phone, and is deleted
   from Photos after reading. iOS shows a screenshot thumbnail at the bottom left for
   a few seconds; it does not block taps elsewhere.
 - XCTest mode: the image comes from XCTest; hidden-dialog support is not verified.

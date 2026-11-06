@@ -4,13 +4,14 @@ import { macSlug, mergeListReplies, parseJsonRpc, parseSseMessage, routeMcpCall,
 const air: OnlineMac = { slug: 'air', name: 'MacBook Air' }
 const studio: OnlineMac = { slug: 'studio', name: 'Mac Studio' }
 const NOW = 1_800_000_000_000
+const SITE = 'https://ghosthand.dev'
 const HOUR_MS = 3_600_000
 const mini: OfflineMac = { slug: 'mini', name: 'Mac mini', lastSeenAt: NOW - 3 * HOUR_MS }
 const call = (args: Record<string, unknown>, name = 'screenshot') => ({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args } })
 
 describe('routeMcpCall', () => {
   test('tools/call targets', () => {
-    const route = (args: Record<string, unknown>, online: OnlineMac[], name?: string, offline: OfflineMac[] = []) => routeMcpCall({ message: call(args, name), online, offline, now: NOW })
+    const route = (args: Record<string, unknown>, online: OnlineMac[], name?: string, offline: OfflineMac[] = []) => routeMcpCall({ message: call(args, name), online, offline, now: NOW, site: SITE })
     expect({
       lease: route({ lease: 'studio:42' }, [air, studio]),
       leaseOverMac: route({ lease: 'studio:42', mac: 'air' }, [air, studio]),
@@ -157,7 +158,7 @@ describe('routeMcpCall', () => {
     const toolsList = { jsonrpc: '2.0', id: 'a', method: 'tools/list', params: { _meta: modernMeta } }
     const oldModern = { ...call({}), params: { name: 'list', _meta: { ...modernMeta, 'io.modelcontextprotocol/protocolVersion': '2020-01-01' } } }
     const noCapabilities = { ...toolsList, params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } } }
-    const route = (message: object, online: OnlineMac[], offline: OfflineMac[] = []) => routeMcpCall({ message, online, offline, now: NOW })
+    const route = (message: object, online: OnlineMac[], offline: OfflineMac[] = []) => routeMcpCall({ message, online, offline, now: NOW, site: SITE })
     const text = (r: McpRoute) => (r.kind === 'reply' ? (r.body as any).result.content[0].text : r)
     const init = route(initialize, [])
     const list = route(toolsList, [])
@@ -196,8 +197,19 @@ describe('routeMcpCall', () => {
           "instructions": "No Mac is set up for this ghosthand account yet. Ghosthand c",
           "protocolVersion": "2025-11-25",
           "serverInfo": {
+            "icons": [
+              {
+                "mimeType": "image/png",
+                "sizes": [
+                  "512x512",
+                ],
+                "src": "https://ghosthand.dev/favicon.png",
+              },
+            ],
             "name": "ghosthand",
+            "title": "Ghosthand",
             "version": "0.13.1",
+            "websiteUrl": "https://ghosthand.dev",
           },
         },
         "noCapabilities": {

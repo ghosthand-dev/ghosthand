@@ -24,7 +24,7 @@
 
 import { DurableObject, env } from 'cloudflare:workers'
 import { createResourceServerChallenge } from '@better-auth/oauth-provider'
-import { getAuth, getCallerUserId, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent } from './db.ts'
+import { getAuth, getBaseUrl, getCallerUserId, getDb, getMcpResource, getPersonalOrg, getSessionStrict, parseDaemonUserAgent } from './db.ts'
 import {
   macSlug,
   mergeListReplies,
@@ -301,7 +301,7 @@ export class GhosthandHub extends DurableObject<Env> {
       .filter(([sessionId]) => !onlineIds.has(sessionId))
       .map(([, mac]) => mac)
       .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
-    return routeMcpCall({ message, online, offline, now: Date.now() })
+    return routeMcpCall({ message, online, offline, now: Date.now(), site: getBaseUrl() })
   }
 
   /** `/macs` lists the Macs; `/macs/<slug>/v1/...` replays the request on that Mac's daemon. */

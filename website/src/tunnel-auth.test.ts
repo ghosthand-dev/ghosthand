@@ -80,7 +80,11 @@ test('standard sign-out removes the connected Mac, including after hibernation',
 test('MCP checks grant revocation, disabled clients and ended sessions against Better Auth', async () => {
   const identity = await session()
   const grant = await oauth({ identity })
-  expect((await mcp(grant.access_token)).status).toBe(200)
+  const first = await mcp(grant.access_token)
+  expect(first.status).toBe(200)
+  // The connector logo in MCP clients, on this site.
+  const { result } = await first.json() as { result: { serverInfo: { icons: { src: string }[] } } }
+  expect(result.serverInfo.icons[0]!.src).toBe(new URL('/favicon.png', runtime.baseUrl).href)
   await runtime.sql('UPDATE oauth_client SET disabled = true WHERE client_id = $1', [grant.clientId])
   const disabled = await mcp(grant.access_token)
   expect(disabled.status).toBe(401)

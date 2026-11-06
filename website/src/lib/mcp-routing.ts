@@ -92,8 +92,10 @@ export function parseJsonRpc(text: string): { ok: true; message: JsonRpcMessage 
   return { ok: true, message: value as JsonRpcMessage }
 }
 
-export function routeMcpCall({ message, online, offline, now }: {
+export function routeMcpCall({ message, online, offline, now, site }: {
   message: JsonRpcMessage
+  /** Website origin (https://ghosthand.dev): the serverInfo logo and websiteUrl. */
+  site: string
   online: OnlineMac[]
   /** Signed-in Macs that are not connected, for the onboarding text. */
   offline: OfflineMac[]
@@ -108,6 +110,7 @@ export function routeMcpCall({ message, online, offline, now }: {
   const meta = params._meta as Record<string, unknown> | undefined
   const modernVersion = meta?.[MODERN_VERSION_KEY]
   const modern = modernVersion !== undefined
+  const info = serverInfo(site)
   // Same checks as the daemon (MCPServer.handle), so a hub answer equals a Mac's.
   if (modern && !MODERN_VERSIONS.includes(String(modernVersion))) {
     const error = { code: -32022, message: 'Unsupported protocol version', data: { supported: [...MODERN_VERSIONS, ...LEGACY_VERSIONS], requested: modernVersion } }
@@ -121,7 +124,7 @@ export function routeMcpCall({ message, online, offline, now }: {
   const toolError = (text: string, isOffline = false): McpRoute => ({
     kind: 'reply',
     status: 200,
-    body: result({ id, modern, value: { content: [{ type: 'text', text }], isError: true } }),
+    body: result({ id, modern, info, value: { content: [{ type: 'text', text }], isError: true } }),
     offline: isOffline,
   })
 
@@ -132,7 +135,7 @@ export function routeMcpCall({ message, online, offline, now }: {
     const noMac = (): McpRoute => {
       if (params.name !== 'setup-status') return toolError(noMacMessage({ offline, now }), true)
       const value = { content: [{ type: 'text', text: JSON.stringify(noMacSetupStatus({ offline, now })) }], isError: false }
-      return { kind: 'reply', status: 200, body: result({ id, modern, value }), offline: true }
+      return { kind: 'reply', status: 200, body: result({ id, modern, info, value }), offline: true }
     }
     if (target !== undefined) {
       if (online.some((mac) => mac.slug === target)) return { kind: 'forward', slug: target }
@@ -151,7 +154,7 @@ export function routeMcpCall({ message, online, offline, now }: {
   }
 
   if (newest) return { kind: 'forward', slug: newest.slug }
-  const ok = (value: object): McpRoute => ({ kind: 'reply', status: 200, body: result({ id, modern, value }), offline: true })
+  const ok = (value: object): McpRoute => ({ kind: 'reply', status: 200, body: result({ id, modern, info, value }), offline: true })
   const instructions = `${noMacMessage({ offline, now })}\n\n${manual.instructions}`
   switch (message.method) {
     case 'ping':
@@ -161,7 +164,7 @@ export function routeMcpCall({ message, online, offline, now }: {
       return ok({
         protocolVersion: LEGACY_VERSIONS.includes(asked) ? asked : LEGACY_VERSIONS[0],
         capabilities: { tools: {} },
-        serverInfo: serverInfo(),
+        serverInfo: info,
         instructions,
       })
     }
@@ -174,14 +177,21 @@ export function routeMcpCall({ message, online, offline, now }: {
   }
 }
 
-function serverInfo() {
-  return { name: 'ghosthand', version: manual.version }
+/** Same as MCPServer.serverInfo in the daemon. `icons` (MCP 2025-11-25) is the logo MCP clients show for the connector. */
+function serverInfo(site: string) {
+  return {
+    name: 'ghosthand',
+    title: 'Ghosthand',
+    version: manual.version,
+    websiteUrl: new URL(site).origin,
+    icons: [{ src: new URL('/favicon.png', site).href, mimeType: 'image/png', sizes: ['512x512'] }],
+  }
 }
 
 /** A JSON-RPC result; requests with the modern `_meta` version get its extra fields, like the daemon's. */
-function result({ id, modern, value }: { id: JsonRpcId; modern: boolean; value: object }): object {
+function result({ id, modern, info, value }: { id: JsonRpcId; modern: boolean; info: object; value: object }): object {
   if (!modern) return { jsonrpc: '2.0', id, result: value }
-  return { jsonrpc: '2.0', id, result: { resultType: 'complete', ...value, _meta: { 'io.modelcontextprotocol/serverInfo': serverInfo() } } }
+  return { jsonrpc: '2.0', id, result: { resultType: 'complete', ...value, _meta: { 'io.modelcontextprotocol/serverInfo': info } } }
 }
 
 const MINUTE_MS = 60_000

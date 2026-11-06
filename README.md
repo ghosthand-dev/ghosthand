@@ -168,6 +168,7 @@ Always Show Menu OFF  ──> hidden while the Mac mouse is connected; taps stil
 
 - **Set it on the iPhone, once.** USB lockdown has only the AssistiveTouch on/off key (`AssistiveTouchEnabledByiTunes`), no key for this switch, so ghosthand cannot change it over USB. An agent can flip it with taps in Settings (tested on an XR, iOS 18.7).
 - **It stays off** when `acquire` and `release` turn AssistiveTouch on and off.
+- **Apple Pay needs it on.** Paying without Face ID uses the AssistiveTouch menu, so it needs Always Show Menu on and two more settings. See [Pay with Apple Pay](docs/system-dialogs.md#pay-with-apple-pay).
 
 **Home needs no setup.** `key home` sends the keyboard Home key (HID consumer Menu), which works with AssistiveTouch on or off (6 of 6 on iOS 18.6 and 26.5, SE2; also iOS 15.8). `key fn+h` does the same.
 

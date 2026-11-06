@@ -208,7 +208,7 @@ describe('routeMcpCall', () => {
             ],
             "name": "ghosthand",
             "title": "Ghosthand",
-            "version": "0.13.1",
+            "version": "0.14.0",
             "websiteUrl": "https://ghosthand.dev",
           },
         },

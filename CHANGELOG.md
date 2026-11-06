@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.14.0
+
+1. **Auto-update.** The daemon checks https://ghosthand.dev for a new release every hour, downloads it, checks its signature and notarization, and installs it once no lease is active. npm and `.pkg` installs update the same way. `ghosthand daemon update` installs now; `ghosthand daemon update --auto off` turns automatic updates off; `ghosthand daemon status` shows the state. Updates start with the next release after this one.
+
+2. **Uploads up to 2 GB.** `ghosthand upload`, the MCP upload tool and remote `record stop` now send files up to 2 GB (was 100 MB), in 64 MB parts that retry on network errors.
+
+3. **Turn off the keep-awake key.** Switch Control with a keyboard switch sees the daemon's keep-awake Control key as a switch press. Run `defaults write com.remorses.ghosthand KeepAwake -bool false` and set Auto-Lock to Never. It applies within 2 seconds, no restart needed.
+
+4. **Free plan: 10 phone task prompts per month** (UTC month). Pro stays unlimited.
+
+5. **XCTest mode keeps its runner across daemon restarts and updates**, so iOS does not ask for the XCTest passcode again after each restart.
+
+6. **The on-screen keyboard comes back when you unplug the iPhone.** The daemon keeps the Bluetooth link only while the iPhone is on USB; a replug reconnects without pairing again.
+
+7. **AssistiveTouch is turned off after a lease only when ghosthand turned it on.** If you had it on before, it stays on.
+
+8. **Long commands no longer lose their lease.** The idle time now starts when a command ends, so a long install or pairing wait does not expire the lease right after it succeeds.
+
+9. **`screenshot --native` no longer crashes the daemon** or times out after 20 s.
+
+10. **Control plane:** iPhones with a Home button show an iPhone SE frame whose Home button sends Home; a standard menu bar makes Cmd+C work, and chat text is selectable.
+
+11. **Setup and remote MCP:** a tip when the Mac is not listed in the iPhone's Bluetooth settings; `setup-status` returns the user's next step, and empty states name the Mac. A Mac shows once after a reconnect, offline and unknown Mac errors are clearer, and MCP clients without client metadata documents can register.
+
+12. **Phone tasks:** the agent knows when you stopped a turn, Stop after a server restart no longer deletes the task, and `webfetch` reads only ghosthand.dev.
+
+13. **Security fixes:** API tokens can no longer stop or restart the daemon, open pairing, change a phone's control mode or see its screen without a lease (these work only on the Mac). A folder pull never writes outside its destination, and the MCP consent page shows the client's host.
+
 ## 0.13.1
 
 1. **Fixed a crash at launch on macOS 14 and 15** (Intel and Apple silicon): `Library not loaded: @rpath/libswiftCompatibilitySpan.dylib`. The app now ships this Swift library in `Ghosthand.app/Contents/Frameworks`; macOS 26 and later keep using their built-in copy. No Xcode or Swift toolchain is needed. https://github.com/ghosthand-dev/ghosthand/issues/1

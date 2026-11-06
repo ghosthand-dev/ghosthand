@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- source of website/public/assets/diagram-architecture.png and diagram-architecture-dark.png. Render from the repo root:
+         bun ~/.config/opencode/skills/diagrams-and-charts/render.ts render website/diagrams/architecture.html -o website/public/assets/diagram-architecture.png, then again with -o website/public/assets/diagram-architecture-dark.png --dark nextjs-style -->
+    <link rel="stylesheet" href="/skill/claude-style/style.css" />
+  </head>
+  <body>
+    <div class="canvas" id="diagram">
+      <div class="flow" style="--col-gap: 84px; --row-gap: 30px; justify-content: space-between">
+        <div class="box group green" id="agents" style="grid-area: 1 / 1 / 4">
+          <div>Agents</div>
+          <div class="stack" style="gap: 120px">
+            <div class="box" id="agent">Coding agent</div>
+            <div class="box" id="mcpclient">MCP client</div>
+          </div>
+        </div>
+
+        <div class="box blue node" id="cli" style="grid-area: 1 / 2">
+          <div class="mono">ghosthand CLI</div>
+          <div class="sub">Shell</div>
+        </div>
+        <div class="box purple node" id="hub" style="grid-area: 3 / 2">
+          <div class="mono">ghosthand.dev</div>
+          <div class="sub">MCP hub</div>
+        </div>
+
+        <div class="box blue node" id="controller" style="grid-area: 1 / 3 / 5; align-self: stretch">
+          <div class="mono">Controller</div>
+          <div class="sub">Daemon<br />Leases, OCR,<br />state.db</div>
+        </div>
+
+        <div class="box blue node" id="bt" style="grid-area: 1 / 4">
+          <div>Bluetooth driver</div>
+          <div class="sub">Mouse, keyboard</div>
+        </div>
+        <div class="box blue node dashed" id="xctest" style="grid-area: 2 / 4"><svg class="dash"><rect/></svg>
+          <div>XCTest driver</div>
+          <div class="sub">WebDriverAgent</div>
+        </div>
+        <div class="box blue node" id="capture" style="grid-area: 3 / 4">
+          <div>USB capture</div>
+          <div class="sub">Screen frames</div>
+        </div>
+        <div class="box blue node" id="lockdown" style="grid-area: 4 / 4">
+          <div>USB lockdown</div>
+          <div class="sub">Files, photos, apps</div>
+        </div>
+
+        <div class="box pink node" id="iphone" style="grid-area: 1 / 5 / 5; align-self: stretch">
+          <div>iPhone</div>
+          
+        </div>
+      </div>
+    <svg class="wires"><path d="M 176.265625 93.1953125 L 275.1328125 93.1953125" class="accent"/><path d="M 269.1328125 98.1953125 L 275.1328125 93.1953125 L 269.1328125 88.1953125" class="accent"/><path d="M 420.4375 67.0234375 L 501.8046875 67.0234375" class="accent"/><path d="M 495.8046875 72.0234375 L 501.8046875 67.0234375 L 495.8046875 62.0234375" class="accent"/><path d="M 622.8046875 67.671875 L 704.171875 67.671875" class="accent"/><path d="M 698.171875 72.671875 L 704.171875 67.671875 L 698.171875 62.671875" class="accent"/><path d="M 856.40625 67.671875 L 937.7734375 67.671875" class="accent"/><path d="M 931.7734375 72.671875 L 937.7734375 67.671875 L 931.7734375 62.671875" class="accent"/><path d="M 942.7734375 272.6875 L 861.40625 272.6875" class="accent"/><path d="M 867.40625 267.6875 L 861.40625 272.6875 L 867.40625 277.6875" class="accent"/><path d="M 709.171875 272.6875 L 627.8046875 272.6875" class="accent"/><path d="M 633.8046875 267.6875 L 627.8046875 272.6875 L 633.8046875 277.6875" class="accent"/><path d="M 158.0546875 270.109375 L 275.1328125 270.109375" class="purple"/><path d="M 269.1328125 275.109375 L 275.1328125 270.109375 L 269.1328125 265.109375" class="purple"/><path d="M 420.4375 272.0390625 L 501.8046875 272.0390625" class="purple"/><path d="M 495.8046875 277.0390625 L 501.8046875 272.0390625 L 495.8046875 267.0390625" class="purple"/><path d="M 622.8046875 170.1796875 L 704.171875 170.1796875" class="dashed"/><path d="M 698.171875 175.1796875 L 704.171875 170.1796875 L 698.171875 165.1796875"/><path d="M 856.40625 170.1796875 L 937.7734375 170.1796875" class="dashed"/><path d="M 931.7734375 175.1796875 L 937.7734375 170.1796875 L 931.7734375 165.1796875"/><path d="M 622.8046875 377.203125 L 704.171875 377.203125"/><path d="M 698.171875 382.203125 L 704.171875 377.203125 L 698.171875 372.203125"/><path d="M 856.40625 377.203125 L 937.7734375 377.203125"/><path d="M 931.7734375 382.203125 L 937.7734375 377.203125 L 931.7734375 372.203125"/></svg><div class="wire-label fg-accent" style="left: 461.121px; top: 55.0234px; transform: translate(-50%, -50%);">HTTP</div><div class="wire-label fg-accent" style="left: 663.488px; top: 55.6719px; transform: translate(-50%, -50%);">Tap, type</div><div class="wire-label fg-accent" style="left: 897.09px; top: 55.6719px; transform: translate(-50%, -50%);">Bluetooth</div><div class="wire-label fg-accent" style="left: 902.09px; top: 260.688px; transform: translate(-50%, -50%);">Video</div><div class="wire-label fg-accent" style="left: 668.488px; top: 260.688px; transform: translate(-50%, -50%);">Screen</div><div class="wire-label fg-purple" style="left: 216.594px; top: 258.109px; transform: translate(-50%, -50%);">MCP</div><div class="wire-label fg-purple" style="left: 461.121px; top: 260.039px; transform: translate(-50%, -50%);">Tunnel</div><div class="wire-label " style="left: 897.09px; top: 158.18px; transform: translate(-50%, -50%);">USB</div><div class="wire-label " style="left: 897.09px; top: 365.203px; transform: translate(-50%, -50%);">USB</div></div>
+  </body>
+</html>

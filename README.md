@@ -38,7 +38,10 @@ npx ghosthand record start demo.mov           # screen + sound; keep acting mean
 npx ghosthand record stop
 ```
 
-![Architecture: coding agents call the ghosthand CLI over HTTP, MCP clients go through the ghosthand.dev hub and a tunnel. Both reach the Controller in the daemon (leases, OCR, state.db), which taps and types through the Bluetooth driver, reads the screen through USB capture, and uses USB lockdown for files, photos and apps. XCTest driver is optional.](https://ghosthand.dev/assets/diagram-architecture.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="website/public/assets/diagram-architecture-dark.png" />
+  <img alt="Architecture: coding agents call the ghosthand CLI over HTTP, MCP clients go through the ghosthand.dev hub and a tunnel. Both reach the Controller in the daemon (leases, OCR, state.db), which taps and types through the Bluetooth driver, reads the screen through USB capture, and uses USB lockdown for files, photos and apps. XCTest driver is optional." src="website/public/assets/diagram-architecture.png" />
+</picture>
 
 ## Features
 
@@ -1154,7 +1157,10 @@ error: No frame from Morse’s iPhone (2) after 8s (session running, 0 frames si
 
 A `tap --text "Settings"` from command to touch: OCR finds the text on the last USB frame, the Controller converts its center to screen fractions, and the Bluetooth driver sends the HID click.
 
-![tap --text flow: CLI to the daemon HTTP route, Controller runs OCR on the latest USB frame and converts the center to 0..1 fractions, BluetoothDriver sends a HID click to AssistiveTouch on the iPhone.](https://ghosthand.dev/assets/diagram-tap-flow.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="website/public/assets/diagram-tap-flow-dark.png" />
+  <img alt="tap --text flow: CLI to the daemon HTTP route, Controller runs OCR on the latest USB frame and converts the center to 0..1 fractions, BluetoothDriver sends a HID click to AssistiveTouch on the iPhone." src="website/public/assets/diagram-tap-flow.png" />
+</picture>
 
 The daemon publishes a **Bluetooth Classic HID** service, the same profile a real Bluetooth keyboard uses. macOS has no public API to be a Classic HID device, so it uses CoreBluetooth's private `CBClassicManager`.
 

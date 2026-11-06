@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- source of website/public/assets/diagram-remote-mcp.png and diagram-remote-mcp-dark.png. Render from the repo root:
+         bun ~/.config/opencode/skills/diagrams-and-charts/render.ts render website/diagrams/remote-mcp.html -o website/public/assets/diagram-remote-mcp.png, then again with -o website/public/assets/diagram-remote-mcp-dark.png --dark nextjs-style -->
+    <link rel="stylesheet" href="/skill/claude-style/style.css" />
+  </head>
+  <body>
+    <div class="canvas" id="diagram">
+      <div class="section">
+        <div class="section-label">Remote MCP: one URL, every Mac</div>
+        <div class="flow" style="grid-template-columns: auto auto auto auto; justify-content: space-between; --col-gap: 90px; --row-gap: 36px">
+          <div class="box green node" id="client" style="grid-area: 1 / 1; margin-top: 54px">
+            <div>MCP client</div>
+            <div class="sub">Claude, Cursor,<br />Codex</div>
+          </div>
+
+          <div class="box group purple" id="cloud" style="grid-area: 1 / 2">
+            <div>ghosthand.dev</div>
+            <div class="stack" style="align-items: stretch">
+              <div class="box blue node" id="hub">
+                <div>Account hub</div>
+                <div class="sub mono" style="font-weight: 500">tunnel.ts</div>
+              </div>
+              <div class="box blue node" id="oauth">
+                <div>OAuth</div>
+                <div class="sub">Google sign-in</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="box group" id="studio" style="grid-area: 1 / 3">
+            <div>Mac · studio</div>
+            <div class="stack" style="align-items: stretch">
+              <div class="box blue node" id="tunnel">
+                <div>MCP tunnel</div>
+                <div class="sub mono" style="font-weight: 500">tunnel.swift</div>
+              </div>
+              <div class="box blue node" id="controller">
+                <div>Controller</div>
+                <div class="sub">Same calls as the CLI</div>
+              </div>
+              <div class="box blue node" id="leases">
+                <div>Leases</div>
+                <div class="sub mono" style="font-weight: 500">state.db</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="box group pink" id="phones" style="grid-area: 1 / 4; align-self: end">
+            <div>iPhones on USB</div>
+            <div class="stack" style="align-items: stretch">
+              <div class="box node" id="se">
+                <div>iPhone SE</div>
+                <div class="sub">Free</div>
+              </div>
+              <div class="box node" id="xr">
+                <div>iPhone XR</div>
+                <div class="sub mono" style="font-weight: 500">lease studio:42</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="box blue node" id="laptop" style="grid-area: 2 / 3">
+            <div>Mac · laptop</div>
+            <div class="sub">Same daemon, own leases</div>
+          </div>
+          <div class="box pink node" id="i15" style="grid-area: 2 / 4">
+            <div>iPhone 15</div>
+            <div class="sub">Free</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-label">USB device services on each Mac</div>
+        <div class="flow" style="grid-template-columns: auto auto auto; justify-content: space-between; --col-gap: 70px; --row-gap: 32px">
+          <div class="box blue node" id="ctl2" style="grid-area: 1 / 1; align-self: center">
+            <div>Controller</div>
+            <div class="sub mono" style="font-weight: 500">lockdown.swift</div>
+          </div>
+
+          <div class="box group" id="services" style="grid-area: 1 / 2">
+            <div>Lockdown services</div>
+            <div class="stack" style="gap: 12px; align-items: stretch">
+              <div class="box row"><span class="mono">afc</span><span class="sub">Files, /DCIM photos</span></div>
+              <div class="box row"><span class="mono">house_arrest</span><span class="sub">App Documents</span></div>
+              <div class="box row"><span class="mono">installation_proxy</span><span class="sub">Apps: list, install</span></div>
+              <div class="box row"><span class="mono">syslog_relay</span><span class="sub">System log</span></div>
+              <div class="box row"><span class="mono">diagnostics_relay</span><span class="sub">Restart, shutdown</span></div>
+            </div>
+          </div>
+
+          <div class="box pink node" id="phone2" style="grid-area: 1 / 3; align-self: center">
+            <div>iPhone</div>
+            <div class="sub">Trusted over USB,<br />no Developer Mode</div>
+          </div>
+
+          <div class="box node" id="icc" style="grid-area: 2 / 2">
+            <div>ImageCaptureCore</div>
+            <div class="sub">Delete photos so Photos forgets them</div>
+          </div>
+        </div>
+      </div>
+    <svg class="wires"><path d="M 349.8125 322.53125 L 349.8125 484.546875 Q 349.8125 493.546875 358.8125 493.546875 L 532.9609375 493.546875" class="purple"/><path d="M 526.9609375 498.546875 L 532.9609375 493.546875 L 526.9609375 488.546875" class="purple"/><path d="M 734.96875 493.546875 L 838.5 493.546875"/><path d="M 832.5 498.546875 L 838.5 493.546875 L 832.5 488.546875"/><path d="M 97.83203125 222.84375 L 97.83203125 258.359375 Q 97.83203125 267.359375 106.83203125 267.359375 L 282.6953125 267.359375" class="green dashed"/><path d="M 276.6953125 272.359375 L 282.6953125 267.359375 L 276.6953125 262.359375" class="green"/><path d="M 161.6640625 168.84375 L 282.6953125 168.84375" class="accent"/><path d="M 276.6953125 173.84375 L 282.6953125 168.84375 L 276.6953125 163.84375" class="accent"/><path d="M 411.9296875 168.015625 L 550.4609375 168.015625" class="accent"/><path d="M 544.4609375 173.015625 L 550.4609375 168.015625 L 544.4609375 163.015625" class="accent"/><path d="M 422.9296875 163.015625 L 416.9296875 168.015625 L 422.9296875 173.015625" class="accent"/><path d="M 636.46484375 203.6875 L 636.46484375 226.6875" class="accent"/><path d="M 631.46484375 220.6875 L 636.46484375 226.6875 L 641.46484375 220.6875" class="accent"/><path d="M 636.46484375 303.03125 L 636.46484375 326.03125" class="accent"/><path d="M 631.46484375 320.03125 L 636.46484375 326.03125 L 641.46484375 320.03125" class="accent"/><path d="M 717.46875 366.703125 L 856 366.703125" class="accent"/><path d="M 850 371.703125 L 856 366.703125 L 850 361.703125" class="accent"/><path d="M 174 812.140625 L 353.96875 812.140625"/><path d="M 347.96875 817.140625 L 353.96875 812.140625 L 347.96875 807.140625"/><path d="M 689.2421875 812.140625 L 869.2109375 812.140625"/><path d="M 863.2109375 817.140625 L 869.2109375 812.140625 L 863.2109375 807.140625"/><path d="M 104 847.8125 L 104 1038.234375 Q 104 1047.234375 113 1047.234375 L 353.96875 1047.234375"/><path d="M 347.96875 1052.234375 L 353.96875 1047.234375 L 347.96875 1042.234375"/><path d="M 689.2421875 1047.234375 L 941.1015625 1047.234375 Q 950.1015625 1047.234375 950.1015625 1038.234375 L 950.1015625 861.5625"/><path d="M 955.1015625 867.5625 L 950.1015625 861.5625 L 945.1015625 867.5625"/></svg><div class="wire-label fg-purple mono" style="left: 441.387px; top: 481.547px; transform: translate(-50%, -50%);">laptop:7</div><div class="wire-label fg-green" style="left: 190.264px; top: 255.359px; transform: translate(-50%, -50%);">Sign in once</div><div class="wire-label fg-accent" style="left: 222.18px; top: 156.844px; transform: translate(-50%, -50%);">POST /mcp</div><div class="wire-label sub" style="left: 222.18px; top: 183.844px; transform: translate(-50%, -50%);">OAuth token</div><div class="wire-label fg-accent mono" style="left: 481.195px; top: 156.016px; transform: translate(-50%, -50%);">studio:42</div><div class="wire-label sub" style="left: 481.195px; top: 183.016px; transform: translate(-50%, -50%);">WebSocket</div><div class="wire-label fg-accent" style="left: 786.734px; top: 354.703px; transform: translate(-50%, -50%);">Bluetooth</div><div class="wire-label sub" style="left: 786.734px; top: 381.703px; transform: translate(-50%, -50%);">and USB</div><div class="wire-label " style="left: 263.984px; top: 800.141px; transform: translate(-50%, -50%);">USB lockdown</div></div>
+  </body>
+</html>

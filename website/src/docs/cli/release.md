@@ -8,23 +8,17 @@ description: "End the lease from -l or GHOSTHAND_LEASE, so another client can ac
 ## Usage
 
 ```bash
-ghosthand release [--keep-assistivetouch]
+ghosthand release
 ```
-
-## Options
-
-| Option | Description |
-| --- | --- |
-| `--keep-assistivetouch` | Leave AssistiveTouch on after the release |
 
 Also takes the [global options](/docs/cli/overview#global-options).
 
 ## Details
 
 Waits for a running command of the lease to finish, then ends it.
-- Turns AssistiveTouch off, also when it was on before acquire, so the person gets
-  the phone back without a pointer. --keep-assistivetouch leaves it on.
-- A lease that ends by its idle timeout turns it off too, a few seconds later.
+- Turns AssistiveTouch off only when ghosthand turned it on (it was off before).
+  AssistiveTouch that was on before acquire stays on.
+- A lease that ends by its idle timeout does the same, a few seconds later.
 - The output says "AssistiveTouch turned off" when it did. An iPhone not on USB
   is turned off later, when it is plugged in again with no lease.
 
@@ -32,7 +26,6 @@ Waits for a running command of the lease to finish, then ends it.
 
 ```bash
 $ ghosthand release -l 42
-$ ghosthand release -l 42 --keep-assistivetouch
 ```
 
 ## MCP tool

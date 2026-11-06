@@ -27,7 +27,10 @@ always under a `mac <slug>:` header (`this Mac:` while signed out). Each line:
 - phone number: read from the SIM over USB. Missing without a SIM, but also when the
   carrier did not write it to the SIM: check `ghosthand info` for the SIM state.
 - [locked]: unlock with `ghosthand unlock` before screenshots or input.
-- [AssistiveTouch off]: no pointer on the phone. acquire turns it on.
+- [AssistiveTouch off]: shown only on a leased iPhone in Bluetooth mode, where it is a
+  problem: no pointer, so tap and swipe fail. Run `assistivetouch on`. An iPhone that
+  is not leased, or in XCTest mode, never shows it (acquire turns it on; XCTest does
+  not use it). The JSON `assistiveTouch` field always has the value.
 - bluetooth connected: input works.
 - bluetooth disconnected: paired; the Mac reconnects it in about 2 s. If it stays so,
   Bluetooth is off on the iPhone or it is out of range: tell the user to turn it on.

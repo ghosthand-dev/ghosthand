@@ -44,7 +44,7 @@ iPhone; list and `random list` do not. -d picks the iPhone here only.
 - The lease ends by itself after --idle-timeout seconds without a command, so a
   crashed agent never blocks the phone. Run `ghosthand release -l studio:42` when done.
 - acquire turns AssistiveTouch on over USB (the pointer for tap and swipe) if it
-  is off; release turns it off again.
+  is off; release then turns it off again. If it was on, it stays on.
 - Busy: acquire fails at once and shows the label, its reason, when it was
   acquired and its last command. Read them, then decide: give up or tell the user
   the iPhone is busy, or run `ghosthand wait` to wait for it.

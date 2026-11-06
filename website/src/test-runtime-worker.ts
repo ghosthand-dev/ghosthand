@@ -10,7 +10,10 @@ import { signOutMac } from './actions.tsx'
 
 export class TestHub extends GhosthandHub {
   override async fetch(request: Request): Promise<Response> {
-    if (new URL(request.url).pathname === '/__test/expire') return Response.json(await this.expireNow())
+    const url = new URL(request.url)
+    if (url.pathname === '/__test/expire') return Response.json(await this.expireNow())
+    // readyState of each socket of a session: 1 open, 2 closing, 3 closed.
+    if (url.pathname === '/__test/sockets') return Response.json(this.ctx.getWebSockets(url.searchParams.get('session')!).map((socket) => socket.readyState))
     return super.fetch(request)
   }
 
@@ -31,6 +34,9 @@ export class TestTask extends GhosthandTask {
       case '/__test/task/alarm':
         await this.alarm()
         return Response.json({ meta: this.ctx.storage.kv.get('meta') ?? null })
+      // When the alarm fires next: a heartbeat (seconds) or the expiry (a day).
+      case '/__test/task/alarm-at':
+        return Response.json({ at: await this.ctx.storage.getAlarm() })
       // Stored keys, to check that chunks are written in batches.
       case '/__test/task/keys':
         return Response.json([...this.ctx.storage.kv.list()].map(([key]) => key))
@@ -59,7 +65,7 @@ export default {
     if (url.pathname.startsWith('/__test/task/')) {
       return getTask({ orgId: url.searchParams.get('org')!, taskId: url.searchParams.get('task')! }).fetch(request)
     }
-    if (url.pathname === '/__test/expire') {
+    if (url.pathname === '/__test/expire' || url.pathname === '/__test/sockets') {
       return getHub(url.searchParams.get('org')!).fetch(request)
     }
     if (url.pathname === '/__test/sign-out-mac') {

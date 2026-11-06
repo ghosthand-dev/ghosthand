@@ -202,6 +202,23 @@ test('dashboard sign-out retries hub cleanup after the session row is already go
   socket.close()
 })
 
+test('a Mac whose session row is gone is closed when another Mac connects, so its slug is free', async () => {
+  const zombie = await session()
+  const zombieSocket = await connect(zombie.session.token)
+  const hub = runtime.env.GHOSTHAND_HUB.get(runtime.env.GHOSTHAND_HUB.idFromName(zombie.user.id))
+  const socketStates = async () => await (await runtime.worker.fetch(`/__test/sockets?org=${zombie.user.id}&session=${zombie.session.id}`)).json() as number[]
+  expect(await socketStates()).toEqual([WebSocket.OPEN])
+  // A failed delete.after RPC leaves this state: no row, but an open socket.
+  await runtime.sql('DELETE FROM session WHERE id = $1', [zombie.session.id])
+  const otherResponse = await runtime.worker.fetch(`/__test/session?userId=${zombie.user.id}`, { method: 'POST' })
+  const other = await otherResponse.json() as Awaited<ReturnType<typeof session>>
+  const otherSocket = await connect(other.session.token)
+  expect((await socketStates()).every((state) => state !== WebSocket.OPEN)).toBe(true)
+  expect((await hub.macs()).map((mac) => [mac.sessionId === other.session.id, mac.slug])).toEqual([[true, 'studio']])
+  zombieSocket.close()
+  otherSocket.close()
+})
+
 test('the HTTP API accepts a session or a live API token', async () => {
   const identity = await session()
   const macs = (token: string) => runtime.worker.fetch('/macs', { headers: { authorization: `Bearer ${token}` } })

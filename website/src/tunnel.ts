@@ -193,13 +193,19 @@ export class GhosthandHub extends DurableObject<Env> {
 
   /** Called after the session row is deleted: the daemon reconnects, gets 401 and stops. */
   async revoke(sessionId: string): Promise<void> {
-    for (const socket of this.ctx.getWebSockets(sessionId)) close({ socket, code: 4401, reason: 'Mac signed out' })
-    this.failSession(sessionId, 'the Mac was signed out')
-    this.clearPhones(sessionId)
+    this.dropSession(sessionId)
     const registry = this.registry()
     delete registry[sessionId]
     this.ctx.storage.kv.put('macs', registry)
     await this.scheduleExpiry()
+  }
+
+  /** Closes a signed-out session's socket and forgets its requests and phones. The caller
+   *  removes its registry entry: a socket must never outlive the slug it was given. */
+  private dropSession(sessionId: string): void {
+    for (const socket of this.ctx.getWebSockets(sessionId)) close({ socket, code: 4401, reason: 'Mac signed out' })
+    this.failSession(sessionId, 'the Mac was signed out')
+    this.clearPhones(sessionId)
   }
 
   /** One socket per session; other Macs keep theirs. A newer connection of the same session
@@ -216,6 +222,9 @@ export class GhosthandHub extends DurableObject<Env> {
       const liveIds = new Set(live.map((row) => row.id))
       const session = live.find((row) => row.id === sessionId)
       if (!session) return problem({ status: 401, code: 'unauthorized', title: 'Unauthorized', detail: 'This Mac was signed out' })
+      // A session deleted while its revoke() RPC failed still has an open socket: close it
+      // with its entry, or that Mac keeps routing as a slug the next Mac may get.
+      for (const id of known.filter((id) => !liveIds.has(id))) this.dropSession(id)
       const registry = Object.fromEntries(Object.entries(this.registry()).filter(([id]) => liveIds.has(id)))
       const slug = registry[sessionId]?.slug ?? macSlug(name, Object.values(registry).map((mac) => mac.slug))
       registry[sessionId] = { slug, name, lastSeenAt: Date.now() }

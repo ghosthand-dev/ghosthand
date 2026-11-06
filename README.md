@@ -190,6 +190,7 @@ daemon, every 2 s ──> unlocked and idle for 10 s? ──yes──> Left Cont
 - **Never between input.** A tap or typed text holds the Bluetooth link; the key waits for it.
 - **Locked iPhones are skipped.** The lock state comes from USB lockdown. A key would light the Lock Screen (seen on iOS 18), so a locked iPhone gets no key and its display turns off normally.
 - **To let the iPhone lock by itself**, unplug USB or stop the daemon (`ghosthand daemon stop`). Keep-awake stops on the next check (every 2 seconds).
+- **To turn it off**, for example with Switch Control and a keyboard switch (the key counts as a switch press), run `defaults write com.remorses.ghosthand KeepAwake -bool false` and set Auto-Lock to Never. It applies on the next check, no restart needed.
 
 Tested on an iPhone XR, iOS 18.7, Auto-Lock 30 seconds: without the key SpringBoard dims at 20 s; with it, no dim for 75 s, with and without AssistiveTouch.
 

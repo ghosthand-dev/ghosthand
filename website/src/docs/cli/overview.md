@@ -182,6 +182,8 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
 - Leave the iPhone unlocked when done. Locked phones give no screenshots. The daemon
   keeps every unlocked USB- and Bluetooth-connected iPhone awake (a Control key press
   after 10 s idle). Locked or unplugged iPhones get no key, so Auto-Lock works normally.
+  Switch Control with a keyboard switch sees that key as a press: tell the user to run
+  `defaults write com.remorses.ghosthand KeepAwake -bool false` and set Auto-Lock to Never.
 - A wrong unlock passcode is never retried (failed attempts count toward lockout).
 - Account: acquire needs this Mac signed in to ghosthand.dev. The free plan covers one
   iPhone. login-required: run `ghosthand setup`, tell the user to sign in there, poll

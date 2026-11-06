@@ -11,14 +11,34 @@
   font-display: block;
 }
 
+/* Surfaces and borders mix --foreground into --background, so cards, borders, inputs and
+   popovers match the warm light and neutral dark backgrounds instead of holocron's bluish zinc.
+   TODO: drop the color-mix lines once @holocron.so/vite ships neutrals-follow-background (same values). */
 :root {
   --content-max-width: 1200px;
   /* Warm off-white, same as sigillo */
   --background: #fdfcfb;
   --sidebar: #f8f7f6;
+  --card: var(--background);
+  --popover: var(--background);
+  --secondary: color-mix(in oklab, var(--foreground) 4%, var(--background));
+  --muted: color-mix(in oklab, var(--foreground) 4%, var(--background));
+  --border: color-mix(in oklab, var(--foreground) 7%, var(--background));
+  --input: color-mix(in oklab, var(--foreground) 15%, var(--background));
+  --ring: color-mix(in oklab, var(--foreground) 15%, var(--background));
+  --sidebar-accent: color-mix(in oklab, var(--foreground) 3.5%, var(--background));
+  --sidebar-border: color-mix(in oklab, var(--foreground) 9%, var(--background));
 
   @variant dark {
     --background: var(--color-neutral-950);
     --sidebar: var(--color-neutral-950);
+    --card: color-mix(in oklab, var(--foreground) 4%, var(--background));
+    --popover: color-mix(in oklab, var(--foreground) 6%, var(--background));
+    --secondary: color-mix(in oklab, var(--foreground) 14%, var(--background));
+    --muted: color-mix(in oklab, var(--foreground) 14%, var(--background));
+    --border: color-mix(in oklab, var(--foreground) 19%, var(--background));
+    --input: color-mix(in oklab, var(--foreground) 14%, var(--background));
+    --ring: color-mix(in oklab, var(--foreground) 34%, var(--background));
+    --sidebar-accent: color-mix(in oklab, var(--foreground) 13%, var(--background));
   }
 }

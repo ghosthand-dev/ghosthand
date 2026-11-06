@@ -136,20 +136,22 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 - **The Mac is not listed?** Turn Bluetooth off and on again on the iPhone.
 - After Pair, the iPhone opens the connection itself. The command continues by itself.
 - Later runs reconnect the paired iPhone from the Mac in about 2 s.
+- **The link lasts only while the iPhone is on USB.** While connected, iOS hides its onscreen keyboard. Unplug the cable to type on the iPhone again; plug it back in and it reconnects within a few seconds, without pairing.
 - **After a report map change**, forget the Mac on the iPhone and pair again: the iPhone keeps the map it read at pairing.
 - **Pairing fails, or the Mac is gone from the list:** forget on both sides, then pair again. See [Pairing no longer works](#pairing-no-longer-works-forget-on-both-sides).
 
 ### 3. AssistiveTouch (automatic)
 
-iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **`acquire` turns it on over USB and `release` turns it off again**, so a personal iPhone goes back to normal when the agent is done. No touch on the phone is needed, and it works while locked:
+iOS accepts a mouse only through AssistiveTouch. With it off, the iPhone shows no pointer and ignores every click (tested). **`acquire` turns it on over USB when it is off, and `release` turns it off again**, so a personal iPhone goes back to how it was when the agent is done. No touch on the phone is needed, and it works while locked:
 
 ```bash
 ghosthand acquire --reason "reply to Anna"  # AssistiveTouch on
 ghosthand release -l 42                     # lease released; AssistiveTouch turned off
-ghosthand release -l 42 --keep-assistivetouch  # lease released; AssistiveTouch stays on
+ghosthand assistivetouch -l 42 on           # on for good: release leaves it on
 ```
 
-- **Always off after the lease.** `release` turns it off also when it was on before `acquire`. Pass `--keep-assistivetouch` (HTTP: `?keepAssistiveTouch=true`) to leave it on.
+- **Only what ghosthand turned on.** If AssistiveTouch was on before `acquire` (e.g. for a broken Home button), `release` leaves it on.
+- **`assistivetouch on|off` sets the iPhone's own setting**, so `release` leaves it as set.
 - **Expired leases too.** A lease that ends by its idle timeout gets AssistiveTouch turned off a few seconds later.
 - **Tap, swipe and wake check again** (in case a person turned it off mid-task).
 
@@ -1269,7 +1271,7 @@ sqlite3 -header -column ~/.ghosthand/state.db 'SELECT * FROM phone; SELECT * FRO
 
 | Table               | Written when                                                                                                           | If the row is missing                                                                |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `phone`             | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)). `assistive_touch_off_after_lease`: 1 when AssistiveTouch goes off once no lease holds the iPhone | matched again the same way                                                           |
+| `phone`             | a command sees a new iPhone. `capture_matched_by`: `only-new-phone` or `same-name` (see [More iPhones](#more-iphones)). `assistive_touch_off_after_lease`: 1 when ghosthand turned AssistiveTouch on, so it goes off once no lease holds the iPhone | matched again the same way                                                           |
 | `bluetooth_pointer` | the first tap or swipe                                                                                                 | iOS 17+: absolute again, no check. Older iOS: the pointer check runs on the next tap |
 
 - **Not stored**, because USB lockdown gives them on every command: name, Bluetooth address, lock state, the AssistiveTouch setting.

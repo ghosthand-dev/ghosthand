@@ -261,8 +261,8 @@ export interface paths {
         /**
          * Release lease
          * @description Waits for a running operation of the lease, then frees the iPhone for the next `POST /v1/leases`.
-         *     Turns AssistiveTouch off, also when it was on before the lease, unless `keepAssistiveTouch`.
-         *     A lease that ends by its idle timeout turns it off too, a few seconds later.
+         *     Turns AssistiveTouch off only when ghosthand turned it on; if it was on before the lease, it stays on.
+         *     A lease that ends by its idle timeout does the same, a few seconds later.
          */
         delete: operations["releaseLease"];
         options?: never;
@@ -701,6 +701,7 @@ export interface paths {
          *     touch on the iPhone. Without AssistiveTouch the iPhone shows no pointer and drops
          *     clicks, so acquire, tap, swipe and wake turn it on by themselves. Release
          *     turns it off again when ghosthand turned it on; the Bluetooth link stays connected.
+         *     This route sets the iPhone's own setting: release leaves it as set.
          */
         put: operations["setAssistiveTouch"];
         post?: never;
@@ -852,7 +853,7 @@ export interface paths {
          * @description Uploads the request body to ghosthand.dev with this Mac's account and returns a
          *     short link that lasts 1 day. Open it in Safari on the iPhone and tap Save: the share
          *     sheet then offers Save Video or Save Image, which adds the file to Photos. No lease:
-         *     nothing runs on the iPhone. At most 100 MB.
+         *     nothing runs on the iPhone. At most 2 GB.
          */
         post: operations["uploadFile"];
         delete?: never;
@@ -2592,10 +2593,7 @@ export interface operations {
     };
     releaseLease: {
         parameters: {
-            query?: {
-                /** @description Leave AssistiveTouch on after the release. */
-                keepAssistiveTouch?: boolean;
-            };
+            query?: never;
             header?: never;
             path: {
                 /**

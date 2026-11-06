@@ -86,7 +86,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`unlock`](/docs/cli/unlock) | Unlock with the Bluetooth keyboard: Enter, Enter, passcode, then check the lock state over USB (~3s). A wrong passcode is not retried |
 | [`mute`](/docs/cli/mute) | Mute all iPhone sound (media in every app too) with the Bluetooth keyboard Mute key, confirmed from the iPhone log over USB |
 | [`unmute`](/docs/cli/unmute) | Turn iPhone sound back on after `mute`, confirmed from the iPhone log over USB |
-| [`assistivetouch`](/docs/cli/assistivetouch) | Show, or turn on or off, AssistiveTouch over USB (no touch on the phone, also while locked). acquire turns it on, release turns it off |
+| [`assistivetouch`](/docs/cli/assistivetouch) | Show, or turn on or off, AssistiveTouch over USB (no touch on the phone, also while locked). acquire turns it on when off, release turns it off again |
 | [`rename`](/docs/cli/rename) | Set the iPhone's name over USB (Settings &gt; General &gt; About &gt; Name), no touch needed |
 | [`forget`](/docs/cli/forget) | Remove this Mac's Bluetooth bond with the iPhone, to pair again from scratch |
 | [`control`](/docs/cli/control) | Show or switch how input reaches the iPhone: Bluetooth mouse and keyboard (default) or XCTest (WebDriverAgent). Switch only when the user asks |
@@ -199,7 +199,7 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
   empty top area (`tap 207 100`) to restore it. Check this before anything else.
 - Screen dimmed but no dialog in the screenshot: the dialog is hidden from USB capture.
   `screenshot --native` takes a real iOS screenshot (cmd+shift+3) that shows it, at the
-  same coordinates tap takes. A button that ignores `tap`: press it once more (tap or
+  same coordinates tap takes. It is slow (2-7 s): use it only then. A button that ignores `tap`: press it once more (tap or
   `hold x y --duration 400`); a just-opened alert can ignore the first press.
 - Long press (context menus, Home Screen icon menu, previews): `hold x y`. Move an
   item that needs a long press first (Home Screen icons): `hold-drag --hold 2500`.

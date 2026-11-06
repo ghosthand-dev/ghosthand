@@ -9,7 +9,7 @@ import { env } from 'cloudflare:workers'
 import Stripe from 'stripe'
 import * as schema from 'db/schema'
 import { getDb, type Org } from '../db.ts'
-import { isExistingStatus, MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP } from './billing.ts'
+import { EXISTING_STATUSES, isExistingStatus, MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP } from './billing.ts'
 import { captureException, trackEvent } from '../telemetry.ts'
 
 /** Secret key per Stripe account id. */
@@ -83,8 +83,9 @@ export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org
     metadata: { orgId: org.orgId, app: STRIPE_PRODUCT_APP },
     subscription_data: { metadata: { orgId: org.orgId, app: STRIPE_PRODUCT_APP } },
   }, {
-    // Concurrent requests within a day get the same session instead of a second one.
-    idempotencyKey: `ghosthand-checkout:${customerId}:${price.id}:${new Date().toISOString().slice(0, 10)}`,
+    // Concurrent requests (double click) get the same session instead of a second one. Per
+    // minute, not per day: a key reused after a cancel returns the completed session's URL.
+    idempotencyKey: `ghosthand-checkout:${customerId}:${price.id}:${new Date().toISOString().slice(0, 16)}`,
   })
   if (!checkout.url) throw new Error('Stripe Checkout session has no URL')
   return checkout.url
@@ -142,4 +143,24 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
     .onConflictDoUpdate({ target: schema.subscription.subscriptionId, set: record })
   trackEvent('subscription_updated', { org_id: orgId, status: sub.status, cancel_at_period_end: sub.cancel_at_period_end })
   return orgId
+}
+
+/**
+ * Daily: mirrors every subscription that is not canceled again. Repairs a missed webhook
+ * and two webhooks that wrote out of order (one fetched before a cancel, wrote after it).
+ */
+export async function reconcileSubscriptions(): Promise<{ synced: number; failed: number }> {
+  const rows = await getDb().query.subscription.findMany({ where: { status: { in: [...EXISTING_STATUSES] } } })
+  let synced = 0
+  let failed = 0
+  for (const row of rows) {
+    try {
+      await syncSubscription({ accountId: row.stripeAccountId, subscriptionId: row.subscriptionId })
+      synced++
+    } catch (cause) {
+      failed++
+      captureException(cause, { tags: { handler: 'reconcileSubscriptions' } })
+    }
+  }
+  return { synced, failed }
 }

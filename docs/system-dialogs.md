@@ -196,6 +196,43 @@ Services" alert came instead, and `key esc` closed it.
 
 Do not use the Weather widget as a harmless test target.
 
+### Pay with Apple Pay
+
+**Apple Pay paid with AssistiveTouch confirm and the passcode.** iPhone 14 Pro, iOS 26.6.2,
+a Nexi web checkout in an app. Face ID never sees a face, and the side-button double
+press cannot be sent over HID. This setup needs one person once:
+
+| Setting (Accessibility > Touch > AssistiveTouch) | Why |
+| --- | --- |
+| **Confirm with AssistiveTouch** ON (Side Button page) | replaces the side-button double press. Turning it on asks for one physical double press |
+| **Always Show Menu** ON | with it off the round button is hidden while the mouse is connected, so the menu cannot open |
+| **Customize Top Level Menu** with 2+ icons, one **Device** | with only 1 icon, tapping the button runs that icon (Home) instead of opening the menu |
+
+Then each payment is:
+
+```text
+Apple Pay sheet ──> tap AT button ──> Device ──> More ──> Confirm Apple Pay
+   ──> Face ID fails ──> "Pay with Passcode" ──> repeat AT > Device > More > Confirm Apple Pay
+   ──> passcode keypad (hidden from USB capture) ──> tap the 4 digits ──> "Done", page goes on
+```
+
+- **The keypad is invisible to USB capture.** `type --stdin` typed nothing into it; tapping
+  the digits at the standard keypad positions worked (positions read once from a native PNG).
+- **Native screenshots are slow** here (the photo library timed out after 20 s each). Use
+  them once to learn positions, then only USB screenshots.
+- **Each cancelled sheet voided the order.** The checkout made a new order number each
+  retry; check it before paying so a payment is never made twice.
+
+**Passwords autofill did not open over capture.** In a Safari web view, the field's
+edit menu > AutoFill > Passwords showed nothing in USB capture, and blind passcode taps
+landed on the page. With the Bluetooth keyboard connected there is no software keyboard,
+so no QuickType key suggestion either (unplugging USB closes the link and brings it back). Not solved.
+
+**No USB setting exists for these switches.** Lockdown `com.apple.Accessibility` has only the
+7 Finder keys (`AssistiveTouchEnabledByiTunes`, VoiceOver, Zoom, Invert, Mono Audio,
+Closed Captions, Speak Auto-text). The AX audit service (`pymobiledevice3 developer
+accessibility settings`) needs a mounted developer image and was not tested.
+
 ### Other input paths
 
 | Method | Scope | Limit |

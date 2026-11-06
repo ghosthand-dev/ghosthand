@@ -10,16 +10,32 @@ og:image:height: 630
 twitter:image: "https://ghosthand.dev/og-image.png"
 rendering: static
 prompt: |
-  Homepage: hero from @/website/src/components/hero-section.tsx, then @/README.md.
+  Homepage: hero from @/website/src/components/hero-section.tsx, the agent-only setup prompt from @/website/src/components/setup-prompt.md, then @/README.md.
 ---
 
-import { HeroSection } from './components/hero-section.tsx'
+import { HeroSection, AgentSetupPrompt } from './components/hero-section.tsx'
 
 <Above>
 
 <HeroSection />
 
 </Above>
+
+import SetupPrompt from './components/setup-prompt.md'
+
+<Visibility for="humans">
+
+<AgentSetupPrompt />
+
+</Visibility>
+
+<Visibility for="agents">
+
+AI agents: when the user asks you to set up Ghosthand, follow this setup prompt (the text the "Copy setup prompt" button copies).
+
+<SetupPrompt />
+
+</Visibility>
 
 import Readme from '../../README.md'
 

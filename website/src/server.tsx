@@ -27,7 +27,7 @@ import { stripeWebhookApp } from './stripe-webhook.ts'
 import { getAuth, getBaseUrl, getDb, getMcpResource, getPersonalOrg, getSession, listMacSessions } from './db.ts'
 import { entitlementFor, isProStatus } from './lib/billing.ts'
 import { DAEMON_INVITATIONS_URL, DAEMON_REPO_URL, reconcileSourceAccess } from './lib/github.ts'
-import { subscribeRedirectUrl } from './lib/stripe.ts'
+import { reconcileSubscriptions, subscribeRedirectUrl } from './lib/stripe.ts'
 import { approveDevice, consentMcp, denyDevice, removeDevice, removeSourceAccessAction, requestSourceAccessAction, signOutMac } from './actions.tsx'
 // wrangler main is this file, so holocron's auto-import of a root style.css never runs.
 import './globals.css'
@@ -349,8 +349,13 @@ export default {
     const route = pathname.startsWith('/macs/') ? '/macs/:mac/*' : pathname
     return startSpan({ name: `${request.method} ${route}` }, () => routeHubRequest(request))
   },
-  // Daily: fixes drift between Pro orgs and the daemon repo's read-only collaborators.
+  // Daily: mirrors Stripe subscriptions again, then fixes drift between Pro orgs and the
+  // daemon repo's read-only collaborators (which reads those subscriptions).
   async scheduled() {
+    await startSpan({ name: 'cron reconcileSubscriptions' }, async () => {
+      const { synced, failed } = await reconcileSubscriptions()
+      console.log(`subscriptions: ${synced} synced, ${failed} failed`)
+    })
     await startSpan({ name: 'cron reconcileSourceAccess' }, async () => {
       const { granted, revoked } = await reconcileSourceAccess()
       console.log(`source access: ${granted} granted, ${revoked} revoked`)

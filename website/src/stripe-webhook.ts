@@ -44,14 +44,21 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
     })()
     if (!subscriptionId) return new Response('ignored')
 
+    let orgId: string | null
     try {
-      const orgId = await syncSubscription({ accountId, subscriptionId })
-      // Pro gives read access to the daemon repo; cancel takes it away at period end.
-      if (orgId) await syncSourceAccess(orgId, request.signal)
+      orgId = await syncSubscription({ accountId, subscriptionId })
     } catch (cause) {
       console.error(`Stripe webhook ${event.type} failed:`, cause)
       captureException(cause, { tags: { route: '/api/stripe/webhook', stripe_event: event.type } })
       return new Response('sync failed', { status: 500 })
+    }
+    // Pro gives read access to the daemon repo; cancel takes it away at period end. A GitHub
+    // failure still answers 200: Stripe retrying cannot fix GitHub, the daily cron does, and
+    // failing webhooks for days would make Stripe disable the endpoint.
+    if (orgId) {
+      await syncSourceAccess(orgId, request.signal).catch((cause) => {
+        captureException(cause, { tags: { route: '/api/stripe/webhook', handler: 'syncSourceAccess' } })
+      })
     }
     return new Response('ok')
   })

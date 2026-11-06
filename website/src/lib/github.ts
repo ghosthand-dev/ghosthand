@@ -14,7 +14,7 @@ import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import { getDb } from '../db.ts'
 import { entitlementFor } from './billing.ts'
-import { trackEvent } from '../telemetry.ts'
+import { captureException, trackEvent } from '../telemetry.ts'
 
 export const DAEMON_REPO = 'ghosthand-dev/ghosthand-daemon'
 export const DAEMON_REPO_URL = `https://github.com/${DAEMON_REPO}`
@@ -89,9 +89,10 @@ async function revoke(githubUserId: number, signal?: AbortSignal): Promise<void>
   }
 }
 
-/** The GitHub account ids requested by any org, and those of them with a Pro org. */
-async function requestedAccounts(): Promise<{ managed: Set<number>; wanted: Set<number> }> {
-  const requests = await getDb().query.sourceAccess.findMany({ with: { org: { with: { subscriptions: true } } } })
+/** The GitHub account ids requested by any org (but `exceptOrgId`), and those of them with a Pro org. */
+async function requestedAccounts({ exceptOrgId }: { exceptOrgId?: string } = {}): Promise<{ managed: Set<number>; wanted: Set<number> }> {
+  const rows = await getDb().query.sourceAccess.findMany({ with: { org: { with: { subscriptions: true } } } })
+  const requests = rows.filter((r) => r.orgId !== exceptOrgId)
   const now = new Date()
   const wanted = requests.filter((r) => r.org && entitlementFor({ subscriptions: r.org.subscriptions, now }).sourceAccess)
   return { managed: new Set(requests.map((r) => r.githubUserId)), wanted: new Set(wanted.map((r) => r.githubUserId)) }
@@ -99,10 +100,12 @@ async function requestedAccounts(): Promise<{ managed: Set<number>; wanted: Set<
 
 /**
  * Grants or revokes one GitHub account. Several orgs can request the same account, so it
- * keeps access while any of them is Pro.
+ * keeps access while any of them is Pro. `exceptOrgId` ignores the request of an org that is
+ * about to drop it: the revoke runs while its row still exists, so a failed revoke leaves the
+ * row (and the daily cron) able to retry instead of an unmanaged collaborator.
  */
-async function syncGithubAccount(githubUserId: number, signal?: AbortSignal): Promise<'granted' | 'revoked'> {
-  const { wanted } = await requestedAccounts()
+async function syncGithubAccount({ githubUserId, exceptOrgId, signal }: { githubUserId: number; exceptOrgId?: string; signal?: AbortSignal }): Promise<'granted' | 'revoked'> {
+  const { wanted } = await requestedAccounts({ exceptOrgId })
   if (wanted.has(githubUserId)) {
     await grant(githubUserId, signal)
     return 'granted'
@@ -115,7 +118,7 @@ async function syncGithubAccount(githubUserId: number, signal?: AbortSignal): Pr
 export async function syncSourceAccess(orgId: string, signal?: AbortSignal): Promise<void> {
   const request = await getDb().query.sourceAccess.findFirst({ where: { orgId } })
   if (!request) return
-  const result = await syncGithubAccount(request.githubUserId, signal)
+  const result = await syncGithubAccount({ githubUserId: request.githubUserId, signal })
   trackEvent(result === 'granted' ? 'source_access_granted' : 'source_access_revoked', { org_id: orgId })
 }
 
@@ -130,27 +133,29 @@ export async function reconcileSourceAccess(signal?: AbortSignal): Promise<{ gra
   const invitations = await githubList<Invitation>(`/repos/${DAEMON_REPO}/invitations`, signal)
   const present = new Set([...collaborators.map((c) => c.id), ...invitations.flatMap((i) => (i.invitee ? [i.invitee.id] : []))])
 
-  let revoked = 0
-  for (const id of present) {
-    if (!managed.has(id) || wanted.has(id)) continue
-    await revoke(id, signal)
-    console.log(`source access: revoked GitHub account ${id}`)
-    revoked++
+  // One failing account (deleted on GitHub, a 5xx) must not stop the others.
+  const each = async (ids: number[], action: typeof grant): Promise<number> => {
+    let done = 0
+    for (const id of ids) {
+      try {
+        await action(id, signal)
+        done++
+      } catch (cause) {
+        captureException(cause, { tags: { handler: 'reconcileSourceAccess' } })
+      }
+    }
+    return done
   }
-  let granted = 0
-  for (const id of wanted) {
-    if (present.has(id)) continue
-    await grant(id, signal)
-    console.log(`source access: invited GitHub account ${id}`)
-    granted++
-  }
+  const revoked = await each([...present].filter((id) => managed.has(id) && !wanted.has(id)), revoke)
+  const granted = await each([...wanted].filter((id) => !present.has(id)), grant)
   return { granted, revoked }
 }
 
-/** Saves the org's GitHub account; the previous one loses access unless another Pro org wants it. */
+/** Saves the org's GitHub account; the previous one loses access first, unless another Pro org wants it. */
 export async function requestSourceAccess({ orgId, user, signal }: { orgId: string; user: GithubUser; signal?: AbortSignal }): Promise<void> {
   const db = getDb()
   const previous = await db.query.sourceAccess.findFirst({ where: { orgId } })
+  if (previous && previous.githubUserId !== user.id) await syncGithubAccount({ githubUserId: previous.githubUserId, exceptOrgId: orgId, signal })
   await db.insert(schema.sourceAccess)
     .values({ orgId, githubUserId: user.id, githubLogin: user.login })
     .onConflictDoUpdate({
@@ -158,15 +163,15 @@ export async function requestSourceAccess({ orgId, user, signal }: { orgId: stri
       set: { githubUserId: user.id, githubLogin: user.login, requestedAt: new Date() },
     })
   trackEvent('source_access_requested', { org_id: orgId })
-  if (previous && previous.githubUserId !== user.id) await syncGithubAccount(previous.githubUserId, signal)
   await syncSourceAccess(orgId, signal)
 }
 
-/** Dashboard "Remove": forgets the account; it loses access unless another Pro org wants it. */
+/** Dashboard "Remove": revokes the account unless another Pro org wants it, then forgets it. */
 export async function removeSourceAccess({ orgId, signal }: { orgId: string; signal?: AbortSignal }): Promise<void> {
   const db = getDb()
-  const [removed] = await db.delete(schema.sourceAccess).where(orm.eq(schema.sourceAccess.orgId, orgId)).returning()
-  if (!removed) return
-  await syncGithubAccount(removed.githubUserId, signal)
+  const request = await db.query.sourceAccess.findFirst({ where: { orgId } })
+  if (!request) return
+  await syncGithubAccount({ githubUserId: request.githubUserId, exceptOrgId: orgId, signal })
+  await db.delete(schema.sourceAccess).where(orm.eq(schema.sourceAccess.orgId, orgId))
   trackEvent('source_access_revoked', { org_id: orgId })
 }

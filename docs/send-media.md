@@ -16,8 +16,8 @@ iPhone Safari ──open link, tap Save──> iOS share sheet ──Save Video 
 
 | File | Way | Why |
 | --- | --- | --- |
-| Photo or video, up to 100 MB | `ghosthand upload`, Safari **Save** > **Save Video** | One command, no install, no server on the Mac |
-| Offline, or over 100 MB | USB copy into VLC, then Files **Save Video** | No network; needs VLC |
+| Photo or video, up to 2 GB | `ghosthand upload`, Safari **Save** > **Save Video** | One command, no install, no server on the Mac |
+| Offline, or over 2 GB | USB copy into VLC, then Files **Save Video** | No network; needs VLC |
 
 ## Upload, then save from Safari
 
@@ -30,7 +30,7 @@ ghosthand upload clip.mp4
 ```
 
 - **Needs this Mac signed in** to ghosthand.dev with a trial or plan, like `acquire`. No lease: the upload does not touch the iPhone.
-- **At most 100 MB.** The link expires after 1 day. Anyone with the link can download the file.
+- **At most 2 GB.** The link expires after 1 day. Anyone with the link can download the file.
 - **Keep the extension** in the file name (`.mp4`, `.jpg`): it tells iOS the type.
 - MCP: the `upload` tool takes `path` (a file on the daemon's Mac), or `data` (base64) with `name`.
 

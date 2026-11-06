@@ -23,7 +23,7 @@ does not touch the iPhone. Then open the link in Safari (examples above):
 - Direct file links download the file. Use this page to save it through iOS's share sheet.
 - Needs this Mac signed in to ghosthand.dev (like acquire). The link works on any
   iPhone, also one plugged into another Mac.
-- At most 100 MB. The link expires after 1 day; anyone with it can download the file.
+- At most 2 GB. The link expires after 1 day; anyone with it can download the file.
 - The file name keeps its extension, which tells iOS the type (clip.mp4, a.jpg).
 - MCP: send data (base64, up to about 3 MB) and name (e.g. clip.mp4), never a Mac path.
 - Offline, or bigger files: `file push` into VLC, see https://ghosthand.dev/docs/send-media

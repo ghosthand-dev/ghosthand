@@ -9,6 +9,7 @@
 //          ── POST /api/cli/tokens ───────▶ new API token for scripts  (Bearer token)
 //          ── DELETE /api/cli/tokens/:id ─▶ revokes an API token       (Bearer token)
 //          ── POST /api/cli/upload ───────▶ R2 file + share page URL   (Bearer session or API token, uploads.ts)
+//          ── /api/cli/upload/multipart ──▶ same for files over 100 MB, in parts
 //          script ─ POST /api/cli/upload ─▶ same, straight from another computer with an API token
 //          ── POST /api/cli/tasks ──────────▶ phone task, AI SDK UI message stream (task.ts)
 //          ── GET  /api/cli/tasks/:id/stream ▶ the running turn again, or 204
@@ -24,7 +25,7 @@ import * as schema from 'db/schema'
 import pg from 'pg'
 import { getAuth, getBaseUrl, getCallerUserId, getDb, getPersonalOrg, getSessionStrict, type Org } from './db.ts'
 import { entitlementFor, leaseDecision, taskDecision, taskMonthStart, type DeviceRef, type LeaseDecision } from './lib/billing.ts'
-import { createUpload } from './uploads.ts'
+import { abortMultipartUpload, completeMultipartUpload, createUpload, parseUploadId, startMultipartUpload, uploadPart } from './uploads.ts'
 import { getTask, TASK_LEASE_PATTERN } from './task.ts'
 import { TaskPhone } from './task-agent.ts'
 import { trackEvent } from './telemetry.ts'
@@ -215,6 +216,54 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
       // The Mac's session, or an API token from a script on another computer: the file never touches the Mac.
       const { userId } = await requireCaller(request)
       return createUpload({ request, name: query.name, userId })
+    },
+  })
+  // Files over the 100 MB request body limit, in parts (uploads.ts).
+  .route({
+    method: 'POST',
+    path: '/upload/multipart',
+    detail: { hide: true },
+    query: z.object({ name: z.string().min(1).max(255), size: z.coerce.number().int().positive() }),
+    async handler({ request, query }) {
+      const { userId } = await requireCaller(request)
+      return startMultipartUpload({ request, name: query.name, size: query.size, userId })
+    },
+  })
+  .route({
+    method: 'PUT',
+    path: '/upload/multipart/:id/:part',
+    detail: { hide: true },
+    query: z.object({ uploadId: z.string().min(1) }),
+    async handler({ request, params, query }) {
+      await requireCaller(request)
+      const partNumber = z.coerce.number().int().positive().safeParse(params.part)
+      if (!partNumber.success) throw json({ message: 'invalid part number' }, { status: 400 })
+      return uploadPart({ request, id: parseUploadId(params.id), uploadId: query.uploadId, partNumber: partNumber.data })
+    },
+  })
+  .route({
+    method: 'POST',
+    path: '/upload/multipart/:id/complete',
+    detail: { hide: true },
+    request: z.object({
+      uploadId: z.string().min(1),
+      parts: z.array(z.object({ partNumber: z.number().int().positive(), etag: z.string().min(1) })).min(1),
+    }),
+    async handler({ request, params }) {
+      const { userId } = await requireCaller(request)
+      const { uploadId, parts } = await request.json()
+      return completeMultipartUpload({ id: parseUploadId(params.id), uploadId, parts, userId })
+    },
+  })
+  .route({
+    method: 'DELETE',
+    path: '/upload/multipart/:id',
+    detail: { hide: true },
+    query: z.object({ uploadId: z.string().min(1) }),
+    async handler({ request, params, query }) {
+      await requireCaller(request)
+      await abortMultipartUpload({ id: parseUploadId(params.id), uploadId: query.uploadId })
+      return { ok: true }
     },
   })
   .route({

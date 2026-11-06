@@ -19,8 +19,9 @@
   // Local: CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE (Sigillo dev) overrides
   // localConnectionString; the build's prerender only needs one to start, it runs no queries.
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "8a9f08518c124088bf4570b21900dd55", "localConnectionString": "postgres://ghosthand:local@localhost:5432/ghosthand" }],
-  // `ghosthand upload` files. Bucket lifecycle rule deletes objects after 1 day:
+  // `ghosthand upload` files. Bucket lifecycle rules delete objects and unfinished multipart uploads after 1 day:
   // wrangler r2 bucket lifecycle add <bucket> expire-1-day --expire-days 1
+  // wrangler r2 bucket lifecycle add <bucket> abort-multipart-1-day --abort-multipart-days 1
   "r2_buckets": [
     { "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" },
     { "binding": "RELEASES", "bucket_name": "ghosthand-releases" }

@@ -29,7 +29,7 @@ other command meanwhile: screenshots, screentext and taps keep working.
   relative path absolute against its own folder. The folder must exist and the file
   must not: a recording never overwrites a file. Remote HTTP cannot choose a Mac path.
 - MCP: omit path. The daemon owns a temporary file; record-stop returns an embedded
-  resource blob up to 16 MiB, or a 1-day upload link up to 100 MB. Larger files need
+  resource blob up to 16 MiB, or a 1-day upload link up to 2 GB. Larger files need
   local collection on the Mac. Upload failures keep the recording for another record-stop
   while the lease is active. Delivery, a new recording or lease end removes temporary files.
 - It stops by itself, and the file is complete, after --max-duration, when the

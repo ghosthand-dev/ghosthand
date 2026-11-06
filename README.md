@@ -644,7 +644,7 @@ ghosthand tap -l 42 --text "Save Video"
 ```
 
 - **Needs the account** (signed in, any plan). No lease: the upload does not touch the iPhone.
-- **At most 100 MB.** Anyone with the link can download the file for 1 day.
+- **At most 2 GB.** Anyone with the link can download the file for 1 day.
 - **Offline or bigger:** `file push` into VLC, then Files > Share > Save Video.
 
 Full steps and why there is no USB-only path: [docs/send-media.md](docs/send-media.md), also at https://ghosthand.dev/docs/send-media.

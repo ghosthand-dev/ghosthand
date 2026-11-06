@@ -101,6 +101,29 @@ Then press **Try again** in setup, or run `control xctest` again.
 XCTest cannot type a passcode. Set **Settings > Display & Brightness > Auto-Lock > Never**
 while agents use the iPhone.
 
+## Limitations
+
+**A new runner session can ask for the passcode.** Since iOS 15, iOS can ask for the
+passcode (or Touch ID) to allow UI automation when WebDriverAgent starts, even with
+Enable UI Automation already on. This is an Apple security rule; no XCTest tool can skip
+it ([appium#19363](https://github.com/appium/appium/issues/19363)).
+
+```
+runner exit, reboot, replug ───────────> WebDriverAgent starts ──> iOS asks for passcode
+                                                                    │
+                     nobody types it ──> "Timed out while enabling automation mode"
+```
+
+- **When:** only at runner start, never on each command. A daemon restart or update does
+  not start the runner again (see Runner job below). Starts happen after the runner exits,
+  a reboot or a replug. Appium users report the prompt coming back after hours or days
+  with no clear cause. Apple does not document how often.
+- **A locked iPhone fails the same way.** The runner cannot start until a person unlocks it.
+- **Unattended use:** turn the iPhone passcode off. This is the only workaround Appium
+  maintainers give. It also turns off Touch ID or Face ID, Apple Pay and iCloud Keychain.
+- With a passcode, someone must be at the iPhone each time the runner starts. Bluetooth
+  mode has no such limit: it types the passcode itself (`unlock`).
+
 ## Commands in XCTest mode
 
 All commands work the same, with these differences:
@@ -114,8 +137,9 @@ All commands work the same, with these differences:
 | `screenshot`, `screentext`                        | XCTest screenshots; `--native` is not needed                                 |
 | `lock`, `unlock`, `mute`, `unmute`                | Error `unsupported-in-mode`: a locked iPhone cannot be unlocked in this mode |
 
-`ghosthand list` shows `(xctest running)` instead of the Bluetooth state. After a daemon
-restart the runner is `stopped`; the next command starts it again (about 15 s).
+`ghosthand list` shows `(xctest running)` instead of the Bluetooth state. The runner keeps
+running through daemon restarts and updates, and the new daemon uses it. `control
+bluetooth` stops it. A runner that exited starts again on the next command (about 15 s).
 
 ## Troubleshooting
 
@@ -125,6 +149,7 @@ restart the runner is `stopped`; the next command starts it again (about 15 s).
 | `Developer Mode`                                        | Step 2 above                                              |
 | `not been explicitly trusted`, `invalid code signature` | Trust the developer (step 4)                              |
 | `UI Automation`                                         | Settings > Developer > Enable UI Automation               |
+| `Timed out while enabling automation mode`              | Unlock the iPhone and enter the passcode if asked ([Limitations](#limitations)) |
 | `maximum number of apps`                                | A free account signs 3 apps per iPhone: delete an old one |
 | Stopped working after a week                            | `ghosthand control -l 42 xctest --rebuild`                |
 
@@ -153,8 +178,13 @@ CLI / MCP ──> daemon ──> Controller (leases, OCR, waitText, settle) ─�
 - **One state per iPhone.** The mode lives in `~/.ghosthand/state.db`, keyed by the USB
   UDID only: a new or deleted screen capture match keeps it, and setup can choose XCTest
   before screen capture lists the iPhone. Leases, OCR and waits do not change.
-- **Runner ownership.** A supervisor watches a pipe held by the daemon. If the daemon exits
-  or crashes, it stops the subprocess group. Builds stop when the request is cancelled.
+- **Runner job.** `xcodebuild test-without-building` runs as its own launchd job,
+  `dev.ghosthand.xctest.<udid>` (plist in `~/.ghosthand/xctest/`, not a login item), so a
+  daemon restart, update or crash leaves it running. The next daemon uses it when it runs
+  the current build for the iPhone's team, else stops it. `control bluetooth`, a new team
+  and `control xctest` stop it (`launchctl bootout`). It ends at logout.
+- **Tool ownership.** Builds and short tools run under a supervisor that watches a pipe
+  held by the daemon: if the daemon exits or crashes, it stops their process group.
 - **Coordinates.** Screenshot points become fractions of the last XCTest screenshot (its
   native pixels), then screen points for WebDriverAgent (pixels / `scale` from
   `GET /wda/screen`, read once). No USB frame is needed, so input works while capture is
@@ -190,9 +220,15 @@ Projects read while building this (October 2026):
 
 Seen on an iPhone SE2 (iOS 18.6.2):
 
-- The runner sometimes exits (`Testing failed ... connection was invalidated`) about 100 s
-  after start, with no crash report; not tied to one gesture. The next command restarts it
-  (5-18 s). The failed command says so (`xctest-unavailable`).
+- The runner exits when Xcode loses its CoreDevice connection to the iPhone: xcresult says
+  `connection was invalidated` or `tunnel connection failed`, with no crash report. On
+  12 October this came 10-170 s after start, 13 times, during the first development day on
+  another SE2; since then runs lasted 5 h and 47 h. Cause unknown: 8 USB capture
+  open/close cycles did not kill a running runner (6 November). The next command
+  restarts it (5-18 s, maybe a passcode prompt); the failed command says `xctest-unavailable`.
+- Runner starts on this SE2 showed **Enter iPhone Passcode for "XCTest"** (Enable UI
+  Automation), even while unlocked; each start timed out after about 65 s until a person
+  typed it. The next start, hours later, did not ask.
 - A screenshot taken right after a gesture can show the status bar clock as 9:41 (iOS
   overrides it while a UI test runs; USB capture shows it too) and, rarely, a screen
   from many minutes earlier.

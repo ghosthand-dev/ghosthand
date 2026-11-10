@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "HTTP API to control an iPhone from code"
 sidebarTitle: "Overview"
-description: "Drive a real iPhone over HTTP from your own scripts, on any computer: get the tunnel URL and an API token, take a lease, read the screen, tap and type, then release it."
+description: "Drive a real iPhone over HTTP from your own scripts on any computer. Get the tunnel URL and an API token, take a lease, read the screen, tap and type, then release the lease."
 icon: lucide:compass
 prompt: |
   Write the API overview from @/daemon/Sources/ghosthand/openapi.yaml, @/daemon/Sources/ghosthand/api.swift,
@@ -12,7 +12,7 @@ prompt: |
 ---
 
 The **ghosthand daemon** serves every CLI command as an HTTP route. The CLI and the MCP
-server are thin clients of this API, so anything they do, your scripts can do too, from
+server are thin clients of this API, so your scripts can do anything they do, from
 **any computer**.
 
 ```diagram
@@ -29,9 +29,9 @@ ghosthand tunnel url                          # https://ghosthand.dev/macs/studi
 ghosthand tunnel url --new-token             # prints export GHOSTHAND_URL=... and export GHOSTHAND_TOKEN=...
 ```
 
-Copy the two lines to the other computer or your script's secrets. The token is shown once.
-The `ghosthand` CLI does not need them: on another Mac, sign that Mac in and `ghosthand list`
-shows the iPhones of every Mac of the account.
+Copy the two lines to the other computer or your script's secrets. The command prints the
+token only once. The `ghosthand` CLI does not need them. On another Mac, sign that Mac in,
+and `ghosthand list` shows the iPhones of every Mac of the account.
 
 **2. In your script**, on any computer, send the token as a bearer header:
 
@@ -91,7 +91,7 @@ There are two ways to reach a daemon:
 to ghosthand.dev, so it works behind NAT and on a laptop. `ghosthand daemon status` shows
 the URL.
 
-**API tokens belong to your account** and work for every Mac of it. Manage them on a Mac:
+**API tokens belong to your account** and work for every Mac on the account. Manage them on a Mac:
 
 ```bash
 ghosthand tunnel url --new-token --name ci    # create; the id goes to stderr
@@ -105,7 +105,7 @@ password. Only the Mac can create or revoke tokens, so a leaked token cannot mak
 </Warning>
 </Aside>
 
-**Find your Macs:** `GET https://ghosthand.dev/macs` returns every Mac of the account and
+**Find your Macs.** `GET https://ghosthand.dev/macs` returns every Mac of the account and
 whether it is online. The slug in the URL is the name in that list.
 
 ```bash
@@ -113,18 +113,19 @@ curl https://ghosthand.dev/macs -H "Authorization: Bearer $GHOSTHAND_TOKEN"
 # {"macs":[{"slug":"studio","name":"Studio","online":true},{"slug":"laptop","name":"Laptop","online":false}]}
 ```
 
-**Limits of the tunnel:**
+The tunnel has these **limits**:
 
-- A request body is at most **20 MB**. For bigger files use `ghosthand upload`.
-- A Mac that is off or signed out answers `503 mac-offline`. A daemon that is restarting
-  is waited for up to 5 seconds.
-- Browser requests (`Origin` or `Sec-Fetch-Site` headers) get 403 and no CORS headers are
-  sent. Call it from a server or a native client.
+- A request body is at most **20 MB**. For bigger files, use `ghosthand upload`.
+- A Mac that is off or signed out answers `503 mac-offline`. If the daemon is restarting,
+  ghosthand.dev waits up to 5 seconds for it.
+- Browser requests (requests with an `Origin` or `Sec-Fetch-Site` header) get 403, without
+  CORS headers. Call the tunnel from a server or a native client.
 
 <Aside>
 <Info>
-**MCP agents** use `https://ghosthand.dev/mcp` (OAuth, same Google account) instead. It needs
-no token, and its lease ids carry the Mac, e.g. `studio:42`, because MCP has no URL per Mac.
+**MCP agents** use `https://ghosthand.dev/mcp` instead and sign in with OAuth, with the same
+Google account. It needs no token, and its lease ids carry the Mac, for example `studio:42`,
+because MCP has no URL per Mac.
 </Info>
 </Aside>
 
@@ -135,7 +136,7 @@ shows the same request over the unix socket, and the **CLI** tab shows the match
 ## Leases
 
 Screen and input routes run on a **lease**, so two agents never drive one iPhone at the
-same time. `POST /v1/leases` returns an id; every route under `/v1/leases/{lease}/` then
+same time. `POST /v1/leases` returns an id. Every route under `/v1/leases/{lease}/` then
 runs on that iPhone.
 
 ```diagram
@@ -152,13 +153,13 @@ runs on that iPhone.
   `device-leased`. The detail says who holds it and why, so you can give up or wait.
 - **Waiting.** Send `waitSeconds` to retry every second instead of failing.
 - **Force.** `force: true` ends the other lease. Use it only when its holder is gone.
-- **AssistiveTouch.** Acquire turns it on when it is off. Release turns it off again, only when acquire turned it on.
+- **AssistiveTouch.** Acquire turns it on when it is off. Release turns it off again only if acquire turned it on.
 
 <Aside>
 <Info>
-**Through the tunnel the id carries the Mac**, e.g. `studio:42`, like over remote MCP and
+**Through the tunnel, the id carries the Mac**, for example `studio:42`, like over remote MCP and
 in the CLI for an iPhone on another Mac. On the Mac's own URL the plain number works too.
-On the unix socket an iPhone of that Mac gets `42`. Ids only increase, also across daemon
+On the unix socket an iPhone of that Mac gets `42`. Ids only increase, even across daemon
 restarts. A **`label`** is display text, not a way to resume a lease.
 </Info>
 </Aside>
@@ -190,8 +191,9 @@ curl "$GHOSTHAND_URL/v1/leases/42/tap?waitText=About&screentext=true" \
 
 <Aside>
 <Warning>
-An error from these steps (for example **`wait-text-timeout`**) means the input was
-sent. Read the screen before you decide what to do. Never repeat the input blindly.
+An error from these steps (for example **`wait-text-timeout`**) means that the daemon
+already sent the input. Read the screen before you decide what to do. Never repeat the
+input before you read the screen.
 </Warning>
 </Aside>
 
@@ -216,14 +218,14 @@ data: {"message":"tapped 207,448","logs":["checking Bluetooth device 1A2B3C4D by
 
 - The stream ends with **`result`** or **`error`** (a Problem). The HTTP status is always
   200, so read the last event.
-- A `: ping` comment line comes every second.
+- The daemon sends a `: ping` comment line every second.
 - When you close the connection, the daemon stops the operation before its next Bluetooth
   action. Without the header, a disconnect does not stop it.
 
 ## Errors
 
 Errors are always `application/problem+json` ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)).
-Switch on **`code`**; `detail` tells a person or an agent what to do next.
+Switch on **`code`**. The `detail` field tells a person or an agent what to do next.
 
 ```json
 {
@@ -245,7 +247,7 @@ Switch on **`code`**; `detail` tells a person or an agent what to do next.
 | `no-device`              | 404    | No trusted iPhone on USB. The detail says what USB sees.    |
 | `text-not-found`         | 404    | No OCR line matches the tap `text`.                         |
 | `no-recording`           | 404    | Nothing was recorded since the last stop.                   |
-| `multiple-devices`       | 409    | Several iPhones are connected; pass `device`.               |
+| `multiple-devices`       | 409    | Several iPhones are connected. Pass `device`.               |
 | `device-locked`          | 409    | The iPhone needs its passcode.                              |
 | `device-leased`          | 409    | Another lease holds the iPhone.                             |
 | `lock-failed`            | 409    | The lock shortcut did not lock the iPhone.                  |

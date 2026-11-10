@@ -40,7 +40,7 @@ next step for you, so you never need a terminal:
 2. Sign in with Google in the Ghosthand window, with the same account the bot uses.
 3. Plug in the iPhone, tap Trust, and pair Bluetooth. The window shows each step.
 
-Meanwhile the bot polls `setup-status` and tells you its `next` step until `ready` is true.
+Meanwhile, the bot polls `setup-status` and tells you its `next` step until `ready` is true.
 
 ## How tools map to the CLI
 
@@ -52,14 +52,14 @@ Meanwhile the bot polls `setup-status` and tells you its `next` step until `read
 | `--screenshot`, `--screentext` | `screenshot: true`, `screentext: true` (images come back as image content) |
 
 **File transfers use bytes, not Mac paths.** Remote tools cannot read or write the Mac's
-filesystem. Send files as base64 `data`; downloads return to the MCP client. Use the local
-CLI when you need to select a source or destination on the Mac.
+filesystem. Send files as base64 `data`. Downloads return to the MCP client. To pick a source
+or destination path on the Mac, use the local CLI.
 
 ## Several Macs
 
 The tools reach every Mac signed in to your account. `list` shows each iPhone under its Mac.
 When more than one Mac is online, pass `mac` (the slug from `list`) to `acquire`, `wait`,
-`setup` and `setup-status`. Leases look like `studio:42`; pass them exactly as `acquire` printed
+`setup` and `setup-status`. Leases look like `studio:42`. Pass them exactly as `acquire` printed
 them, because the prefix picks the Mac.
 
 ## Tools

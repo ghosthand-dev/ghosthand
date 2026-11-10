@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "Pricing: free for one iPhone, $99 per Mac"
 sidebarTitle: "Pricing"
-description: "ghosthand is free for one iPhone, with no time limit and 10 phone tasks per month. Pro is $99 per month per Mac: unlimited iPhones on that Mac, unlimited phone tasks, and read access to the daemon source code."
+description: "ghosthand is free for one iPhone, with no time limit and 10 phone tasks per month. Pro is $99 per month per Mac, with unlimited iPhones on that Mac, unlimited phone tasks, and read access to the daemon source code."
 icon: lucide:dollar-sign
 prompt: |
   Write the pricing page from @/website/src/lib/billing.ts, @/website/src/lib/stripe.ts,
@@ -12,9 +12,9 @@ prompt: |
   rules, source access, and billing through Stripe.
 ---
 
-ghosthand is **free for one iPhone**, with every core feature and no time limit. **Pro is $99 per month per Mac**: your agents can use every iPhone plugged into a paid Mac.
+ghosthand is **free for one iPhone**, with every core feature and no time limit. **Pro is $99 per month per Mac**, and your agents can use every iPhone plugged into a paid Mac.
 
-You can subscribe at any time, before you reach a limit: **[Subscribe to Pro](/subscribe)**. The link signs you in with Google if needed, then opens Stripe Checkout.
+You can **[subscribe to Pro](/subscribe)** at any time, before you reach a limit. The link signs you in with Google if needed, then opens Stripe Checkout.
 
 ## Plans
 
@@ -34,11 +34,11 @@ Prices are in USD, or the same amount in EUR. A company with 3 Macs full of iPho
 
 ## How iPhones and Macs are counted
 
-**Devices bind on their first lease.** ghosthand checks only when an agent takes a lease (`acquire` or `wait`), so running work is never cut off.
+**Devices bind on their first lease.** ghosthand checks only when an agent takes a lease (`acquire` or `wait`), so it never stops work that is already running.
 
-- **Free:** the first iPhone your agents lease becomes your free iPhone. It works on any Mac. Another iPhone fails with `subscription-required`, and the error names your free iPhone.
-- **Pro:** the subscription quantity is the number of paid Macs. The first Macs that lease fill the paid slots, and every iPhone on a paid Mac works. Other Macs can still use the free iPhone.
-- **Switching:** the [dashboard](/dashboard) lists the free iPhone and the paid Macs. **Remove** one and the next lease binds again.
+- **Free.** The first iPhone your agents lease becomes your free iPhone. It works on any Mac. Another iPhone fails with `subscription-required`, and the error names your free iPhone.
+- **Pro.** The subscription quantity is the number of paid Macs. The first Macs that lease fill the paid slots, and every iPhone on a paid Mac works. Other Macs can still use the free iPhone.
+- **Switching.** The [dashboard](/dashboard) lists the free iPhone and the paid Macs. After you **Remove** one, the next lease binds again.
 - **People are never limited.** The control plane preview and Take Control need no lease.
 
 The Mac sends a one-way hash of the iPhone and Mac ids, never the ids themselves, plus their names for the dashboard.
@@ -51,19 +51,19 @@ ghosthand account   # who is signed in, the plan and the subscribe link
 
 **A phone task is one prompt** to the agent on ghosthand.dev: one `ghosthand task` command, one `task` MCP call or one message in the control plane chat. A follow-up prompt to the same task counts again, because each prompt runs the model.
 
-Free includes **10 phone tasks per calendar month** (UTC); the count resets on the 1st. The 11th fails with `subscription-required`, and the error has the [subscribe link](/subscribe). Pro has no task limit.
+Free includes **10 phone tasks per calendar month** (UTC). The count resets on the 1st. The 11th task fails with `subscription-required`, and the error has the [subscribe link](/subscribe). Pro has no task limit.
 
 ## Offline
 
-When ghosthand.dev cannot be reached, an iPhone that was allowed before **keeps working**: for 7 days on Free, and until 3 days after the paid period on Pro. An iPhone that was never checked waits until ghosthand.dev is back.
+When ghosthand.dev cannot be reached, an iPhone that was allowed before **keeps working** for 7 days on Free, and until 3 days after the end of the paid period on Pro. An iPhone that was never checked waits until ghosthand.dev is back.
 
 ## Source code
 
-**Pro includes read access to the daemon**: the Swift code and the private skills in [ghosthand-dev/ghosthand-daemon](https://github.com/ghosthand-dev/ghosthand-daemon). Everything else, the website, the docs and the npm build, is open source in [ghosthand-dev/ghosthand](https://github.com/ghosthand-dev/ghosthand).
+**Pro includes read access to the daemon repository** [ghosthand-dev/ghosthand-daemon](https://github.com/ghosthand-dev/ghosthand-daemon), which has the Swift code and the private skills. The website, the docs and the npm build are open source in [ghosthand-dev/ghosthand](https://github.com/ghosthand-dev/ghosthand).
 
 1. On the [dashboard](/dashboard), type your GitHub username under **Source code**.
 2. Accept the invite GitHub emails you. Access is read-only.
-3. When the plan ends, access ends too. Forks of the private repo are removed by GitHub.
+3. When the plan ends, access ends too. GitHub removes your forks of the private repo.
 
 The [source license](/docs/source-license) lets you and your team read, change and build the code for your own Macs while you subscribe. It does not let you publish, share or redistribute it, or build a competing product with it.
 
@@ -75,12 +75,12 @@ Features in development reach Pro subscribers first, with **no price change** fo
 </Tip>
 </Aside>
 
-- **Event log**: what each iPhone did and which agent did it, to audit work and turn past runs into skills.
-- **Secrets manager**: passcodes, Apple accounts and app logins stored per phone, typed by agents without passing through their context.
-- **Hosted skills**: ready flows like creating a TikTok or iCloud account, or warming up a new account.
+- **An event log** of what each iPhone did and which agent did it, to audit work and to turn past runs into skills.
+- **A secrets manager** for passcodes, Apple accounts and app logins per phone. Agents will type them without the secrets passing through their context.
+- **Hosted skills** with ready flows, for example to create a TikTok or iCloud account, or to warm up a new account.
 
 ## Billing
 
-**Billing runs on Stripe.** [Subscribe](/subscribe) from this page or the [dashboard](/dashboard) and pick how many Macs to pay for. After you subscribe, the same button opens the Stripe portal, where you change the number of Macs or the card, download invoices or cancel. A canceled plan stays active until the end of the paid month.
+**Billing runs on Stripe.** [Subscribe](/subscribe) from this page or the [dashboard](/dashboard) and pick how many Macs to pay for. After you subscribe, the same button opens the Stripe portal. There you can change the number of Macs or the card, download invoices, or cancel. A canceled plan stays active until the end of the paid month.
 
-Your screenshots, screen text and typed text **never reach ghosthand.dev**: the Mac sends only the plan check. See the [privacy policy](./privacy.mdx).
+ghosthand.dev **never stores** your screenshots, screen text or typed text. They pass through it only for remote MCP calls. Otherwise the Mac sends only the plan check and usage telemetry. See the [privacy policy](./privacy.mdx).

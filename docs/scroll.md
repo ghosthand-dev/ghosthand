@@ -18,7 +18,7 @@ scroll down 5
 
 ## Why not swipe
 
-**A swipe has no momentum.** It moves content by the drag length minus ~10 pt touch slop, so a long scroll needs many swipes. The wheel moves ~100 pt per tick. (Before October 10, absolute-pointer swipes never moved the finger and acted as taps on list rows; see [relative-pointer.md](relative-pointer.md#drags-on-ios-17-and-later).)
+**A swipe has no momentum.** It moves content by the drag length minus ~10 pt touch slop, so a long scroll needs many swipes. The wheel moves ~100 pt per tick. Before October 10, absolute-pointer swipes never moved the finger and acted as taps on list rows. See [relative-pointer.md](relative-pointer.md#drags-on-ios-17-and-later).
 
 ## The report
 
@@ -30,11 +30,11 @@ down:     [0,       0,     0,     0,     0,     +3,    0]     positive wheel = c
 right:    [0,       0,     0,     0,     0,     0,     +3]    horizontal, same lead-in and timing
 ```
 
-`HIDDevice.sendWheel` clamps to -127...127 (-128 is outside the logical range). The absolute report 1 has no wheel; iOS still scrolls from report 7 while it uses the absolute pointer.
+`HIDDevice.sendWheel` clamps to -127...127 (-128 is outside the logical range). The absolute report 1 has no wheel. iOS still scrolls from report 7 while it uses the absolute pointer.
 
 ## Measured (iPhone XR, iOS 18.7, Bluetooth Classic)
 
-Wait 3.5-4 s after each scroll, then compare `screentext` y positions of the same lines.
+Each run waited 3.5-4 s after the scroll, then compared the `screentext` y positions of the same lines.
 
 | settings | ticks: movement |
 | --- | --- |
@@ -46,12 +46,12 @@ Wait 3.5-4 s after each scroll, then compare `screentext` y positions of the sam
 | **value 3, 16 ms, lead 2 (shipped)**, Safari | 1: 90-97; 2: 193-199; 3: 301-304; 4: 421; 5: 520-546 |
 | same, Clock city list (UITableView) | 1: 127; 2: 248; 3: 339; 5: 580-585 |
 
-- **iOS drops the first reports of every scroll**: 2 with value 3 or more, 3 with value 1. `scroll` sends 2 lead-in reports so every tick counts.
-- **Direction**: raw positive wheel shows content further down. `up` moves the same distance back.
-- **Timing matters** (acceleration): slower reports move less. Keep 16 ms.
-- **Link state can change the scale.** One run before a daemon restart moved 380 pt for 5 ticks with value 1; after the restart the same command moved 116 pt. Value 3 with lead 2 gave the same numbers across three daemon restarts.
-- One outlier: `scroll down 2` once moved 99 pt instead of ~195.
-- Not measured: more than ~6 ticks in one call (the shift is larger than the screen, so the same lines are not on both screenshots). Acceleration makes later ticks a little longer (~110 pt at 5 ticks).
+- **iOS drops the first reports of every scroll.** It drops 2 with value 3 or more, and 3 with value 1. `scroll` sends 2 lead-in reports so every tick counts.
+- **A raw positive wheel value shows content further down.** `up` moves the same distance back.
+- **Timing changes the distance.** iOS accelerates the wheel, so slower reports move less. Keep the 16 ms spacing.
+- **Link state can change the scale.** One run before a daemon restart moved 380 pt for 5 ticks with value 1. After the restart, the same command moved 116 pt. Value 3 with lead 2 gave the same numbers across three daemon restarts.
+- In one outlier, `scroll down 2` moved 99 pt instead of ~195.
+- Calls with more than ~6 ticks are not measured. The shift is larger than the screen, so the same lines are not on both screenshots. Acceleration makes later ticks a little longer (~110 pt at 5 ticks).
 
 ## What iOS does with a wheel report
 
@@ -66,17 +66,17 @@ Wait 3.5-4 s after each scroll, then compare `screentext` y positions of the sam
    eventCount > 2                   velocity *= sqrt(16 * count) / 4   (boost from report 3)
    ```
 
-   - A gap over 150 ms stops the averaging, and one over 500 ms clears the history. Between two `scroll` calls about 300 ms pass (200 ms end wait + 100 ms pointer settle), so back-to-back calls mostly start fresh; this is why the same command usually moves about the same distance (not guaranteed: one `scroll down 2` moved 99 pt instead of ~195).
-   - The first report sees a 150 ms gap: minimum velocity, almost no movement. The boost starts at the third report. This matches the 2 reports iOS "drops", so `scroll` sends 2 lead-in reports.
-   - Faster, evenly spaced reports give a higher velocity: 50 ms moved less than 16 ms.
+   - A gap over 150 ms stops the averaging, and a gap over 500 ms clears the history. About 300 ms pass between two `scroll` calls (the 200 ms end wait plus the 100 ms pointer settle), so back-to-back calls mostly start fresh. That is why the same command usually moves about the same distance. It is not guaranteed: one `scroll down 2` moved 99 pt instead of ~195.
+   - The first report sees a 150 ms gap, so it gets the minimum velocity and almost no movement. The boost starts at the third report. This matches the 2 reports iOS "drops", so `scroll` sends 2 lead-in reports.
+   - Faster, evenly spaced reports give a higher velocity. Reports 50 ms apart moved less than reports 16 ms apart.
    - iOS 18.2 ships the same code with the same constants (500, 150, 67): [decompiled IOHIDPointerScrollFilter from the iPhone restore image](https://github.com/EthanArbuckle/iPhone17-1_18.2_22C152_Restore/blob/main/System/Library/HIDPlugins/IOHIDPointerScrollFilter.plugin/IOHIDPointerScrollFilter.m).
-   - The Bluetooth link groups reports, so iOS timestamps can differ from our 16 ms spacing. This can explain the scale change after a daemon restart.
-4. UIKit then turns the events into scrolling (not open source).
+   - The Bluetooth link groups reports, so iOS timestamps can differ from the 16 ms spacing that `scroll` sends. This can explain the scale change after a daemon restart.
+4. UIKit then turns the events into scrolling. That code is not open source.
 
-Horizontal scroll (`scroll left|right`) uses AC Pan (Consumer page 0x0238) in report 7. iPhones paired before it was added must forget the Mac and pair again: iOS keeps the report map from pairing. [HID Usage Tables](https://usb.org/document-library/hid-usage-tables-15)
+Horizontal scroll (`scroll left|right`) uses AC Pan (Consumer page 0x0238) in report 7. iOS keeps the report map from pairing, so an iPhone paired before ghosthand added AC Pan must forget the Mac and pair again. [HID Usage Tables](https://usb.org/document-library/hid-usage-tables-15)
 
 ## Other implementations
 
-- [yoyicue/glassbox picokvm_ipad_wheel.md](https://github.com/yoyicue/glassbox/blob/main/docs/reference/picokvm_ipad_wheel.md): USB gadget (PicoKVM) on iPad, wheel-only report id 2 next to an absolute report id 1: 9/9 scrolled. One tick is barely visible; use batches of 5-10+, 40 ms apart. Wheel was ignored until the gadget re-enumerated once (unexplained "activation"). Adding Wheel to the absolute report made iPad reject the device. iPhone 17: 30 ticks moved a fixed ±599 px after warm-up.
-- [egarl004/mirrordeck BluetoothHID.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/BluetoothHID.swift): the same design as ghosthand (Mac as Bluetooth Classic HID, iPhone with AssistiveTouch). Absolute report 2 without wheel, relative report 3 with Wheel (0x38, -127...127); `scroll()` sends the wheel on the relative report. It forwards live Mac scroll events (`scrollingDeltaY / 8` notches, [InputController.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/InputController.swift)), so the continuous stream hides the dropped first reports.
-- [T-vK/ESP32-BLE-Mouse](https://github.com/T-vK/ESP32-BLE-Mouse/blob/master/BleMouse.cpp): BLE mouse, one report with buttons, X, Y, Wheel (0x38) and AC Pan (0x0238), each signed 8-bit.
+- [yoyicue/glassbox picokvm_ipad_wheel.md](https://github.com/yoyicue/glassbox/blob/main/docs/reference/picokvm_ipad_wheel.md): a USB gadget (PicoKVM) on iPad, with a wheel-only report id 2 next to an absolute report id 1. It scrolled in 9 of 9 tries. One tick is barely visible, so the doc recommends batches of 5-10 or more ticks, 40 ms apart. iPad ignored the wheel until the gadget re-enumerated once, an "activation" the doc does not explain. Adding Wheel to the absolute report made iPad reject the device. On an iPhone 17, 30 ticks moved a fixed ±599 px after warm-up.
+- [egarl004/mirrordeck BluetoothHID.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/BluetoothHID.swift): the same design as ghosthand (Mac as Bluetooth Classic HID, iPhone with AssistiveTouch). It has an absolute report 2 without wheel and a relative report 3 with Wheel (0x38, -127...127). `scroll()` sends the wheel on the relative report. It forwards live Mac scroll events (`scrollingDeltaY / 8` notches, [InputController.swift](https://github.com/egarl004/mirrordeck/blob/main/Sources/MirrorDeck/InputController.swift)), so the continuous stream hides the dropped first reports.
+- [T-vK/ESP32-BLE-Mouse](https://github.com/T-vK/ESP32-BLE-Mouse/blob/master/BleMouse.cpp): a BLE mouse with one report that has buttons, X, Y, Wheel (0x38) and AC Pan (0x0238), each signed 8-bit.

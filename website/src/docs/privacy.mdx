@@ -14,7 +14,7 @@ prompt: |
 When you **sign in with Google**, ghosthand.dev stores your name, email address and
 profile picture URL, the sessions of your browsers and Macs, and when you signed up.
 If you subscribe, we store your Stripe customer and subscription ids, status and number
-of paid Macs. Stripe processes payments; we never see card numbers.
+of paid Macs. Stripe processes payments. We never see card numbers.
 
 For the plan limits we store a **one-way hash** of the ids of your free iPhone and your
 paid Macs, with their names, so the dashboard can list them. The raw iPhone and Mac ids
@@ -28,7 +28,7 @@ our servers.** The ghosthand daemon on your Mac sends your session token to ghos
 to check your plan when an agent takes a lease on an iPhone (with the hashed iPhone and Mac
 ids and their names), and usage telemetry (below).
 
-The exception is the remote MCP server (`https://ghosthand.dev/mcp`): while your Mac is
+The exception is the remote MCP server (`https://ghosthand.dev/mcp`). While your Mac is
 signed in, the daemon keeps a connection to ghosthand.dev, and MCP calls and their results,
 including screenshots, pass through it without being stored. We keep only each Mac's name,
 the tool list (so MCP clients can connect while the Mac is offline), and which MCP clients

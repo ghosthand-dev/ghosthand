@@ -5,7 +5,7 @@ description: How to get a photo or video from the Mac into the iPhone's Photos l
 
 # Send photos and videos for upload in apps
 
-**Apps like TikTok and Instagram upload only from Photos.** So a file from the Mac must get into the Photos library first. `ghosthand upload` does it for photos and videos:
+**Apps like TikTok and Instagram upload only from Photos.** A file from the Mac must get into the Photos library first. `ghosthand upload` does that for photos and videos:
 
 ```
 ghosthand upload clip.mp4 ──daemon──> ghosthand.dev (R2, 1 day) ──> https://ghosthand.dev/u/<id>
@@ -29,10 +29,10 @@ ghosthand upload clip.mp4
 # clip.mp4 (5234112 bytes), expires 11 Oct 2026 at 16:34. ...
 ```
 
-- **Needs this Mac signed in** to ghosthand.dev with a trial or plan, like `acquire`. No lease: the upload does not touch the iPhone.
-- **At most 2 GB.** The link expires after 1 day. Anyone with the link can download the file.
-- **Keep the extension** in the file name (`.mp4`, `.jpg`): it tells iOS the type.
-- MCP: the `upload` tool takes `path` (a file on the daemon's Mac), or `data` (base64) with `name`.
+- **This Mac must be signed in** to ghosthand.dev with a trial or plan, as for `acquire`. The upload needs no lease, because it does not touch the iPhone.
+- **The file can be at most 2 GB.** The link expires after 1 day. Anyone with the link can download the file.
+- **Keep the extension** in the file name (`.mp4`, `.jpg`). It tells iOS the file type.
+- The MCP `upload` tool takes `path` (a file on the daemon's Mac), or `data` (base64) with `name`.
 
 ### 2. Open the link in Safari and save
 
@@ -48,7 +48,7 @@ ghosthand tap -l 42 --text "Save Video"             # "Save Image" for photos
 ghosthand photo list -l 42 --limit 1
 ```
 
-**Why a page with a button.** A direct video link only plays in Safari: the player and the Share sheet have no Save Video. The page downloads the file, wraps it in a `File`, and the **Save** tap calls `navigator.share({ files })`. The share sheet of a file has **Save Video**. `navigator.share` runs only from a tap, so the button is needed.
+**Why a page with a button.** A direct video link only plays in Safari. Neither the player nor the share sheet has **Save Video**. The page downloads the file and wraps it in a `File`. The **Save** tap calls `navigator.share({ files })`, and the share sheet of a file has **Save Video**. `navigator.share` runs only from a tap, so the page needs the button.
 
 ## Offline: USB copy into VLC, then save from Files
 
@@ -61,11 +61,11 @@ ghosthand app list -l 42 | grep vlc
 # org.videolan.vlc-ios  VLC <version>  [file sharing]  (page 2)
 ```
 
-If it is missing, install it from the App Store with taps. Any other app with `[file sharing]` works too. System apps like Fitness refuse `--app`.
+If VLC is missing, install it from the App Store with taps. Any other app with `[file sharing]` works too. System apps like Fitness refuse `--app`.
 
 ### 2. Copy the file and save it
 
-The copy is byte for byte: no Wi-Fi, no quality loss, and large videos are fine.
+The USB copy is byte for byte. It needs no Wi-Fi, loses no quality, and works for large videos.
 
 ```bash
 ghosthand file push -l 42 clip.mp4 /Documents/clip.mp4 --app org.videolan.vlc-ios
@@ -87,7 +87,7 @@ ghosthand photo list -l 42 --limit 1
 
 ## Why not copy it straight into Photos
 
-**There is no USB way to add to Photos without an app on the iPhone.** Tested on an SE2 (iOS 18.6) and checked against other tools:
+**There is no USB way to add to Photos without an app on the iPhone.** We tested these ways on an SE2 (iOS 18.6) and checked how other tools do it:
 
 | Way | Result |
 | --- | --- |
@@ -109,9 +109,9 @@ ghosthand photo delete -l 42 IMG_0042.MP4    # name from photo list
 <details>
 <summary>Test status</summary>
 
-- Tested on an SE2, iOS 18.6.2, October 10: `ghosthand upload` (mp4, ghosthand.dev) > Safari > Save > Save Video, the item showed in `photo list`. Earlier the same day: Mac share page > Save > Save Video (mp4, over a kimaki HTTPS tunnel and over the LAN URL), uguu.se link > Safari > Save to Photos (jpg), and VLC push > Files > Save Video (mp4). Every item showed in `photo list`.
-- A direct mp4 link in Safari opened the video player. Neither the player nor the Share sheet offered Save Video.
+- Tested on an SE2, iOS 18.6.2, October 10: `ghosthand upload` (mp4, ghosthand.dev) > Safari > Save > Save Video, and the item showed in `photo list`. Earlier the same day: Mac share page > Save > Save Video (mp4, over a kimaki HTTPS tunnel and over the LAN URL), uguu.se link > Safari > Save to Photos (jpg), and VLC push > Files > Save Video (mp4). Every item showed in `photo list`.
+- A direct mp4 link in Safari opened the video player. Neither the player nor the share sheet offered Save Video.
 - The TikTok draft was tested on the same phone.
-- VLC's file sharing keys were read from https://github.com/videolan/vlc-ios/blob/master/Resources/iOS/Info.plist
+- The VLC file sharing keys come from https://github.com/videolan/vlc-ios/blob/master/Resources/iOS/Info.plist
 
 </details>

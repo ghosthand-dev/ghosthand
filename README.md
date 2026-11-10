@@ -1360,3 +1360,7 @@ scripts ──> ghosthand.dev/macs/<mac>/v1 (API token) ──> WebSocket the da
 - Files: `~/.ghosthand/daemon.sock`, `daemon.log`, `daemon.lock`, `state.db`.
 
 </details>
+
+## Daemon source code
+
+**The Swift daemon source needs a Pro subscription.** It lives in the private repo [ghosthand-dev/ghosthand-daemon](https://github.com/ghosthand-dev/ghosthand-daemon), the `daemon/` submodule of this repo. Pro subscribers get read access to it on GitHub ([pricing](https://ghosthand.dev/docs/pricing)). Everything else in this repo is MIT.

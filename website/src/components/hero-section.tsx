@@ -49,6 +49,14 @@ function ClaudeIcon({ className }: { className?: string }) {
   )
 }
 
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth={2.5} strokeLinecap='round' strokeLinejoin='round' className={className}>
+      <path d='M20 6 9 17l-5-5' />
+    </svg>
+  )
+}
+
 // Overlapping agent logos like kino.ai: each circle's ring matches the button fill, so it reads as a gap.
 function AgentFaces() {
   const face = 'grid size-6 place-items-center rounded-full bg-background text-foreground ring-[1.5px] ring-primary'
@@ -130,8 +138,22 @@ export function HeroSection() {
               }}
               className={cn(BUTTON, 'cursor-pointer border-transparent bg-primary pl-[7px] pr-[17px] text-primary-foreground hover:opacity-90')}
             >
-              <AgentFaces />
-              {copied ? 'Copied' : 'Copy setup prompt'}
+              {/* Both states share one grid cell, so the hidden idle label keeps the button size.
+                  pl-[10px] evens out the button's 7px/17px padding so "Copied" sits in the visual center. */}
+              <span className='grid place-items-center'>
+                <span className={cn('col-start-1 row-start-1 flex items-center gap-2', copied && 'invisible')}>
+                  <AgentFaces />
+                  Copy setup prompt
+                </span>
+                <span aria-live='polite' className={cn('col-start-1 row-start-1 flex items-center gap-2 pl-[10px]', !copied && 'invisible')}>
+                  {copied && (
+                    <>
+                      <CheckIcon className='size-4' />
+                      Copied
+                    </>
+                  )}
+                </span>
+              </span>
             </button>
             <Link href={router.href('/download')} className={cn(BUTTON, 'border-border bg-background/70 text-foreground hover:bg-muted')}>
               Download for Mac

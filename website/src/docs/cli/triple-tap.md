@@ -21,6 +21,7 @@ ghosthand triple-tap --text <text>
 | `--language [tag]` | OCR language, e.g. it-IT; en-US is always included. Env: GHOSTHAND_LANGUAGE |
 | `--screenshot [path]` | Save a screenshot after the action once the screen stops changing (default: screenshot.png); not available while locked |
 | `--screentext` | Print the OCR text of the screen after the action (`x,y wxh text`, after --screenshot if both); uses --language |
+| `--fast` | With --screenshot or --screentext: return the first still screen, without the wait (up to 1.5 s) for a dialog a small reaction may open late |
 | `--scale [n]` | Image and coordinate size as a fraction of native pixels (default: screen points, 1/2 or 1/3; 1 = native). Env: GHOSTHAND_SCALE |
 | `--wait-text [text]` | After input, poll real OCR for this case-insensitive substring; never repeat input |
 | `--timeout-ms [ms]` | With --wait-text: verification deadline, 1...60000 ms (default: 5000); starts after input completes |

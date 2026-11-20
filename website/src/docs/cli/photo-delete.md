@@ -16,9 +16,11 @@ Also takes the [global options](/docs/cli/overview#global-options).
 ## Details
 
 Uses ImageCaptureCore, like Image Capture.app, so Photos forgets the photo too.
-Permanent: it skips Recently Deleted, and with iCloud Photos the delete syncs.
+Permanent: it skips Recently Deleted.
 Only delete photos you made (e.g. screenshots); ask the user before deleting theirs.
 The iPhone must be unlocked.
+- iCloud Photos on: iOS refuses every USB delete (permission-denied). Delete the photo
+  in the Photos app on the iPhone instead, or tell the user it is left over.
 
 ## Examples
 

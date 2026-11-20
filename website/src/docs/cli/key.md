@@ -44,7 +44,9 @@ fn alone is a Globe tap. Keys in a combo go down in order: tab+h holds tab, then
   space                      activate the focused item
   esc                        dismiss menus, suggestions, some dialogs
   cmd+l, cmd+f, cmd+r        Safari: address bar, find on page, reload
-  cmd+space                  Spotlight: then `type Files`, `key enter` opens the app
+  cmd+space                  Spotlight: then `key cmd+a` (it can keep the last query),
+                             `type Files`, `key enter` opens the app. It also closes
+                             Spotlight when it is open: check the screen if no app opened
   fn+h                       Home Screen
   fn+up                      App Switcher
   fn+c, fn+n                 Control Center, Notification Center

@@ -69,7 +69,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`hold-drag`](/docs/cli/hold-drag) | Long press at (x1,y1), then drag to (x2,y2) with the button still held: moves items that need a long press first, like Home Screen icons |
 | [`scroll`](/docs/cli/scroll) | Scroll with the Bluetooth mouse wheel over a point (default: screen center). Use this to scroll web pages and lists; one tick is about 100 points |
 | [`key`](/docs/cli/key) | Press a key on the Bluetooth keyboard: home (Home Screen), enter, backspace, esc, arrows, volumeup. cmd+space opens Spotlight to open apps |
-| [`type`](/docs/cli/type) | Type text on the Bluetooth keyboard (US-ASCII) |
+| [`type`](/docs/cli/type) | Type text on the Bluetooth keyboard: US-ASCII, Latin accents and symbols like €; paste emoji with `upload` |
 
 ### Tasks
 
@@ -113,7 +113,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`photo list`](/docs/cli/photo-list) | List the newest Camera Roll files (photos, videos, screenshots) on the iPhone, newest first |
 | [`photo pull`](/docs/cli/photo-pull) | Copy the newest Camera Roll files (photos, videos, screenshots) from the iPhone to this Mac |
 | [`photo delete`](/docs/cli/photo-delete) | Delete photos from the iPhone's Photos library by file name (from photo list), over USB |
-| [`upload`](/docs/cli/upload) | Upload a photo or video to a 1-day link that Safari on the iPhone saves to Photos (Save Video, Save Image) |
+| [`upload`](/docs/cli/upload) | Upload a file to a 1-day link for Safari on the iPhone: Save puts a photo or video in Photos, Copy puts the text of a .txt on the clipboard |
 | [`app list`](/docs/cli/app-list) | List installed apps over USB, with where each icon is on the Home Screen |
 | [`app install`](/docs/cli/app-install) | Install an .ipa signed for this iPhone over USB (ad hoc, enterprise or development signing) |
 | [`app uninstall`](/docs/cli/app-uninstall) | Uninstall an app and its data over USB, like Remove App &gt; Delete App |
@@ -171,6 +171,7 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
 - --wait-text checks a known expected text after input, with --timeout-ms 1...60000
   (default 5000). A timeout says input was sent; never repeat input automatically.
   Already-present matching text does not prove the action caused a transition.
+  To wait without an input (upload, download, reply): screentext --wait-text.
 - Non-English phone: export GHOSTHAND_LANGUAGE=it-IT (or pass --language) once, so
   screentext and tap --text read accents and local words right.
 - Coordinates are screen points by default: the numbers you read in a screenshot or in
@@ -199,10 +200,12 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
 - Go Home with `key home`, not the AssistiveTouch menu.
 - Screen shrunk to the bottom half (iOS Reachability), sheets look stale: tap the
   empty top area (`tap 207 100`) to restore it. Check this before anything else.
-- Screen dimmed but no dialog in the screenshot: the dialog is hidden from USB capture.
-  `screenshot --native` takes a real iOS screenshot (cmd+shift+3) that shows it, at the
-  same coordinates tap takes. It is slow (2-7 s): use it only then. A button that ignores `tap`: press it once more (tap or
-  `hold x y --duration 400`); a just-opened alert can ignore the first press.
+- Expected dialog missing from the screenshot: take another normal `screenshot`. Permission
+  alerts can appear 1-2 s after the tap. Only if that one still misses it (often dimmed,
+  not always), the dialog is hidden from USB capture: `screenshot --native` (slow, 2-7 s, may stay
+  in Photos) shows it at the same coordinates tap takes. Never use --native by default.
+- A button that ignores `tap`: press it once more (tap or `hold x y --duration 400`);
+  a just-opened alert can ignore the first press.
 - Long press (context menus, Home Screen icon menu, previews): `hold x y`. Move an
   item that needs a long press first (Home Screen icons): `hold-drag --hold 2500`.
 - Files, photos, apps, battery and logs go over USB without the screen: file list,

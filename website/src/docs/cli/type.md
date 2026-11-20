@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand type"
 sidebarTitle: "type"
-description: "Type text on the Bluetooth keyboard (US-ASCII)"
+description: "Type text on the Bluetooth keyboard: US-ASCII, Latin accents and symbols like €; paste emoji with `upload`"
 ---
 
 ## Usage
@@ -37,11 +37,22 @@ cursor is in the right field; if not, tap that field first.
   spaces, tabs and other LF newlines are preserved. LF sends Enter; tab moves focus.
   --keep-final-newline preserves LF, and --enter sends an additional Enter.
 - All input is validated before connecting or sending any key. Unsupported control
-  characters, invalid UTF-8, accents and emoji fail without echoing input.
+  characters, invalid UTF-8 and characters with no key (emoji) fail without echoing input.
 - Messages: Enter in the To: field adds the recipient but keeps focus there. Tap the
   message field, check the screenshot, then `type "..." --enter` (Enter sends).
-Only US-ASCII: no accents or emoji. iOS autocorrect may change a word; check with
---screenshot before --enter.
+Types US-ASCII, Latin accents (àèéìòù, äöüÿ, âêîôû, ãñõ, ç, ß, œ, æ, ø, å) and the
+Option symbols of a Mac U.S. keyboard (€ £ – — … “ ” ‘ ’ « » ° ± ¿ ¡ © ™), with Option
+keys. Needs the iPhone's hardware keyboard layout U.S. (the default for English).
+- Emoji, a few: with the cursor in the field, `key ctrl+space` switches to the Emoji
+  keyboard. `tap --text "Search Emoji"`, `type pizza`, then tap the emoji in the result
+  row (read it from --screenshot; OCR does not see emoji, and the first result is not
+  always the best). Tap the text field again to type text (the keyboard is back to
+  English). Needs the Emoji keyboard in Settings &gt; General &gt; Keyboard &gt; Keyboards.
+- Long text with emoji or other scripts: write it to a .txt file, `ghosthand upload
+  caption.txt`, open the link in Safari, tap Copy, then tap the field and `key cmd+v`.
+- iOS autocorrect can change a typed word ("Wikimedia" became "Wikipedia"); check with
+  --screenshot before --enter. If it does, turn off Settings &gt; General &gt; Keyboard &gt;
+  Hardware Keyboard &gt; Auto-Correction.
 - XCTest mode: types any text (accents, emoji) into the field that has focus; tap the
   field first so the keyboard shows. WebDriverAgent does not check focus: with no field
   focused `type` still says "typed" and nothing happens. Use --screenshot or --wait-text.

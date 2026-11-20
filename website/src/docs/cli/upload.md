@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand upload"
 sidebarTitle: "upload"
-description: "Upload a photo or video to a 1-day link that Safari on the iPhone saves to Photos (Save Video, Save Image)"
+description: "Upload a file to a 1-day link for Safari on the iPhone: Save puts a photo or video in Photos, Copy puts the text of a .txt on the clipboard"
 ---
 
 ## Usage
@@ -21,6 +21,9 @@ does not touch the iPhone. Then open the link in Safari (examples above):
 - The page shows Loading... until the file is downloaded, then Save. Tap Save only
   when it says Save. The iOS share sheet opens: tap Save Video (Save Image for photos).
 - Direct file links download the file. Use this page to save it through iOS's share sheet.
+- Text with emoji or other scripts (`type` has no key for them): write it to a .txt
+  file (UTF-8, up to 1 MB) and upload it. The page shows the text and a Copy button.
+  Tap Copy (it turns into Copied), open the app, tap the field, then `key cmd+v`.
 - Needs this Mac signed in to ghosthand.dev (like acquire). The link works on any
   iPhone, also one plugged into another Mac.
 - At most 2 GB. The link expires after 1 day; anyone with it can download the file.

@@ -282,6 +282,7 @@ export interface paths {
          * @description The current screen as PNG or JPEG, in about 0.3 s. The capture stops 1 s after the
          *     last frame to save CPU, and restarting it adds about 0.2 s. The image is in screen points by default (see
          *     `scale`): its pixels are the coordinates that `tap`, `swipe` and `scroll` take.
+         *     With `screentext`, the answer is JSON with the image (base64) and the OCR text of the same frame.
          */
         get: operations["getScreenshot"];
         put?: never;
@@ -304,7 +305,8 @@ export interface paths {
          * @description On-device text recognition (Vision, accurate level, English plus an optional language) of a
          *     fresh frame. Boxes use a top-left origin in the same space as the screenshot
          *     and `tap` (screen points by default, see `scale`). About 0.1 s for the frame
-         *     plus 0.05-0.25 s for OCR.
+         *     plus 0.05-0.25 s for OCR. With `waitText`, it first reads the screen every 150 ms until
+         *     a line contains that text, then returns the text of that frame (no input is sent).
          */
         get: operations["getScreenText"];
         put?: never;
@@ -504,8 +506,9 @@ export interface paths {
         put?: never;
         /**
          * Type text
-         * @description Types US-ASCII text on the Bluetooth keyboard into the focused field. Tap the field
-         *     first. For secrets, send the text in the body only; it is not logged.
+         * @description Types text on the Bluetooth keyboard into the focused field: US-ASCII, Latin accents
+         *     and the Option symbols of a U.S. keyboard (€, –, …). No emoji. Tap the field first.
+         *     For secrets, send the text in the body only; it is not logged.
          */
         post: operations["typeText"];
         delete?: never;
@@ -852,8 +855,9 @@ export interface paths {
          * Upload for Safari
          * @description Uploads the request body to ghosthand.dev with this Mac's account and returns a
          *     short link that lasts 1 day. Open it in Safari on the iPhone and tap Save: the share
-         *     sheet then offers Save Video or Save Image, which adds the file to Photos. No lease:
-         *     nothing runs on the iPhone. At most 2 GB.
+         *     sheet then offers Save Video or Save Image, which adds the file to Photos. A .txt or
+         *     .md file (up to 1 MB) shows its text with a Copy button instead: tap Copy, then paste
+         *     with cmd+v in any app. No lease: nothing runs on the iPhone. At most 2 GB.
          */
         post: operations["uploadFile"];
         delete?: never;
@@ -1946,7 +1950,7 @@ export interface components {
         };
         TypeRequest: {
             /**
-             * @description US-ASCII text. `\n` presses Enter and `\t` presses Tab.
+             * @description US-ASCII, Latin accents and U.S. Option symbols; no emoji. `\n` presses Enter and `\t` presses Tab.
              * @example ciao
              */
             text: string;
@@ -1983,6 +1987,13 @@ export interface components {
             screenshot?: components["schemas"]["Image"];
             /** @description The screen text after the input, present when `screentext` was asked */
             screen?: components["schemas"]["ScreenText"];
+        };
+        /** @description A screenshot and the OCR text of the same frame */
+        ScreenshotText: {
+            screenshot: components["schemas"]["Image"];
+            screen: components["schemas"]["ScreenText"];
+            /** @description With `native`, what happened to the screenshot file on the iPhone (deleted, or kept and why) */
+            note?: string;
         };
         /** @enum {string} */
         ImageFormat: "png" | "jpeg";
@@ -2251,6 +2262,12 @@ export interface components {
          *     space. With `screenshot`, both come from the same frame.
          */
         Screentext: boolean;
+        /**
+         * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+         *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+         *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+         */
+        Fast: boolean;
         /** @description Absolute iPhone path, e.g. /DCIM/100APPLE/IMG_0002.PNG (no `..`) */
         FilePath: string;
         /** @description Bundle id of an app with file sharing; the path is then inside its container, e.g. /Documents/a.pdf */
@@ -2634,6 +2651,13 @@ export interface operations {
                  *     reads from the image are the ones to send. Use 1 for native pixels.
                  */
                 scale?: components["parameters"]["Scale"];
+                /** @description OCR language, a BCP 47 tag (e.g. it-IT). English en-US is always included. */
+                language?: components["parameters"]["Language"];
+                /**
+                 * @description Also read the text of the same frame with OCR (native pixels, boxes in the `scale`
+                 *     space). The answer is then `application/json` (`ScreenshotText`), not the image bytes.
+                 */
+                screentext?: boolean;
                 /** @description Wait until two frames 150 ms apart match (up to 2 s), so an animation after an action is finished. */
                 settle?: boolean;
                 /**
@@ -2671,6 +2695,7 @@ export interface operations {
                 content: {
                     "image/png": string;
                     "image/jpeg": string;
+                    "application/json": components["schemas"]["ScreenshotText"];
                 };
             };
             default: components["responses"]["Problem"];
@@ -2687,10 +2712,17 @@ export interface operations {
                  *     reads from the image are the ones to send. Use 1 for native pixels.
                  */
                 scale?: components["parameters"]["Scale"];
-                /** @description Wait until two frames 150 ms apart match (up to 2 s) before OCR. */
+                /** @description Wait until two frames 150 ms apart match (up to 2 s) before OCR (after `waitText`). */
                 settle?: boolean;
                 /** @description OCR language, a BCP 47 tag (e.g. it-IT). English en-US is always included. */
                 language?: components["parameters"]["Language"];
+                /**
+                 * @description Read the screen with OCR every 150 ms until a line contains this text
+                 *     (case-insensitive). On timeout it fails with `wait-text-timeout`.
+                 */
+                waitText?: string;
+                /** @description Deadline of `waitText`. Needs `waitText`. */
+                timeoutMs?: number;
             };
             header?: never;
             path: {
@@ -2780,6 +2812,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -2833,6 +2871,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -2886,6 +2930,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -2939,6 +2989,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -2992,6 +3048,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -3058,6 +3120,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -3123,6 +3191,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -3176,6 +3250,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -3229,6 +3309,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -3339,6 +3425,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {
@@ -3388,6 +3480,12 @@ export interface operations {
                  *     space. With `screenshot`, both come from the same frame.
                  */
                 screentext?: components["parameters"]["Screentext"];
+                /**
+                 * @description With `screenshot` or `screentext`: return the first still frame. Skips the wait (until
+                 *     1.5 s after a tap, hold or swipe that changed little of the screen) for a dialog that
+                 *     comes late, e.g. a permission alert. Faster, but such a dialog can be missing.
+                 */
+                fast?: components["parameters"]["Fast"];
             };
             header?: never;
             path: {

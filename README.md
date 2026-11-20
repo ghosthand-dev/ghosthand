@@ -1079,7 +1079,7 @@ The iPhone accepts input only from a Mac that has **all three**:
 
 - **AssistiveTouch must be on** for tap and swipe. Ghosthand turns it on over USB, and you can hide its floating button (see [AssistiveTouch](#3-assistivetouch-automatic)).
 - **The keyboard without AssistiveTouch** is not tested.
-- **`cmd+h`** did nothing in tests. `cmd+space` opens Spotlight, so `key cmd+space`, `type Safari` and `key enter` open an app.
+- **`cmd+h`** did nothing in tests. `cmd+space` opens Spotlight, so `key cmd+space`, `key cmd+a`, `type Safari` and `key enter` open an app. `cmd+a` replaces the last query, which Spotlight can keep.
 - **There is no verified global Back command.** `key home` goes Home, and `key esc` sends Escape. Neither one is sure to go back in Settings or Safari. Ghosthand does not expose AC Back (Consumer usage `0x0224`), because its behavior on iOS is not verified. The descriptors do not change.
 - **A screen that is off gives no frames.** `unlock` tries to wake a locked iPhone, but USB capture may still return no frame. An unlocked iPhone with the screen off needs a tap from you.
 - **Several new iPhones with one name**, plugged in together, cannot be matched to their USB data. Plug them in one at a time, once (see [More iPhones](#more-iphones)).

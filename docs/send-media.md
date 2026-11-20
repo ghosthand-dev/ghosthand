@@ -18,6 +18,7 @@ iPhone Safari ──open link, tap Save──> iOS share sheet ──Save Video 
 | --- | --- | --- |
 | Photo or video, up to 2 GB | `ghosthand upload`, Safari **Save** > **Save Video** | One command, no install, no server on the Mac |
 | Offline, or over 2 GB | USB copy into VLC, then Files **Save Video** | No network; needs VLC |
+| Text with emoji (a caption) | `ghosthand upload caption.txt`, Safari **Copy**, `key cmd+v` | `type` has no key for emoji |
 
 ## Upload, then save from Safari
 
@@ -49,6 +50,21 @@ ghosthand photo list -l 42 --limit 1
 ```
 
 **Why a page with a button.** A direct video link only plays in Safari. Neither the player nor the share sheet has **Save Video**. The page downloads the file and wraps it in a `File`. The **Save** tap calls `navigator.share({ files })`, and the share sheet of a file has **Save Video**. `navigator.share` runs only from a tap, so the page needs the button.
+
+## Paste text with emoji
+
+**`ghosthand type` has no key for emoji.** It types accents and symbols like `€` with Option keys, as on a Mac, but a keyboard cannot send 🍕. For a caption like `Città più bella 🍕`, upload a `.txt` file (UTF-8, up to 1 MB). Its page shows the text and a **Copy** button:
+
+```bash
+printf 'Città più bella 🍕' > caption.txt
+ghosthand upload caption.txt                        # https://ghosthand.dev/u/<id>
+# open the link in Safari as above, then:
+ghosthand tap -l 42 --text Copy --screentext        # the button says Copied
+# open the app, tap the text field, then:
+ghosthand key -l 42 cmd+v
+```
+
+The text is in the page, so the tap calls `navigator.clipboard.writeText` at once. iOS allows the clipboard only during a tap.
 
 ## Offline: USB copy into VLC, then save from Files
 

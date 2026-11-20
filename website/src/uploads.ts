@@ -1,4 +1,5 @@
-// `ghosthand upload`: files the daemon puts in R2 so the iPhone can save them to Photos.
+// `ghosthand upload`: files the daemon puts in R2 so the iPhone can save them to Photos
+// or copy their text.
 //
 //   daemon ── POST /api/cli/upload?name=clip.mp4 (Bearer, raw body) ──▶ R2 object <id>      up to 100 MB
 //   daemon ── POST /api/cli/upload/multipart?name=clip.mp4&size=N ──▶ {id, uploadId, partSize}  up to 2 GB
@@ -7,6 +8,7 @@
 //          ── DELETE /api/cli/upload/multipart/<id>?uploadId= ──▶ abort after a failed part
 //   iPhone Safari ── GET /u/<id> ──▶ share page ── fetch /u/<id>/file ──▶ blob
 //                    tap Save ──▶ navigator.share({ files }) ──▶ Save Video / Save Image
+//   .txt / .md   ── GET /u/<id> ──▶ text page ── tap Copy ──▶ clipboard ── cmd+v in any app
 //
 // Cloudflare refuses request bodies over 100 MB (Free and Pro plans), so bigger files go
 // to R2 in parts, each its own request. The R2 uploadId is only returned to the creator.
@@ -29,6 +31,9 @@ const REQUEST_BODY_MAX_BYTES = 100_000_000
 const PART_BYTES = 64 * 1024 * 1024
 const MAX_PARTS = Math.ceil(UPLOAD_MAX_BYTES / PART_BYTES)
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
+const TEXT_TYPES = ['text/plain', 'text/markdown']
+/** Bigger text files get the Save page: a page this size is already slow to render on an iPhone. */
+const TEXT_PAGE_MAX_BYTES = 1_000_000
 const ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 const ID_LENGTH = 12
 
@@ -205,6 +210,44 @@ function sharePage(id: string, object: R2Object): string {
   `
 }
 
+/** Text uploads get a page with a Copy button: the only way to paste accents and emoji, `type` is US-ASCII. */
+function isText(object: R2Object): boolean {
+  const type = object.httpMetadata?.contentType ?? ''
+  return TEXT_TYPES.includes(type) && object.size <= TEXT_PAGE_MAX_BYTES
+}
+
+/** The text is in the page, so the Copy tap calls clipboard.writeText at once: iOS allows it only in the tap. */
+function textPage({ id, name, text }: { id: string; name: string; text: string }): string {
+  return dedent`
+    <!doctype html>
+    <html lang="en">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>${escapeHtml(name)}</title>
+    <style>
+      body { font: 18px -apple-system, system-ui, sans-serif; margin: 0; padding: 24px; }
+      button { font: 600 28px -apple-system, system-ui, sans-serif; width: 100%; padding: 22px; border: 0; border-radius: 16px; background: #0a84ff; color: #fff; }
+      pre { font: 18px -apple-system, system-ui, sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; margin: 24px 0; }
+      p { text-align: center; color: #666; }
+      a { color: #0a84ff; }
+      @media (prefers-color-scheme: dark) { body { background: #000; color: #fff; } p { color: #999; } }
+    </style>
+    <button id="copy">Copy</button>
+    <p id="status">${escapeHtml(name)}</p>
+    <pre id="text">${escapeHtml(text)}</pre>
+    <p><a href="/u/${id}/file">Download the file</a></p>
+    <script>
+      const text = ${scriptJson(text)}
+      const button = document.getElementById('copy')
+      button.onclick = async () => {
+        try { await navigator.clipboard.writeText(text); button.textContent = 'Copied' }
+        catch (e) { document.getElementById('status').textContent = String(e) }
+      }
+    </script>
+  `
+}
+
 /** RFC 9110 Content-Range of a ranged R2 read. */
 function contentRange(range: { offset?: number; length?: number; suffix?: number }, size: number): string {
   // R2 can include unset keys, so choose suffix ranges by value.
@@ -224,11 +267,13 @@ export const uploadsApp = new Spiceflow()
     async handler({ params }) {
       const parsed = idParams.safeParse(params)
       if (!parsed.success) return notFound()
-      const object = await env.UPLOADS.head(parsed.data.id)
+      const { id } = parsed.data
+      const object = await env.UPLOADS.head(id)
       if (!isLive(object)) return notFound()
-      return new Response(sharePage(parsed.data.id, object), {
-        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store', 'referrer-policy': 'no-referrer' },
-      })
+      const headers = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'private, no-store', 'referrer-policy': 'no-referrer' }
+      const body = isText(object) ? await env.UPLOADS.get(id) : null
+      if (body) return new Response(textPage({ id, name: object.customMetadata?.name ?? id, text: await body.text() }), { headers })
+      return new Response(sharePage(id, object), { headers })
     },
   })
   .route({

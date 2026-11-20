@@ -56,6 +56,35 @@ test('uploaded HTML stays inert without breaking sharing or ranges', async () =>
   }
 }, TEST_TIMEOUT_MS)
 
+test('text upload page shows the exact text with a Copy button, escaped', async () => {
+  const runtime = await startTestRuntime()
+  const { worker } = runtime
+  try {
+    const text = 'Città più bella 🍕\n</pre><script>alert(1)</script>'
+    const signal = AbortSignal.timeout(TEST_TIMEOUT_MS)
+    const identity = await worker.fetch('/__test/session', { signal })
+    const { session } = z.object({ session: z.object({ token: z.string() }) }).parse(await identity.json())
+    const uploaded = await worker.fetch('/api/cli/upload?name=caption.txt', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${session.token}`, 'content-type': 'text/plain' },
+      body: text,
+      signal,
+    })
+    const upload = z.object({ url: z.string() }).parse(await uploaded.json())
+    const page = await (await worker.fetch(upload.url, { signal })).text()
+    expect(page.split('\n').filter((line) => /<button|<pre|&#60;|const text/.test(line)).map((line) => line.trim())).toMatchInlineSnapshot(`
+      [
+        "<button id="copy">Copy</button>",
+        "<pre id="text">Città più bella 🍕",
+        "&#60;/pre&#62;&#60;script&#62;alert(1)&#60;/script&#62;</pre>",
+        "const text = "Città più bella 🍕\\n\\u003c/pre>\\u003cscript>alert(1)\\u003c/script>"",
+      ]
+    `)
+  } finally {
+    await runtime.close()
+  }
+}, TEST_TIMEOUT_MS)
+
 test('multipart upload: size checks, parts, complete, abort', async () => {
   const runtime = await startTestRuntime()
   const { worker } = runtime

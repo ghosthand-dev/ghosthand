@@ -115,6 +115,30 @@ iPhone showed the alert. A PNG cut after the start of its first IDAT gives a bla
 **The cmd+shift+3 shortcut can be dropped**: once, right after `key home`, no screenshot
 was saved. `--native` presses it once more after 4 s.
 
+### Late permission alerts and iCloud Photos, November 20
+
+**Some dialogs come after the action's screenshot, not hidden from it.** iPhone 14 Pro,
+iOS 27.2. Both alerts below showed up in a later normal screenshot, so `--native` was
+not needed:
+
+| Tap | Old settle | What the trace showed |
+| --- | --- | --- |
+| In-app Allow, then the microphone alert | returned at 1.13 s | no change at all in that time; the alert came later |
+| Full Access toggle, then its alert | returned at 0.69 s | toggle moved at 313 ms, still screen, alert after |
+
+The same microphone alert came at 277 ms on a later run, and the Full Access alert at
+about 1 s: the delay depends on the app. `settledFrame` now waits until 1.5 s after a
+pointer input whose reaction changed under 20% of the screen (a toggle, a highlight,
+nothing). The Full Access tap then returned the alert (settle 1.33 s, change 98%).
+A whole new screen still returns at once (back button: settle 0.72 s).
+
+**iCloud Photos blocks every USB photo delete.** ImageCaptureCore reports
+`iCloudPhotosEnabled` true, `isLocked` true and no `ICCameraDeviceCanDeleteOneFile`
+capability; `requestDeleteFiles` then fails with `com.apple.ImageCaptureCore -9941`
+("Delete files failed."). Same on an iPad on the same account. `photo delete` now
+answers permission-denied with what to do, and `--native` screenshots stay in Photos
+on these phones. Deleting them in the Photos app on the iPhone works.
+
 ### First press ignored, hold and hold-drag, October 10
 
 **A just-opened alert ignored the first press, whatever its kind.** SE2, iOS 18.6.2,

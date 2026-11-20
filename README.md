@@ -329,7 +329,9 @@ ghosthand tap 207 100 --screenshot s.png --screentext   # empty top area: full s
 
 **Some iOS dialogs are invisible to USB capture and OCR.** On an XR with iOS 18.7, these were the App Store location prompt, the Install sheet and the cellular-data prompt. The page behind looks dimmed or unchanged, and `screentext` shows no dialog. Take a `screenshot`, read the image, and tap by position. Enter, Esc, Space, Tab and a center tap did not dismiss the location prompt, and a person had to tap **Don't Allow**. Apple documents Tab and Space for [Full Keyboard Access](https://support.apple.com/en-euro/guide/iphone/ipha4375873f/ios), but that setting is off by default.
 
-**Screen dimmed but no dialog in the screenshot? Take a native screenshot.** USB capture leaves out some system dialogs, for example the Instagram location prompt on an SE2 with iOS 18.6. An iOS screenshot, taken with the Bluetooth keyboard shortcut, includes them. `screenshot --native` does it in one command, in about 2 s. It presses cmd+shift+3, reads the new PNG over USB, scales it to screen points (the numbers `tap` takes), then deletes it from Photos.
+**Expected dialog missing? Take another screenshot first.** Permission alerts can appear 1-2 s after the tap, so the next normal `screenshot` often shows them.
+
+**Still no dialog (often on a dimmed screen)? Take a native screenshot.** USB capture leaves out some system dialogs, for example the Instagram location prompt on an SE2 with iOS 18.6. An iOS screenshot, taken with the Bluetooth keyboard shortcut, includes them. `screenshot --native` does it in one command, in about 2 s. It presses cmd+shift+3, reads the new PNG over USB, scales it to screen points (the numbers `tap` takes), then deletes it from Photos. It is a last resort: with iCloud Photos on, iOS refuses the delete and the screenshot stays in the user's library.
 
 ```bash
 ghosthand screenshot -l 42 --native -o real.png            # read real.png: the dialog is there
@@ -662,7 +664,7 @@ ghosthand tap -l 42 --text "Save Video"
 ghosthand photo delete -l 42 IMG_0008.PNG
 ```
 
-**Never remove `/DCIM` files with `file remove`.** Photos keeps a broken entry (tested on an SE2 with iOS 18.6), so `file remove` refuses `/DCIM`. `photo delete` uses ImageCaptureCore, like Image Capture.app, so Photos forgets the photo too. The delete is permanent. It skips Recently Deleted, and with iCloud Photos the delete syncs. It needs the iPhone unlocked and the optional **Allow Photos** access from `ghosthand setup --permissions`.
+**Never remove `/DCIM` files with `file remove`.** Photos keeps a broken entry (tested on an SE2 with iOS 18.6), so `file remove` refuses `/DCIM`. `photo delete` uses ImageCaptureCore, like Image Capture.app, so Photos forgets the photo too. The delete is permanent: it skips Recently Deleted. **With iCloud Photos on, iOS refuses every USB delete** (Image Capture cannot delete either; tested on an iPhone 14 Pro with iOS 27.2). Delete those photos in the Photos app on the iPhone. It needs the iPhone unlocked and the optional **Allow Photos** access from `ghosthand setup --permissions`.
 
 ### Apps
 

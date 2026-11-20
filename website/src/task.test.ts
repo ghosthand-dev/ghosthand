@@ -211,6 +211,26 @@ test('a new prompt stops the running turn and starts at once, with the stopped a
   expect(messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant'])
 }, 60_000)
 
+test('a new prompt that builds on the interrupted task is done, not taken as an order to stop', async () => {
+  // Regression: a "the user stopped the task" note made the model answer "I stopped before
+  // reaching that screen" (and ask "Should I continue?") instead of doing the new prompt.
+  const mac = await fakeMac({ hold: (op) => op !== 'text' && op !== 'screenshot' && mac.held.length === 0 })
+  const taskId = 'task-redirected'
+  const first = startTask({ mac, taskId, prompt: 'Open Settings, then General, then About, and tell me the name.' }).then(readStream)
+  await expect.poll(() => mac.held.length, { timeout: 30_000 }).toBe(1)
+
+  const second = await runtime.worker.fetch('/api/cli/tasks', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${mac.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ id: taskId, lease: 'studio:7', messages: [{ id: 'm2', role: 'user', parts: [{ type: 'text', text: 'Then tell me the name from About.' }] }] }),
+  })
+  expect((await first).at(-1)).toMatchObject({ type: 'abort' })
+  const chunks = await readStream(second)
+  expect(chunks.at(-1)).toMatchObject({ type: 'finish' })
+  expect(mac.screen).toBe('about')
+  expect(chunks.flatMap((c) => (c.type === 'text-delta' ? [c.delta] : [])).join('')).toContain('Morse iPhone')
+}, 60_000)
+
 test('Stop keeps the stopped answer in the history: the next prompt can ask about it, then continue', async () => {
   // The first action never answers: Stop comes while it runs.
   const mac = await fakeMac({ hold: (op) => op !== 'text' && op !== 'screenshot' && mac.held.length === 0 })
@@ -225,7 +245,7 @@ test('Stop keeps the stopped answer in the history: the next prompt can ask abou
   // The stopped answer is marked, and its action in flight failed: it may have run on the iPhone.
   const { messages } = await (await runtime.worker.fetch(`/api/cli/tasks/${taskId}`, auth)).json() as { messages: UIMessage[] }
   expect(messages.map((m) => [m.role, m.metadata ?? null])).toEqual([['user', null], ['assistant', { stopped: true }]])
-  expect(messages[1]!.parts).toContainEqual(expect.objectContaining({ state: 'output-error', errorText: expect.stringContaining('Stopped by the user') }))
+  expect(messages[1]!.parts).toContainEqual(expect.objectContaining({ state: 'output-error', errorText: expect.stringContaining('Interrupted before this action returned') }))
 
   const ask = async (id: string, text: string) => {
     const response = await runtime.worker.fetch('/api/cli/tasks', {

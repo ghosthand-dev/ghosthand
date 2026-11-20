@@ -38,13 +38,14 @@ const MAX_RECOVERIES = 2
 const KEEPALIVE_MS = 15_000
 const KEY_DIGITS = 8
 const INTERRUPTED = 'Interrupted by a server restart: this action may or may not have run. Read the screen before you continue.'
-// No "continue": the model would take it as an order to go on with the stopped task.
-const STOPPED_ACTION = 'Stopped by the user while this action ran: it may or may not have happened on the iPhone.'
-// Like Claude Code's "[Request interrupted by user]": without it the model reads the stopped
-// prompt and the next one as one user message, and goes on with the stopped task.
-const STOPPED_NOTE = '[The user stopped the task above before it finished.]'
+// Facts only. "Stopped by the user" made the model refuse the next prompt too ("you've stopped
+// the task, so I won't continue"), and "check the screen" made it go on with the stopped task.
+const STOPPED_ACTION = 'Interrupted before this action returned: it may or may not have run on the iPhone.'
+// The stopped answer's last words in the model's history, not a user message: a user note
+// ("The user stopped the task above") read as part of the next prompt, which the model then refused.
+const STOPPED_ANSWER_END = '[Interrupted]'
 
-/** `stopped`: the user stopped this answer (Stop, or a new prompt) before it finished. */
+/** `stopped`: Stop or a new prompt cut this answer. */
 type TaskMetadata = { stopped?: boolean }
 
 /** `studio:42`: the Mac's slug and the lease on it. */
@@ -154,10 +155,10 @@ export class GhosthandTask extends DurableObject<Env> {
       // The heartbeat is set once per turn and re-armed only by the alarm: one row per 30 s.
       await this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_MS)
       const options = taskStreamOptions({ apiKey: this.env.AI_GATEWAY_API_KEY, daemon, lease: meta.lease, phone: meta.phone })
-      // The history the model reads: a note from the user after each answer they stopped.
-      const modelHistory = history.flatMap((message): UIMessage[] => {
-        if (!(message.metadata as TaskMetadata | undefined)?.stopped) return [message]
-        return [message, { id: `${message.id}-stopped`, role: 'user', parts: [{ type: 'text', text: STOPPED_NOTE }] }]
+      // A step after the stopped answer's last tool result, so the next prompt is its own message.
+      const modelHistory = history.map((message): UIMessage => {
+        if (!(message.metadata as TaskMetadata | undefined)?.stopped) return message
+        return { ...message, parts: [...message.parts, { type: 'step-start' }, { type: 'text', text: STOPPED_ANSWER_END }] }
       })
       const result = streamText({
         ...options,

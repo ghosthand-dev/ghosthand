@@ -25,7 +25,7 @@
   "r2_buckets": [
     { "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" },
     { "binding": "RELEASES", "bucket_name": "ghosthand-releases" },
-    // Cloud iPhone storage and catalog IPAs (src/cloud/storage.ts). Hosts write it with their own token.
+    // Cloud iPhone storage and catalog IPAs (src/cloud/storage.ts). Only this binding reads or writes it.
     { "binding": "PHONES", "bucket_name": "ghosthand-phones" }
   ],
   // The Macs that run cloud iPhones (src/cloud/host.ts): each one's private IP is routed by its
@@ -58,9 +58,9 @@
   "vars": {
     "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
     "STRADA_ENVIRONMENT": "production",
-    // Presigned catalog IPA URLs (src/cloud/storage.ts): the R2 S3 endpoint of PHONES.
-    "R2_ACCOUNT_ID": "103e73569e2f6d4aea0fb679ceb8709b",
-    "PHONES_BUCKET": "ghosthand-phones"
+    // User ids (comma-separated) whose API keys may call /api/cloud-admin (src/cloud/admin.ts).
+    // TODO: the operator's user id; empty lets nobody in.
+    "CLOUD_ADMINS": ""
   },
   "secrets": {
     "required": [
@@ -73,12 +73,7 @@
       "STRIPE_WEBHOOK_SECRET",
       "AI_GATEWAY_API_KEY",
       "STRADA_TOKEN",
-      "GITHUB_TOKEN",
-      // R2 S3 token for ghosthand-phones: presigned catalog IPA downloads for hosts (apps.ts).
-      "R2_PHONES_ACCESS_KEY_ID",
-      "R2_PHONES_SECRET_ACCESS_KEY",
-      // scripts/cloud-host.ts: the admin route that adds, drains and removes hosts.
-      "CLOUD_ADMIN_TOKEN"
+      "GITHUB_TOKEN"
     ]
   },
   "env": {
@@ -114,8 +109,7 @@
       "vars": {
         "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
         "STRADA_ENVIRONMENT": "preview",
-        "R2_ACCOUNT_ID": "103e73569e2f6d4aea0fb679ceb8709b",
-        "PHONES_BUCKET": "ghosthand-phones-preview"
+        "CLOUD_ADMINS": ""
       },
       "secrets": {
         "required": [
@@ -128,10 +122,7 @@
           "STRIPE_WEBHOOK_SECRET",
           "AI_GATEWAY_API_KEY",
           "STRADA_TOKEN",
-          "GITHUB_TOKEN",
-          "R2_PHONES_ACCESS_KEY_ID",
-          "R2_PHONES_SECRET_ACCESS_KEY",
-          "CLOUD_ADMIN_TOKEN"
+          "GITHUB_TOKEN"
         ]
       }
     }

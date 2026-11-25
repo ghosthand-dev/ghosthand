@@ -22,7 +22,7 @@ import { catalogApp, publicCatalog } from './apps.ts'
 import { getFleet, type FleetPhone, type LeaseInfo, type LeaseTarget, type LeaseView } from './fleet.ts'
 import { hostClient, type Json, type SockLine, type SockReply } from './host.ts'
 import { DEFAULT_IDLE_TIMEOUT_S } from './scheduler.ts'
-import { presignPhonesGet, templateInfo } from './storage.ts'
+import { sendBlob, templateInfo } from './storage.ts'
 
 type Schemas = components['schemas']
 export type Device = Schemas['Device']
@@ -45,7 +45,6 @@ const SCROLL_STROKE_FRACTION = 0.6
 const SCROLL_STROKE_MS = 400
 const TAP_GAP_MS = 120
 const TAP_PRESS_MS = 80
-const IPA_URL_EXPIRY_S = 3600
 const KEEPALIVE_MS = 15_000
 const MAX_NAME_LENGTH = 100
 const MS_PER_S = 1_000
@@ -498,17 +497,20 @@ export async function catalog(ctx: Ctx, { lease }: { lease: string }): Promise<S
   return { apps: publicCatalog().apps.map((app) => ({ ...app, installed: bundles.has(app.bundleId) })) }
 }
 
-/** A catalog app: the host downloads the decrypted IPA from R2 (presigned), then vphoned installs it. */
+/** A catalog app: the Worker streams the decrypted IPA from R2 into the host's blob store (unless
+ *  it has it), the host pushes it into the guest, then vphoned installs it. */
 export async function installCatalogApp(ctx: Ctx, { lease, app }: { lease: string; app: string }): Promise<ActionResult | CloudProblem> {
   const entry = catalogApp(app)
   if (!entry) return new CloudProblem('not-found', `no app "${app}" in the catalog. Apps: ${publicCatalog().apps.map((a) => a.id).join(', ')}`)
   const phone = await openLease(ctx, { lease, command: 'app install' })
   if (phone instanceof Error) return phone
   const path = `/var/mobile/Media/Downloads/${entry.id}.ipa`
-  const url = await presignPhonesGet({ key: entry.key, expiresS: IPA_URL_EXPIRY_S })
-  const pushed = await hostClient(phone.address).pushUrl({ phoneId: phone.phoneId, url, sha256: entry.sha256, path, signal: ctx.signal })
-  if (pushed instanceof Error) return new CloudProblem('internal-error', `the cloud iPhone could not download ${entry.name}: ${pushed.message}`)
-  if (!pushed.ok) return new CloudProblem('internal-error', `the cloud iPhone could not download ${entry.name}: ${pushed.error ?? 'no reason given'}`)
+  const host = hostClient(phone.address)
+  const sent = await sendBlob({ host, key: entry.key, sha256: entry.sha256, signal: ctx.signal })
+  if (sent instanceof Error) return new CloudProblem('internal-error', `the cloud iPhone could not get ${entry.name}: ${sent.message}`)
+  const pushed = await host.push({ phoneId: phone.phoneId, sha256: entry.sha256, path, signal: ctx.signal })
+  if (pushed instanceof Error) return new CloudProblem('internal-error', `the cloud iPhone could not get ${entry.name}: ${pushed.message}`)
+  if (!pushed.ok) return new CloudProblem('internal-error', `the cloud iPhone could not get ${entry.name}: ${pushed.error ?? 'no reason given'}`)
   const installed = await rpc(phone, 'apps.install', { path })
   if (installed instanceof Error) return installed
   return { message: `installed ${entry.name} (${entry.bundleId})`, logs: [`downloaded ${entry.name} to the cloud iPhone`] }

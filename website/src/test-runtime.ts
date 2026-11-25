@@ -53,11 +53,7 @@ export async function startTestRuntime() {
       GOOGLE_CLIENT_SECRET: 'local-test',
       // Task tests call the real model through Vercel AI Gateway: run them with `sigillo run`.
       AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY ?? '',
-      R2_ACCOUNT_ID: 'local-test',
-      PHONES_BUCKET: 'phones-test',
-      R2_PHONES_ACCESS_KEY_ID: 'local-test',
-      R2_PHONES_SECRET_ACCESS_KEY: 'local-test',
-      CLOUD_ADMIN_TOKEN: 'local-cloud-admin-test-token',
+      CLOUD_ADMINS: 'cloud-admin-test',
     },
     hyperdrive: [{ binding: 'HYPERDRIVE', id: 'local-test', localConnectionString: database.url }],
     r2_buckets: [{ binding: 'UPLOADS', bucket_name: 'security-test' }, { binding: 'PHONES', bucket_name: 'phones-test' }],

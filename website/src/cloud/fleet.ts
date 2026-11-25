@@ -7,21 +7,28 @@
 //                                        │ logs the event          │ start / stop: host.ts, 202, then poll
 //                                        ▼                         ▼
 //                                 alarm: lease expiry, waiter deadlines, host polling every 3 s
-//                                 only while a start or stop is in flight (no timer when idle)
+//                                 only while a start or stop is in flight (no timer when idle),
+//                                 and storage transfers (storage.ts), 500 chunks per run:
+//                                   save: a stopped phone's new version, host to R2
+//                                   load: before a start on a host without the copy, R2 to host
 //
 // Storage (SQLite KV), one row per entry so a tap writes two rows (its lease and its event):
 //   host:<slug>  phone:<id>  lease:<n>  waiter:<id>  counters  event:<seq>  (last 1000 events)
+//   transfer:<phone id>  a save or load in progress
 
 import { DurableObject, env } from 'cloudflare:workers'
 import { getHub } from '../tunnel.ts'
 import { captureException, reportErrors, trackEvent } from '../telemetry.ts'
 import { hostClient } from './host.ts'
+import { loadBatch, saveBatch } from './storage.ts'
 import {
+  POLL_WAITING_MS,
   emptyFleet,
   leaseExpiresAt,
   leaseOf,
   needsPolling,
   nextWake,
+  pendingSaves,
   step,
   type FleetAction,
   type FleetEvent,
@@ -36,6 +43,13 @@ const EVENT_LOG_SIZE = 1000
 const SEQ_DIGITS = 12
 const POLL_TIMEOUT_MS = 6_000
 const HOST_CALL_TIMEOUT_MS = 20_000
+/** Each chunk copy is 2 subrequests; an invocation may make 10,000. */
+const CHUNKS_PER_RUN = 500
+/** A failed transfer batch is tried again after this. */
+const TRANSFER_RETRY_MS = POLL_WAITING_MS
+/** One batch, including the restore of a whole disk on the host. */
+const TRANSFER_TIMEOUT_MS = 10 * 60_000
+const TRANSFER_PREFIX = 'transfer:'
 const COLLECTIONS = ['hosts', 'phones', 'leases', 'waiters'] as const
 const PREFIX: Record<(typeof COLLECTIONS)[number], string> = { hosts: 'host:', phones: 'phone:', leases: 'lease:', waiters: 'waiter:' }
 
@@ -62,8 +76,12 @@ export type LeaseTarget = { phoneId: string; template: string; host: string; add
 
 export type HostView = Host & { running: number; cached: number }
 
+/** A save or load of one phone version, persisted across alarm runs. `next`: the first chunk
+ *  of the next save batch (a load asks the host what is still missing instead). */
+type Transfer = { kind: 'save' | 'load'; host: string; version: number; next: number; retryAt: number }
+
 export function getFleet() {
-  return env.CLOUD_FLEET.getByName('fleet') as DurableObjectStub<CloudFleet>
+  return env.CLOUD_FLEET.getByName('fleet')
 }
 
 export class CloudFleet extends DurableObject<Env> {
@@ -74,14 +92,17 @@ export class CloudFleet extends DurableObject<Env> {
   private waiting = new Map<number, (result: AcquireResult) => void>()
   /** Settled before their client called waitFor(). */
   private settled = new Map<number, AcquireResult>()
+  /** By phone id. Saves are created when pendingSaves lists a phone, loads by a start action. */
+  private transfers: Record<string, Transfer> = {}
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
     this.state = load(ctx.storage.kv)
+    for (const [key, value] of ctx.storage.kv.list<Transfer>({ prefix: TRANSFER_PREFIX })) this.transfers[key.slice(TRANSFER_PREFIX.length)] = value
     void ctx.blockConcurrencyWhile(async () => {
       this.alarmAt = await ctx.storage.getAlarm()
       // The clients of waiting acquires lost their connection with the old instance.
-      if (Object.keys(this.state.waiters).length) this.apply({ type: 'reset', at: Date.now() })
+      if (Object.keys(this.state.waiters).length) this.apply({ type: 'reset', at: this.now() })
     })
   }
 
@@ -108,7 +129,7 @@ export class CloudFleet extends DurableObject<Env> {
     const phone = this.state.phones[input.phoneId]
     if (phone?.orgId === input.orgId && phone.state === 'running' && phone.host) await this.pollHost(phone.host)
     const waiterId = this.state.nextWaiter
-    this.apply({ type: 'acquire', at: Date.now(), waiterId, ...input })
+    this.apply({ type: 'acquire', at: this.now(), waiterId, ...input })
     const result = this.settled.get(waiterId)
     this.settled.delete(waiterId)
     return { waiterId, result }
@@ -125,7 +146,7 @@ export class CloudFleet extends DurableObject<Env> {
   }
 
   async cancel({ waiterId }: { waiterId: number }): Promise<void> {
-    if (this.state.waiters[waiterId]) this.apply({ type: 'cancel', at: Date.now(), waiterId })
+    if (this.state.waiters[waiterId]) this.apply({ type: 'cancel', at: this.now(), waiterId })
     this.settle(waiterId, { ok: false, code: 'cancelled', detail: 'the client went away' })
     this.settled.delete(waiterId)
   }
@@ -133,14 +154,14 @@ export class CloudFleet extends DurableObject<Env> {
   /** False when the lease had already ended. */
   async release({ orgId, n }: { orgId: string; n: number }): Promise<boolean> {
     const lease = this.state.leases[n]
-    if (!lease || lease.orgId !== orgId || leaseExpiresAt(lease) <= Date.now()) return false
-    this.apply({ type: 'release', at: Date.now(), orgId, n })
+    if (!lease || lease.orgId !== orgId || leaseExpiresAt(lease) <= this.now()) return false
+    this.apply({ type: 'release', at: this.now(), orgId, n })
     return true
   }
 
   /** The phone of a live lease of this org, and its host. Each call restarts the idle timeout. */
   async lease({ orgId, n, command }: { orgId: string; n: number; command: string }): Promise<LeaseTarget | null> {
-    const now = Date.now()
+    const now = this.now()
     const lease = this.state.leases[n]
     // Another org's number is unknown here: it must not even keep that lease alive.
     if (!lease || lease.orgId !== orgId) return null
@@ -157,14 +178,14 @@ export class CloudFleet extends DurableObject<Env> {
 
   /** From the Stripe webhook: a new phone, a renewal (allowed) or a cancel. Storage is kept. */
   async setAccess({ phoneId, orgId, template, allowed }: { phoneId: string; orgId: string; template: string; allowed: boolean }): Promise<void> {
-    this.apply({ type: 'access', at: Date.now(), phoneId, orgId, template, allowed })
+    this.apply({ type: 'access', at: this.now(), phoneId, orgId, template, allowed })
     await getHub(orgId).setCloud(true)
   }
 
   // ── operator (scripts/cloud-host.ts through admin.ts) ──
 
   async setHost(host: { slug: string; address: string; slots: number; enabled: boolean }): Promise<HostView[]> {
-    this.apply({ type: 'host-set', at: Date.now(), ...host })
+    this.apply({ type: 'host-set', at: this.now(), ...host })
     await this.pollHost(host.slug)
     return this.hosts()
   }
@@ -173,14 +194,14 @@ export class CloudFleet extends DurableObject<Env> {
   async removeHost({ slug }: { slug: string }): Promise<{ ok: true } | { ok: false; detail: string }> {
     const busy = Object.values(this.state.phones).filter((p) => p.host === slug && (p.state !== 'stored' || p.unsaved))
     if (busy.length) return { ok: false, detail: `${slug} runs or holds the newest copy of ${busy.map((p) => p.id).join(', ')}: drain it and wait, or recover those phones first` }
-    this.apply({ type: 'host-removed', at: Date.now(), slug })
+    this.apply({ type: 'host-removed', at: this.now(), slug })
     return { ok: true }
   }
 
   /** The host with the newest copy is gone: the phone restarts from its newest R2 version. */
   async recover({ phoneId }: { phoneId: string }): Promise<{ ok: boolean; version?: number }> {
     if (!this.state.phones[phoneId]) return { ok: false }
-    this.apply({ type: 'recover', at: Date.now(), phoneId })
+    this.apply({ type: 'recover', at: this.now(), phoneId })
     return { ok: true, version: this.state.phones[phoneId]!.version }
   }
 
@@ -195,25 +216,99 @@ export class CloudFleet extends DurableObject<Env> {
 
   /** The whole state and the newest events, for debugging a decision. */
   async snapshot({ events = 100 }: { events?: number } = {}): Promise<{ state: FleetState; events: FleetEvent[] }> {
-    const log = [...this.ctx.storage.kv.list<FleetEvent>({ prefix: 'event:', reverse: true, limit: events })].map(([, event]) => event).reverse()
+    // kv.list throws on limit 0.
+    const log = events ? [...this.ctx.storage.kv.list<FleetEvent>({ prefix: 'event:', reverse: true, limit: events })].map(([, event]) => event).reverse() : []
     return { state: this.state, events: log }
   }
 
   async alarm(): Promise<void> {
     await reportErrors('CloudFleet.alarm', async () => {
       this.alarmAt = null
-      this.apply({ type: 'tick', at: Date.now() })
+      this.apply({ type: 'tick', at: this.now() })
       if (needsPolling(this.state)) await Promise.all(Object.keys(this.state.hosts).map((slug) => this.pollHost(slug)))
+      await this.runTransfers()
       this.scheduleAlarm()
     })
+  }
+
+  /** Overridden by tests to move the clock. */
+  protected now(): number {
+    return Date.now()
+  }
+
+  /** The transfers that still apply to the fleet state; others are dropped (e.g. a phone that
+   *  started again before its save ended: its next stop makes a newer version). */
+  private liveTransfers(): [string, Transfer][] {
+    const live: [string, Transfer][] = []
+    for (const phone of pendingSaves(this.state)) {
+      const saved = this.transfers[phone.id]
+      const fresh = saved?.kind === 'save' && saved.version === phone.version && saved.host === phone.host
+      live.push([phone.id, fresh ? saved : { kind: 'save', host: phone.host!, version: phone.version, next: 0, retryAt: 0 }])
+    }
+    for (const [phoneId, transfer] of Object.entries(this.transfers)) {
+      const phone = this.state.phones[phoneId]
+      if (transfer.kind === 'load' && phone?.state === 'starting' && phone.callPending && phone.host === transfer.host) live.push([phoneId, transfer])
+    }
+    return live
+  }
+
+  private setTransfer(phoneId: string, transfer: Transfer | null): void {
+    if (transfer) this.transfers[phoneId] = transfer
+    else delete this.transfers[phoneId]
+    if (transfer) this.ctx.storage.kv.put(TRANSFER_PREFIX + phoneId, transfer)
+    else this.ctx.storage.kv.delete(TRANSFER_PREFIX + phoneId)
+  }
+
+  /** Copies up to CHUNKS_PER_RUN chunks, one transfer after another; the alarm comes back for more. */
+  private async runTransfers(): Promise<void> {
+    const live = this.liveTransfers()
+    const ids = new Set(live.map(([phoneId]) => phoneId))
+    for (const phoneId of Object.keys(this.transfers)) if (!ids.has(phoneId)) this.setTransfer(phoneId, null)
+    let budget = CHUNKS_PER_RUN
+    for (const [phoneId, transfer] of live) {
+      if (budget <= 0) return
+      if (transfer.retryAt > this.now()) continue
+      const phone = this.state.phones[phoneId]!
+      const host = this.state.hosts[transfer.host]
+      if (!host) continue
+      const client = hostClient(host.address)
+      const signal = AbortSignal.timeout(TRANSFER_TIMEOUT_MS)
+      const batch = transfer.kind === 'save'
+        ? await saveBatch({ host: client, phoneId, template: phone.template, version: transfer.version, previous: phone.r2Version, next: transfer.next, budget, signal })
+        : await loadBatch({ host: client, phoneId, version: transfer.version, budget, signal })
+      if (batch instanceof Error) {
+        captureException(batch, { tags: { handler: `CloudFleet.${transfer.kind}` } })
+        if (transfer.kind === 'load') {
+          // Like a failed start call: the waiters hear it, the host's status decides the rest.
+          this.setTransfer(phoneId, null)
+          this.apply({ type: 'call-failed', at: this.now(), phoneId, error: `copying its data to the server failed: ${batch.message}` })
+          continue
+        }
+        this.setTransfer(phoneId, { ...transfer, retryAt: this.now() + TRANSFER_RETRY_MS })
+        // An offline host drops the save from pendingSaves until it answers again.
+        await this.pollHost(transfer.host)
+        continue
+      }
+      budget -= batch.copied
+      if (!batch.done) {
+        this.setTransfer(phoneId, { ...transfer, next: batch.next })
+        continue
+      }
+      this.setTransfer(phoneId, null)
+      if (transfer.kind === 'save') {
+        this.apply({ type: 'saved', at: this.now(), phoneId, version: transfer.version })
+        continue
+      }
+      await this.callHost({ type: 'start', phoneId, host: transfer.host, version: transfer.version, template: phone.template, load: false })
+    }
   }
 
   private async pollHost(slug: string): Promise<void> {
     const host = this.state.hosts[slug]
     if (!host) return
     const status = await hostClient(host.address).status({ signal: AbortSignal.timeout(POLL_TIMEOUT_MS) })
-    if (status instanceof Error) return void this.apply({ type: 'host-status', at: Date.now(), slug, online: false })
-    this.apply({ type: 'host-status', at: Date.now(), slug, online: true, phones: status.phones })
+    if (status instanceof Error) return void this.apply({ type: 'host-status', at: this.now(), slug, online: false })
+    this.apply({ type: 'host-status', at: this.now(), slug, online: true, phones: status.phones })
   }
 
   /** One step: save the changed rows and the event, then run the actions. Synchronous up to
@@ -243,8 +338,10 @@ export class CloudFleet extends DurableObject<Env> {
       case 'reject':
         return this.settle(action.waiterId, { ok: false, code: action.code, detail: action.detail })
       case 'start':
+        if (action.load) return this.setTransfer(action.phoneId, { kind: 'load', host: action.host, version: action.version, next: 0, retryAt: 0 })
+        return this.ctx.waitUntil(this.callHost(action))
       case 'stop':
-        this.ctx.waitUntil(this.callHost(action))
+        return this.ctx.waitUntil(this.callHost(action))
     }
   }
 
@@ -257,13 +354,13 @@ export class CloudFleet extends DurableObject<Env> {
     const signal = AbortSignal.timeout(HOST_CALL_TIMEOUT_MS)
     const result = action.type === 'start'
       ? await client.start({ phoneId: action.phoneId, version: action.version, template: action.template, signal })
-      : await client.stop({ phoneId: action.phoneId, uploadVersion: action.uploadVersion, signal })
+      : await client.stop({ phoneId: action.phoneId, version: action.version, signal })
     if (!(result instanceof Error)) {
       if (action.type === 'start') trackEvent('cloud_phone_started', { org_id: phone.orgId, cloud_phone_id: phone.id })
-      return this.apply({ type: 'call-answered', at: Date.now(), phoneId: action.phoneId })
+      return this.apply({ type: 'call-answered', at: this.now(), phoneId: action.phoneId })
     }
     captureException(result, { tags: { handler: `CloudFleet.${action.type}` } })
-    this.apply({ type: 'call-failed', at: Date.now(), phoneId: action.phoneId, error: result.message })
+    this.apply({ type: 'call-failed', at: this.now(), phoneId: action.phoneId, error: result.message })
   }
 
   private settle(waiterId: number, result: AcquireResult): void {
@@ -275,7 +372,9 @@ export class CloudFleet extends DurableObject<Env> {
 
   /** One alarm at the next deadline; it never moves later while one is set. */
   private scheduleAlarm(): void {
-    const wake = nextWake(this.state, Date.now())
+    const now = this.now()
+    const times = [nextWake(this.state, now), ...this.liveTransfers().map(([, t]) => Math.max(now, t.retryAt))].filter((t) => t !== null)
+    const wake = times.length ? Math.min(...times) : null
     if (wake === null) {
       if (this.alarmAt === null) return
       this.alarmAt = null

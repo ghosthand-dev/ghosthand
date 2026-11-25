@@ -1,15 +1,17 @@
 // Manages the Macs that run cloud iPhones, through the admin routes (src/cloud/admin.ts).
 //
-//   sigillo run -c prod -- bun scripts/cloud-host.ts list
-//   sigillo run -c prod -- bun scripts/cloud-host.ts add mint --address 10.77.0.1:7400 --slots 4
-//   sigillo run -c prod -- bun scripts/cloud-host.ts drain mint      # no new starts there
-//   sigillo run -c prod -- bun scripts/cloud-host.ts enable mint
-//   sigillo run -c prod -- bun scripts/cloud-host.ts remove mint     # refused while it runs or holds a phone
-//   sigillo run -c prod -- bun scripts/cloud-host.ts recover cph_... # its host is gone: restart from R2
-//   sigillo run -c prod -- bun scripts/cloud-host.ts snapshot --events 50
+//   source <(ghosthand tunnel url --new-token)   # GHOSTHAND_URL, GHOSTHAND_TOKEN (your API key)
+//   bun scripts/cloud-host.ts list
+//   bun scripts/cloud-host.ts add mint --address 10.77.0.1:7400 --slots 4
+//   bun scripts/cloud-host.ts drain mint      # no new starts there
+//   bun scripts/cloud-host.ts enable mint
+//   bun scripts/cloud-host.ts remove mint     # refused while it runs or holds a phone
+//   bun scripts/cloud-host.ts recover cph_... # its host is gone: restart from R2
+//   bun scripts/cloud-host.ts snapshot --events 50
 //
-// Needs CLOUD_ADMIN_TOKEN. GHOSTHAND_URL picks the site (default https://ghosthand.dev; the
-// preview fleet is https://preview.ghosthand.dev and must never get a production host).
+// GHOSTHAND_TOKEN is the operator's normal API key; the route checks the user is in CLOUD_ADMINS.
+// The origin of GHOSTHAND_URL picks the site (default https://ghosthand.dev; the preview fleet
+// is https://preview.ghosthand.dev and must never get a production host).
 import { parseArgs } from 'node:util'
 
 const REQUEST_TIMEOUT_MS = 30_000
@@ -22,10 +24,11 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
 })
 const [command, target] = positionals
-const site = process.env.GHOSTHAND_URL ?? 'https://ghosthand.dev'
-const token = process.env.CLOUD_ADMIN_TOKEN
+// The tunnel URL is https://ghosthand.dev/macs/<mac>: only its origin matters here.
+const site = new URL(process.env.GHOSTHAND_URL ?? 'https://ghosthand.dev').origin
+const token = process.env.GHOSTHAND_TOKEN
 if (!token || !command) {
-  console.error(token ? USAGE : 'CLOUD_ADMIN_TOKEN is missing: run with sigillo run -c prod (or -c preview)')
+  console.error(token ? USAGE : 'GHOSTHAND_TOKEN is missing: run `source <(ghosthand tunnel url --new-token)` first')
   process.exit(1)
 }
 

@@ -1,6 +1,6 @@
 // Event log replays: each test is a log of fleet events and the actions each one caused.
 import { expect, test } from 'vitest'
-import { GRACE_MS, POLL_WAITING_MS, nextWake, replay, type FleetAction, type FleetEvent, type HostPhone } from './scheduler.ts'
+import { GRACE_MS, POLL_WAITING_MS, nextWake, pendingSaves, replay, type FleetAction, type FleetEvent, type HostPhone } from './scheduler.ts'
 
 const MIN = 60_000
 const T = 'tpl'
@@ -28,8 +28,8 @@ function log(events: FleetEvent[]): string {
 
 function describe(action: FleetAction): string {
   switch (action.type) {
-    case 'start': return `start ${action.phoneId}@${action.host} v${action.version}`
-    case 'stop': return `stop ${action.phoneId}@${action.host} upload v${action.uploadVersion}`
+    case 'start': return `start ${action.phoneId}@${action.host} v${action.version}${action.load ? ' (load)' : ''}`
+    case 'stop': return `stop ${action.phoneId}@${action.host} as v${action.version}`
     case 'grant': return `grant#${action.waiterId} lease ${action.n}${action.replaced ? ` (replaced ${action.replaced.n})` : ''}`
     case 'reject': return `reject#${action.waiterId} ${action.code}`
   }
@@ -51,7 +51,7 @@ test('an idle phone is stopped for a waiting one only after the grace time', () 
     "
        1m acquire#1 A -> start A@mint v0
        2m host-status mint -> grant#1 lease 1
-      15m tick -> stop A@mint upload v1
+      15m tick -> stop A@mint as v1
       16m host-status mint -> start B@mint v0
       17m host-status mint -> grant#2 lease 2
     "
@@ -82,10 +82,10 @@ test('waiters are served in FIFO order and one stop frees one slot', () => {
     "
        0m acquire#1 A -> start A@mint v0
        0m host-status mint -> grant#1 lease 1
-      11m acquire#2 B -> stop A@mint upload v1
+      11m acquire#2 B -> stop A@mint as v1
       13m host-status mint -> start B@mint v0
       14m host-status mint -> grant#2 lease 2
-      25m tick -> stop B@mint upload v1
+      25m tick -> stop B@mint as v1
       26m host-status mint -> start C@mint v0
     "
   `)
@@ -162,27 +162,31 @@ test('removed access ends the lease and rejects waiters; renewing gives the same
   expect(state.phones.A).toMatchObject({ state: 'running', host: 'mint' })
 })
 
-test('a drained host starts nothing; an uploaded phone cached there starts elsewhere from R2', () => {
+test('a stopped phone moves only once CloudFleet saved it; a drained host starts nothing', () => {
   const t = GRACE_MS + MIN
-  expect(log([
+  const events: FleetEvent[] = [
     host('mint', 1), online('mint', 0), phone('A'), phone('B'),
     acquire(1, 'A', 0), online('mint', 0, [running('A')]), { type: 'release', at: 0, orgId: 'org', n: 1 },
-    // B takes A's slot: A is uploaded as v1 and stays in mint's cache.
+    // B takes A's slot: A is hashed as v1 on mint, which alone has it until it is saved.
     acquire(2, 'B', t, { waitS: 3600 }),
     online('mint', t + MIN, [stopped('A', 1)]),
     online('mint', t + 2 * MIN, [stopped('A', 1), running('B')]),
     { type: 'release', at: t + 3 * MIN, orgId: 'org', n: 2 },
     host('studio', 1, t + 4 * MIN), online('studio', t + 4 * MIN),
     { type: 'host-set', at: t + 5 * MIN, slug: 'mint', address: '10.77.0.4:7400', slots: 2, enabled: false },
-    acquire(3, 'A', t + 6 * MIN),
-  ])).toMatchInlineSnapshot(`
+    acquire(3, 'A', t + 6 * MIN, { waitS: 3600 }),
+  ]
+  const before = replay(events).state
+  expect(pendingSaves(before).map((p) => [p.id, p.version, p.r2Version])).toEqual([['A', 1, 0]])
+  expect(before.phones.A).toMatchObject({ state: 'stored', host: 'mint', unsaved: true })
+  expect(log([...events, { type: 'saved', at: t + 7 * MIN, phoneId: 'A', version: 1 }])).toMatchInlineSnapshot(`
     "
        0m acquire#1 A -> start A@mint v0
        0m host-status mint -> grant#1 lease 1
-      11m acquire#2 B -> stop A@mint upload v1
+      11m acquire#2 B -> stop A@mint as v1
       12m host-status mint -> start B@mint v0
       13m host-status mint -> grant#2 lease 2
-      17m acquire#3 A -> start A@studio v1
+      18m saved A -> start A@studio v1 (load)
     "
   `)
 })
@@ -218,8 +222,8 @@ test('a failed host call frees nothing: only the host status does', () => {
     "
        0m acquire#1 P -> start P@a v0
        0m host-status a -> grant#1 lease 1
-      11m acquire#2 Q -> stop P@a upload v1
-      13m host-status a -> stop P@a upload v1
+      11m acquire#2 Q -> stop P@a as v1
+      13m host-status a -> stop P@a as v1
       14m host-status a -> start Q@a v0
     "
   `)
@@ -249,4 +253,18 @@ test('a passed grace deadline does not wake the fleet at once', () => {
     acquire(2, 'Q', GRACE_MS + MIN, { waitS: 3600 }),
   ])
   expect(nextWake(state, GRACE_MS + 2 * MIN)! - (GRACE_MS + 2 * MIN)).toBe(POLL_WAITING_MS)
+})
+
+test('a save of a phone that started again since keeps it unsaved', () => {
+  const t = GRACE_MS + MIN
+  const { state } = replay([
+    host('mint', 1), online('mint', 0), phone('A'), phone('B'),
+    acquire(1, 'A', 0), online('mint', 0, [running('A')]), { type: 'release', at: 0, orgId: 'org', n: 1 },
+    acquire(2, 'B', t, { waitS: 3600 }), { type: 'cancel', at: t, waiterId: 2 },
+    online('mint', t + MIN, [stopped('A', 1)]),
+    // A starts again on mint before its v1 save ends; the save lands while it starts.
+    acquire(3, 'A', t + 2 * MIN),
+    { type: 'saved', at: t + 3 * MIN, phoneId: 'A', version: 1 },
+  ])
+  expect(state.phones.A).toMatchObject({ state: 'starting', host: 'mint', version: 1, r2Version: 1, unsaved: true })
 })

@@ -17,7 +17,9 @@
 //      d. else it keeps waiting. An unsaved phone waits for its host; only `recover` moves it.
 //   3. A running phone without a lease keeps running until a waiter needs its slot.
 //   4. Removed access ends the lease and rejects the waiters; the phone is idle from then.
-//   5. A stop always uploads; R2 counts as newest only after the host reports the upload.
+//   5. A stop hashes the disk into a new version on the host; CloudFleet then copies it to
+//      R2 (pendingSaves) and reports `saved`. Until then only that host has the newest copy.
+//      A start on a host without the copy first loads it from R2 (`load` on the action).
 //   6. Only a host report frees a slot or a placement. A start or stop call that failed or
 //      timed out proves nothing (the host may have done it): the phone keeps its state and
 //      host until the host's status says what happened, however long it is offline.
@@ -60,9 +62,9 @@ export type Phone = {
   host: string | null
   /** Storage version of the newest copy. +1 on every stop. */
   version: number
-  /** Newest version uploaded to R2. 0: never, the template is the copy. */
+  /** Newest version saved to R2. 0: never, the template is the copy. */
   r2Version: number
-  /** The copy on `host` has changes that R2 does not: from a start until a stop uploads them. */
+  /** The copy on `host` has changes that R2 does not: from a start until its stop is saved. */
   unsaved: boolean
   /** When `state` last changed. */
   since: number
@@ -114,9 +116,9 @@ export type FleetState = {
 export type HostPhone = {
   id: string
   state: 'starting' | 'running' | 'stopping' | 'stopped'
-  /** Version of the local copy. */
+  /** Version of the local copy: after a stop, the version its manifest was hashed as. */
   version: number
-  /** Newest version this host uploaded. */
+  /** Newest version CloudFleet reported saved to R2. */
   uploadedVersion: number
   /** Why the last start or stop failed. */
   error?: string
@@ -150,6 +152,8 @@ export type FleetEvent =
   | { type: 'call-answered'; at: number; phoneId: string }
   /** The start or stop call failed or timed out: the host may or may not have done it. */
   | { type: 'call-failed'; at: number; phoneId: string; error: string }
+  /** CloudFleet copied this version from its host to R2. */
+  | { type: 'saved'; at: number; phoneId: string; version: number }
   /** Operator: the host with the newest copy is gone; restart from the R2 version. */
   | { type: 'recover'; at: number; phoneId: string }
   /** The Durable Object restarted: the clients of waiting acquires are gone. */
@@ -158,8 +162,10 @@ export type FleetEvent =
 export type RejectCode = 'device-not-found' | 'device-leased' | 'subscription-required' | 'tunnel-offline' | 'no-device' | 'internal-error'
 
 export type FleetAction =
-  | { type: 'start'; phoneId: string; host: string; version: number; template: string }
-  | { type: 'stop'; phoneId: string; host: string; uploadVersion: number }
+  /** `load`: copy `version` from R2 to the host first (it has no copy of it). */
+  | { type: 'start'; phoneId: string; host: string; version: number; template: string; load: boolean }
+  /** Shut down and hash the disk as `version`. */
+  | { type: 'stop'; phoneId: string; host: string; version: number }
   | { type: 'grant'; waiterId: number; n: number; replaced?: Lease }
   | { type: 'reject'; waiterId: number; code: RejectCode; detail: string }
 
@@ -215,6 +221,12 @@ export function nextWake(state: FleetState, now: number): number | null {
     }
   }
   return times.length ? Math.max(now, Math.min(...times)) : null
+}
+
+/** Stopped phones whose newest version is only on their (online) host: CloudFleet copies them to R2. */
+export function pendingSaves(state: FleetState): Phone[] {
+  return Object.values(state.phones).filter((phone) =>
+    phone.state === 'stored' && phone.unsaved && phone.version > phone.r2Version && !!phone.host && !!state.hosts[phone.host]?.online)
 }
 
 function inTransition(state: FleetState): boolean {
@@ -324,6 +336,14 @@ function applyEvent({ state, event, actions }: { state: FleetState; event: Fleet
       if (phone.state === 'starting') rejectWaiters({ state, phoneId: phone.id, actions, detail: `the cloud iPhone did not start: ${event.error}. Try again in a minute.` })
       return
     }
+    case 'saved': {
+      const phone = state.phones[event.phoneId]
+      if (!phone) return
+      phone.r2Version = Math.max(phone.r2Version, event.version)
+      // A phone started again since has newer changes than this save.
+      if (phone.state === 'stored' && phone.version === event.version) phone.unsaved = false
+      return
+    }
     case 'recover': {
       const phone = state.phones[event.phoneId]
       if (!phone) return
@@ -364,9 +384,9 @@ function reconcileHost({ state, slug, reported, at, actions }: { state: FleetSta
         }
         break
       case 'stopping':
-        if (report?.state === 'stopped' && report.uploadedVersion === phone.version + 1) {
-          const version = report.uploadedVersion
-          Object.assign(phone, { state: 'stored', version, r2Version: version, unsaved: false, since: at, idleSince: null } satisfies Partial<Phone>)
+        if (report?.state === 'stopped' && report.version === phone.version + 1) {
+          // Down and hashed: the slot is free, the copy is saved next (pendingSaves).
+          Object.assign(phone, { state: 'stored', version: report.version, unsaved: true, since: at, callPending: false, idleSince: null } satisfies Partial<Phone>)
         } else if (report?.state === 'stopped' && report.error) {
           failStop({ phone, at })
         } else if (report?.state === 'running' && !phone.callPending) {
@@ -396,7 +416,7 @@ function rejectWaiters({ state, phoneId, actions, detail }: { state: FleetState;
   }
 }
 
-/** A stop that did not upload: the VM is down, its changes exist only on the host. */
+/** A stop that made no version: the VM is down, its changes exist only on the host. */
 function failStop({ phone, at }: { phone: Phone; at: number }): void {
   Object.assign(phone, { state: 'stored', unsaved: true, since: at, callPending: false, idleSince: null } satisfies Partial<Phone>)
 }
@@ -468,22 +488,22 @@ function schedule({ state, at, actions }: { state: FleetState; at: number; actio
     if (phone.state !== 'stored') continue
 
     const home = phone.host ? state.hosts[phone.host] : undefined
-    const start = (host: Host) => {
+    const start = (host: Host, load: boolean) => {
       Object.assign(phone, { state: 'starting', host: host.slug, since: at, callPending: true, idleSince: null } satisfies Partial<Phone>)
-      actions.push({ type: 'start', phoneId: phone.id, host: host.slug, version: phone.version, template: phone.template })
+      actions.push({ type: 'start', phoneId: phone.id, host: host.slug, version: phone.version, template: phone.template, load })
     }
     // a. Its own host: no download.
     if (usable(home) && freeSlots(state, home) > 0) {
-      start(home)
+      start(home, false)
       continue
     }
-    // b. Anywhere, from R2.
+    // b. Anywhere, from R2. Version 0 is the template every host has.
     if (!phone.unsaved) {
       const best = Object.values(state.hosts)
         .filter((host) => usable(host) && freeSlots(state, host) > 0)
         .sort((a, b) => freeSlots(state, b) - freeSlots(state, a) || a.slug.localeCompare(b.slug))[0]
       if (best) {
-        start(best)
+        start(best, phone.version > 0)
         continue
       }
     }
@@ -500,7 +520,7 @@ function schedule({ state, at, actions }: { state: FleetState; at: number; actio
       .sort((a, b) => a.idleSince! - b.idleSince! || a.id.localeCompare(b.id))[0]
     if (victim) {
       Object.assign(victim, { state: 'stopping', since: at, callPending: true } satisfies Partial<Phone>)
-      actions.push({ type: 'stop', phoneId: victim.id, host: victim.host!, uploadVersion: victim.version + 1 })
+      actions.push({ type: 'stop', phoneId: victim.id, host: victim.host!, version: victim.version + 1 })
     }
     // d. Keep waiting.
   }

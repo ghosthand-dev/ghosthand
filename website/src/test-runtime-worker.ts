@@ -11,8 +11,19 @@ import { signOutMac } from './actions.tsx'
 import { cloudAdminApp } from './cloud/admin.ts'
 import { CloudFleet } from './cloud/fleet.ts'
 
-/** The real fleet; `runAlarm` runs its alarm now (alarm() itself is not callable over RPC). */
+/** The real fleet; `runAlarm` runs its alarm now (alarm() itself is not callable over RPC),
+ *  `advance` moves its clock, e.g. past the grace time of an idle phone. */
 export class TestFleet extends CloudFleet {
+  private offsetMs = 0
+
+  protected override now(): number {
+    return Date.now() + this.offsetMs
+  }
+
+  async advance(ms: number): Promise<void> {
+    this.offsetMs += ms
+  }
+
   async runAlarm(): Promise<void> {
     await this.alarm()
   }

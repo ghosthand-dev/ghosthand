@@ -1,4 +1,5 @@
-// Operator routes for the cloud fleet, called by scripts/cloud-host.ts with CLOUD_ADMIN_TOKEN.
+// Operator routes for the cloud fleet, called by scripts/cloud-host.ts with the operator's normal
+// ghosthand API key. Only users listed in the CLOUD_ADMINS var get in.
 //
 //   GET    /api/cloud-admin/hosts               hosts with running and cached phones
 //   PUT    /api/cloud-admin/hosts/:slug         add or change {address, slots, enabled}
@@ -6,10 +7,10 @@
 //   POST   /api/cloud-admin/phones/:id/recover  restart a phone from R2 when its host is gone
 //   GET    /api/cloud-admin/snapshot            the fleet state and its newest events
 
-import { timingSafeEqual } from 'node:crypto'
 import { env } from 'cloudflare:workers'
 import { Spiceflow, json } from 'spiceflow'
 import { z } from 'zod'
+import { getCallerUserId } from '../db.ts'
 import { getFleet } from './fleet.ts'
 
 const HOST_SLUG = /^[a-z0-9-]{1,40}$/
@@ -18,7 +19,9 @@ const MAX_EVENTS = 1000
 
 export const cloudAdminApp = new Spiceflow({ basePath: '/api/cloud-admin' })
   .use(async ({ request }, next) => {
-    if (!(await isAdmin(request.headers.get('authorization')))) throw json({ message: 'unauthorized' }, { status: 401 })
+    const userId = await getCallerUserId(request)
+    if (!userId) throw json({ message: 'unauthorized: pass an API key (ghosthand tunnel url --new-token)' }, { status: 401 })
+    if (!cloudAdmins().includes(userId)) throw json({ message: `user ${userId} is not in CLOUD_ADMINS` }, { status: 403 })
     return next()
   })
   .route({
@@ -70,10 +73,6 @@ export const cloudAdminApp = new Spiceflow({ basePath: '/api/cloud-admin' })
     handler: async ({ query }) => getFleet().snapshot({ events: query.events }),
   })
 
-async function isAdmin(authorization: string | null): Promise<boolean> {
-  const token = authorization?.match(/^Bearer (.+)$/)?.[1]
-  if (!token || !env.CLOUD_ADMIN_TOKEN) return false
-  // Compare digests: equal length, so timingSafeEqual never throws or leaks the length.
-  const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)))
-  return timingSafeEqual(await digest(token), await digest(env.CLOUD_ADMIN_TOKEN))
+function cloudAdmins(): string[] {
+  return String(env.CLOUD_ADMINS).split(',').map((id) => id.trim()).filter(Boolean)
 }

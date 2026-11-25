@@ -157,6 +157,61 @@ this or another Mac's daemon /v1/leases/<mac>:42/tap?screentext=true <──WS�
 - **Control plane chat** (`chat-panel.swift`): one chat per iPhone; each prompt is acquire, the same `POST /v1/leases/{lease}/task` stream, release. Text shows when its part ends (no streaming text); tool calls are one monospaced line each (`taskToolLabel`, shared with the CLI progress). Check the design with `ghosthand dashboard --foreground --mock chat --snapshot out.png`.
 - **Tests:** `website/src/task.test.ts` runs the real model against a scripted Mac (`sigillo run -- pnpm test`).
 
+# Cloud phones (rented virtual iPhones)
+
+Customers rent a virtual iPhone ($49/month, one Stripe subscription per phone) and drive it with
+the same CLI, MCP, REST and phone tasks as a USB iPhone. Phones are VPhone VMs on our own Macs
+(**hosts**). Full design: `docs/cloud-phones.md`. New host checklist: `docs/cloud-hosts.md`.
+
+```
+tenant (MCP, REST, CLI) ──session / OAuth / API key──> ghosthand.dev Worker: auth -> org
+   GhosthandHub(org), slug `cloud`, lease `cloud:<n>` ──> src/cloud/api.ts, mcp.ts (translate)
+   CloudFleet DO (scheduler.ts, leases, moves bytes) <──> R2 `PHONES` binding (chunks, IPAs)
+      │ Workers VPC binding `HOSTS`, private IP per host (10.77.0.<n>), no auth
+      v
+host Mac: cloudflared ──> vphone-cli fleet serve (no keys, never calls out) ──> vphone.sock
+      ──> vphone-vm --hosted (vphone-usb-guard holds the USB link) ──VSOCK──> vphoned
+      guest traffic ──> per-VM SOCKS5 proxy (tunnel mode, fail closed) ──> internet
+```
+
+- **The Worker is the only tenant gate.** Every call checks the org owns the lease and the
+  phone's subscription allows it. Tenants never see hosts, R2 or any key.
+- **Hosts hold no keys and never call out.** Reaching a host through its tunnel is the only
+  authority, and only the Worker's `HOSTS` binding can. CloudFleet moves every byte between R2 and
+  the host (disk chunks after a stop and before a start on a new host, catalog IPAs). Pipe bodies,
+  never read them in JS (a 1 GiB body read in a Worker failed with error 1102).
+- **Two stores:** Postgres `cloud_phone` and `subscription.kind` hold what was bought; the
+  CloudFleet DO holds where it runs. `subscription.kind` keeps cloud phones out of Pro.
+- **Scheduler** (`website/src/cloud/scheduler.ts`): a pure `step(state, event)`. A phone runs on at
+  most one host; stops happen only to free a slot for a waiter after a 10 min idle grace, then save
+  to R2; a phone whose newest copy is on an offline host waits for it. Rules are listed at the top
+  of the file.
+
+Where to change what:
+
+| Change | Do it in |
+|---|---|
+| How a ghosthand command maps to the phone | `website/src/cloud/api.ts` (REST) and `mcp.ts` (MCP text). Website deploy only |
+| A new phone capability | A vphoned RPC or a vphone.sock command in `vphone/`, then map it in `api.ts`. `fleet serve` relays any vphone.sock line, so it needs no change |
+| Scheduling rules | `website/src/cloud/scheduler.ts` plus an event-log test in `scheduler.test.ts` |
+| Host operations (start, stop, save, restore, blobs) | `vphone/VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/` and its client `website/src/cloud/host.ts`, in the same change |
+| Supported apps | `website/src/cloud/apps.ts`, IPA uploaded to R2 `apps/`. USB iPhones install the same id from the App Store |
+| Templates (phone model, iOS) | `TEMPLATES` in `website/src/cloud/storage.ts`, template loaded to R2 `templates/<key>/` |
+| Billing | `website/src/lib/billing.ts`, `lib/stripe.ts`, `stripe-webhook.ts` (calls `CloudFleet.setAccess`) |
+
+Scripts (in `website/scripts/`):
+
+- `cloud-host.ts`: operator commands: `list`, `add <slug> --address 10.77.0.<n>:7400 --slots <n>`,
+  `drain`, `enable`, `remove`, `recover <phone>` (host gone: restart from R2), `snapshot`. Auth is
+  your normal API key (`source <(ghosthand tunnel url --new-token)`); the route checks the user id
+  is in `CLOUD_ADMINS`. Preview and production fleets are separate (`GHOSTHAND_URL`).
+- `stripe-cloud-phone.ts`: creates the cloud phone product and price by lookup key; test mode
+  unless `--live`.
+
+Checks: `cd website && sigillo run -c dev -- npx vitest --run src/cloud/ src/lib/` (a scripted
+fake host stands in for `fleet serve`). VMs run only on mintmacbook; never touch its logged-in VM
+`app-lab`.
+
 # Errors and product analytics (Strada)
 
 Both the daemon and the website report to the Strada project `ghosthand` (`strada issues list -p ghosthand`), as services `ghosthand-daemon` and `ghosthand-website`. Load the `strada` skill before touching it.

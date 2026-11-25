@@ -161,12 +161,14 @@ this or another Mac's daemon /v1/leases/<mac>:42/tap?screentext=true <──WS�
 
 Customers rent a virtual iPhone ($49/month, one Stripe subscription per phone) and drive it with
 the same CLI, MCP, REST and phone tasks as a USB iPhone. Phones are VPhone VMs on our own Macs
-(**hosts**). Full design: `docs/cloud-phones.md`. New host checklist: `docs/cloud-hosts.md`.
+(**hosts**). Each phone is pinned to one host forever: that host's disk holds the only copy of its
+VM, backed up with normal machine backups. Full design: `docs/cloud-phones.md`. New host
+checklist: `docs/cloud-hosts.md`. Why: `plans/decisions/cloud-phones-pinned-hosts.md`.
 
 ```
 tenant (MCP, REST, CLI) ──session / OAuth / API key──> ghosthand.dev Worker: auth -> org
    slug `cloud`, lease `cloud:<n>` (before getHub, the hub DO never wakes) ──> src/cloud/api.ts, mcp.ts
-   fleet.ts: Postgres cloud_host, cloud_phone, cloud_lease; cron every minute <──> R2 `PHONES`
+   fleet.ts: Postgres cloud_host, cloud_phone, cloud_lease; cron every minute   R2 `PHONES`: catalog IPAs
       │ Workers VPC binding `HOSTS`, private IP per host (10.77.0.<n>), no auth
       v
 host Mac: cloudflared ──> vphone-cli fleet serve (no keys, never calls out) ──> vphone.sock
@@ -176,10 +178,13 @@ host Mac: cloudflared ──> vphone-cli fleet serve (no keys, never calls out) 
 
 - **The Worker is the only tenant gate.** Every call checks the org owns the lease and the
   phone's subscription allows it. Tenants never see hosts, R2 or any key.
+- **Phones never move.** `cloud_phone.host_slug` is set at the first start and never changed; a
+  host with phones cannot be deleted. Phone disks never go to R2 (parked: PR #2 here, fork PR #3).
+  An offline host makes acquire fail at once ("its machine is offline"); a host that lost a VM
+  that ran (`first_run_at` set) is a lost phone, never a fresh clone.
 - **Hosts hold no keys and never call out.** Reaching a host through its tunnel is the only
-  authority, and only the Worker's `HOSTS` binding can. The Worker moves every byte between R2 and
-  the host (disk chunks after a stop and before a start on a new host, catalog IPAs). Pipe bodies,
-  never read them in JS (a 1 GiB body read in a Worker failed with error 1102).
+  authority, and only the Worker's `HOSTS` binding can. The Worker sends catalog IPAs from R2.
+  Pipe bodies, never read them in JS (a 1 GiB body read in a Worker failed with error 1102).
 - **One store, Postgres, one fact per column.** Access is the linked subscription's status
   (pending = none yet), a host is online while `last_seen_at` is recent, a lease is live until
   `last_used_at + idle_timeout_s`, idle time comes from the last lease. Derive these in the query;
@@ -187,11 +192,11 @@ host Mac: cloudflared ──> vphone-cli fleet serve (no keys, never calls out) 
 - **No timers.** Acquire is one transaction (`FOR UPDATE` on the phone and the environment's
   hosts, `SKIP LOCKED` for the idle victim), host calls after commit in `waitUntil`, then it polls.
   Each command is one `UPDATE cloud_lease ... RETURNING`. The minute cron (`runFleetCron`) polls
-  hosts, continues transitions and saves to R2.
-- **Rules** (`website/src/cloud/scheduler.ts`): pure `place()` and `reconcile()`. A phone runs on at
-  most one host; stops happen only to free a slot for a waiting acquire after a 10 min idle grace,
-  then save to R2; a phone whose newest copy is on an offline host waits for it. Row writes are
-  compare-and-set before any host call. Rules are listed at the top of the file.
+  hosts and continues transitions.
+- **Rules** (`website/src/cloud/scheduler.ts`): pure `place()` and `reconcile()`. A stop happens
+  only to free a slot on the same host for a waiting acquire, after a 10 min idle grace. A new
+  phone goes to the host with the most free slots. Row writes are compare-and-set before any host
+  call. Rules are listed at the top of the file.
 - Preview and production share the database: `cloud_host.environment` (the `ENVIRONMENT` var) says
   which Worker runs a host.
 
@@ -204,16 +209,16 @@ Where to change what:
 | Scheduling rules | `website/src/cloud/scheduler.ts` plus a row in the tables of `scheduler.test.ts` |
 | Fleet state, acquire, cron | `website/src/cloud/fleet.ts`, schema in `db/src/schema.ts` |
 | Admin fleet page, its problems | `website/src/cloud/admin-view.ts` (pure, `admin-view.test.ts`), page `components/fleet-page.tsx` |
-| Host operations (start, stop, save, restore, blobs) | `vphone/VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/` and its client `website/src/cloud/host.ts`, in the same change |
+| Host operations (start, stop, IPA blobs, status) | `vphone/VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/` and its client `website/src/cloud/host.ts`, in the same change |
 | Supported apps | `website/src/cloud/apps.ts`, IPA uploaded to R2 `apps/`. USB iPhones install the same id from the App Store |
-| Templates (phone model, iOS) | `TEMPLATES` in `website/src/cloud/storage.ts`, template loaded to R2 `templates/<key>/` |
+| Templates (phone model, iOS) | `TEMPLATES` in `website/src/cloud/storage.ts`, template folder copied into each host's fleet library |
 | Billing | `website/src/lib/billing.ts` (`isCloudPhoneAllowed`, `linksCloudPhone`), `lib/stripe.ts`, `stripe-webhook.ts` |
 
 Scripts (in `website/scripts/`):
 
 - `cloud-host.ts`: operator commands: `list`, `add <slug> --address 10.77.0.<n>:7400` (slots
-  come from the host's RAM, copied on every poll), `drain`, `enable`, `remove`, `recover <phone>`
-  (host gone: restart from R2), `phones`. Auth is your normal API key
+  come from the host's RAM, copied on every poll), `drain` (no new phones pinned there), `enable`,
+  `remove` (refused while phones are pinned to it), `phones`. Auth is your normal API key
   (`source <(ghosthand tunnel url --new-token)`); the route checks the user id is in
   `CLOUD_ADMINS`. Each site manages only its own environment's hosts (`GHOSTHAND_URL`).
 - Fleet health: `/admin/fleet` in the browser (admins only, linked from the dashboard), or

@@ -5,7 +5,7 @@ ghosthand MCP, REST, CLI and phone tasks as USB iPhones. The Worker translates t
 API into vphoned RPC, so new VPhone versions need only a Worker deploy.
 
 Read first: `docs/cloud-phones.md` (the detailed design: database, Stripe, routes, files),
-`plans/decisions/cloud-phones-architecture.md`,
+`plans/decisions/cloud-phones-architecture.md`, `plans/decisions/cloud-phones-pinned-hosts.md`,
 `docs/research-notes/vphone-ipa-trial/how-vphone-works.md`, `vm-density-resume.md`, and the
 fork's `AGENTS.md` and `Research/Host/hosted_isolation.md` (PR #2).
 
@@ -19,10 +19,10 @@ Full file list, routes, tables and Stripe setup: `docs/cloud-phones.md`. In shor
 
 - **Website** `website/src/cloud/`: fleet state in Postgres (`fleet.ts`: one acquire
   transaction, a minute cron) and pure rules (`scheduler.ts`), `api.ts` + `mcp.ts` translating the
-  daemon API to vphone.sock and vphoned RPC, catalog, R2 layout. The Worker answers slug `cloud`
+  daemon API to vphone.sock and vphoned RPC, catalog IPAs in R2. The Worker answers slug `cloud`
   before the hub. Stripe $49 price, `cloud_phone`, `cloud_host`, `cloud_lease`, `subscription.kind`.
-- **VPhone fork**: `vphone-cli fleet serve` (start, stop, chunk sync with R2, vphone.sock relay,
-  push from URL), vphone.sock `settle`, PR #1 and #2.
+- **VPhone fork**: `vphone-cli fleet serve` (start with `create`, stop, IPA blobs, vphone.sock
+  relay, push), vphone.sock `settle`, PR #1 and #2.
 - **Daemon**: `app catalog` and `app install --app <id>`: cloud phones get the R2 IPA through
   lease forwarding; USB phones install the same catalog app from the App Store.
 
@@ -31,20 +31,27 @@ Full file list, routes, tables and Stripe setup: `docs/cloud-phones.md`. In shor
 Pure functions over Postgres rows (`place`, `reconcile`); the acquire transaction and the minute
 cron apply them.
 
+**Decision, 2026-11-25 (user):** phones are pinned to one host forever, and phone disks never go
+to R2 (`plans/decisions/cloud-phones-pinned-hosts.md`). The host's disk holds the only copy;
+hosts get normal machine backups. The R2 storage work is parked in
+https://github.com/ghosthand-dev/ghosthand/pull/2 and https://github.com/remorses/vphone-cli-private/pull/3.
+
 - Each Mac has a fixed slot count (measured RAM per phone plus a host reserve).
-- A phone runs on at most one Mac. Its newest copy is where it last ran: that Mac's cache, or R2
-  once its upload finished.
+- A phone's first start pins it to the online, active Mac with the most free slots (then slug).
+  It never moves after that.
 - Acquire a running phone: lease it. Acquire a stopped one, first match wins:
-  1. the Mac that holds its newest copy, if online with a free slot,
-  2. if R2 has the newest copy: any Mac with a free slot (fewest running, then slug),
-  3. stop the unleased phone idle longest, if idle at least the grace time (default 10 min),
+  1. its Mac is offline: fail at once, "the machine that holds this cloud iPhone is offline",
+  2. its Mac has a free slot: start there,
+  3. stop the unleased phone idle longest on that Mac, if idle at least the grace time (default 10 min),
   4. else wait: acquire polls every 3 s like `ghosthand wait` (no queue: the first poll after a slot frees takes it).
-- If the Mac with the newest copy is offline, the phone waits for it. Only the operator script
-  moves it to its older R2 copy.
 - A lease ends by release or its idle timeout (same as USB leases, default 600 s). That only
-  records the idle time. Stops happen only to make room, then upload; the local copy stays.
-- Local cache: evict uploaded, stopped phones least recently used when free disk is low.
-- Cancelled subscription: no new leases; storage kept forever; renewing gives the same phone.
+  records the idle time. Stops happen only to make room on the same Mac.
+- A Mac that lost a phone that ran: the phone is lost (the user rents a new one). Never a fresh clone
+  under the same id.
+- Cancelled subscription: no new leases; the VM stays on its Mac; renewing gives the same phone.
+- TODO: back up only app data later (even if encrypted), so a phone survives a lost Mac on a fresh
+  template. Model it on upstream's data-preserving iOS OTA workflow
+  (https://github.com/Lakr233/vphone-cli/pull/709). Also TODO: a cap on phones pinned per Mac.
 
 ## Task 1: Tunnel spike (parallel with Tasks 2 and 3, first)
 
@@ -70,7 +77,12 @@ cron apply them.
   - All `ghosthand-cloud-spike-*` resources are deleted. Production setup (2026-11-25): vnet `ghosthand-hosts`, tunnel `ghosthand-host-mint` with route `10.77.0.1/32`, launchd jobs on mint, `HOSTS` in `website/wrangler.jsonc`. Steps for the next host: `docs/cloud-hosts.md`. A Worker on that vnet got `connection_refused` with nothing listening, the stub's reply with one (p50 67 ms), and `destination_ip_prohibited` through the default network. After `pkill cloudflared`, launchd restarted it and the host answered again in 2 s; `launchctl kickstart` of `host-ip` restored a removed alias. Not tested: a real reboot (it would stop the `app-lab` VM).
   - Creating vnets, tunnels and routes needs the Connectivity Directory Admin role; the wrangler OAuth token has it (`connectivity (admin)`), and `cf tunnels`, `cf network routes cidr` and `cf network virtual-networks` do it.
 
-## Task 2: Phone storage in R2 (parallel with Tasks 1 and 3)
+## Task 2: Phone storage in R2 (parked)
+
+Parked by the decision above: phones are pinned to their host and its machine backups. The code and
+the measurements below live in https://github.com/ghosthand-dev/ghosthand/pull/2 and
+https://github.com/remorses/vphone-cli-private/pull/3; main has none of it. Not to be resumed
+without the user.
 
 - [ ] A stopped phone uploads as template id plus changed chunks and restores into a new machine folder. Pass when the restored phone boots with the TikTok sign-in kept, with sizes and times written here.
   Done except TikTok (2026-11-25, fork `d02500e3`, numbers in the fork's `Research/Host/fleet.md`): through the tunnel with `website/src/cloud/storage.ts` (`saveBatch`, `loadBatch`) in a throwaway Worker, phone `cph_a` (template `13e3716a2e12`, one IPA installed) saved version 1 as 291 chunks + 13 files, 662 MB LZ4, in 275 s (mint uplink, 2.4 MB/s). Its folder was moved off the host, then version 2 loaded from R2: 367 blobs in 238 s, restore 2.1 s (1.55 GB written), start 24 s, the installed app still listed. On loopback (`vphone/scripts/tests/fleet-storage-roundtrip.zsh`) a marker file and a preference written in the guest survived save (8.5 s), load (6.6 s), restore (4.2 s) and start (24.5 s).
@@ -95,13 +107,14 @@ cron apply them.
 
 ## Task 5: Cloud module in the website (sequential, after Task 4; scheduler after Task 1)
 
-- [ ] `scheduler.ts` passes table tests: eviction after grace, one Mac per phone, waiting for an offline Mac, every host report per phone state. Pass with vitest output.
+- [ ] `scheduler.ts` passes table tests: eviction after grace on the same Mac, a phone pinned to one Mac, an offline Mac as a user error, a lost VM never cloned again, every host report per phone state. Pass with vitest output.
   2026-11-25: the CloudFleet DO was replaced by Postgres + a minute cron (decision in `plans/decisions/cloud-phones-architecture.md`); `scheduler.test.ts` and `cloud.test.ts` pass on the new fleet against fake hosts.
+  2026-11-25: rewritten for pinned phones (`plans/decisions/cloud-phones-pinned-hosts.md`): `sigillo run -c dev -- npx vitest --run src/cloud/` 3 files, 10 tests passed.
 - [ ] `api.ts` and `mcp.ts` serve list, acquire, release, wait, screenshot, screentext, tap, tap text, swipe, scroll, key, type, app list, launch, catalog install, and task tools on a real phone; others answer `unsupported-in-mode`. Pass with an MCP session and a test that org B cannot reach org A's lease.
 
 ## Task 6: Rent and bill (sequential, after Task 5)
 
-- [ ] Stripe test mode: checkout for $49/month creates a `CloudPhone`; cancel blocks new leases and keeps storage; renewing restores the same phone. Pass with the webhook log and the phone's data present after renewal.
+- [ ] Stripe test mode: checkout for $49/month creates a `CloudPhone`; cancel blocks new leases and keeps the VM on its host; renewing restores the same phone. Pass with the webhook log and the phone's data present after renewal.
 - [ ] Dashboard rents, lists and manages phones. Check with playwriter.
 - [ ] A fresh account with no Mac gets a phone through MCP and REST; empty states name the next step. Pass end to end.
 
@@ -129,10 +142,11 @@ Mockup: `docs/cloud-fleet-admin-mockup.html`. Decision: `plans/decisions/cloud-v
   Evidence: `ORG_COLORS` and `orgColor()` (FNV-1a) in `admin-view.ts`; the page showed 4 customers with their counts, and the `admin-view.test.ts` snapshot pins counts and colors.
 - [x] One loader for the page and agents: `loadFleetView()` in `website/src/cloud/admin-view.ts` builds the whole view (hosts with live status, slots, contention, recent leases, customers) plus `problems: [{severity, code, host?, phone?, detail}]` from a pure `fleetProblems(view, now)`: host offline, memory pressure or swap, low disk, bundle versions differ, phone stuck in a transition, save backlog, every usable host full. The page's `.loader('/admin/fleet')` and `GET /api/cloud-admin/view` in `admin.ts` both call it (Spiceflow loaders are not endpoints). Auth on the route: API key or session of a `CLOUD_ADMINS` user. Pass with `curl` returning `{ok: problems.length === 0, problems, ...}` and inline-snapshot tests of `fleetProblems`.
   Evidence: `loadFleetView()` lives in `admin.ts` (it needs the database and the hosts); the pure `buildFleetView()` and `fleetProblems()` are in `admin-view.ts`, so their tests run without a Worker. `curl -H "authorization: Bearer <admin session>" localhost:8049/api/cloud-admin/view` returned `ok: false` with host-offline (critical), save-backlog, host-low-disk, bundle-versions-differ and phone-stuck. `admin-view.test.ts` snapshots every code, including no-usable-host and fleet-full; `cloud.test.ts` checks the route's auth and `{ok: false, problems: [fleet-full]}` for a full host.
+  2026-11-25, pinned phones: `save-backlog` is gone, `phone-lost` (a host no longer reports a phone that ran) is new, and the "cached" column lists the stopped phones pinned to each host.
 
 ## Done
 
-- [ ] A new user with no Mac buys a phone, installs TikTok from the catalog, controls it through MCP and a phone task; a second tenant cannot reach it; the phone stops for a waiting one after the grace time and starts later on another Mac with its data kept.
+- [ ] A new user with no Mac buys a phone, installs TikTok from the catalog, controls it through MCP and a phone task; a second tenant cannot reach it; the phone stops for a waiting one after the grace time and starts later on its own Mac with its data kept.
 
 ## Open questions (user)
 
@@ -140,5 +154,5 @@ Mockup: `docs/cloud-fleet-admin-mockup.html`. Decision: `plans/decisions/cloud-v
 2. **Phone tasks:** included for cloud renters? Default: unlimited, like Pro.
 3. **Legal:** renting VMs on Apple firmware and serving decrypted IPAs has licensing risk. Get a view before charging.
 
-Decisions: `plans/decisions/cloud-phones-architecture.md`, `plans/decisions/plan-device-limits.md`,
+Decisions: `plans/decisions/cloud-phones-architecture.md`, `plans/decisions/cloud-phones-pinned-hosts.md`, `plans/decisions/plan-device-limits.md`,
 `plans/decisions/virtual-iphone-account.md`

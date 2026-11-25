@@ -1,13 +1,15 @@
 ---
 title: Cloud phones design
-description: How rented virtual iPhones work end to end. Postgres fleet state, Stripe, website cloud module, scheduler rules and the minute cron, translation to vphoned RPC, the vphone-cli fleet host agent, R2 storage and new CLI commands. Companion to plans/cloud-phones.md.
+description: How rented virtual iPhones work end to end. Postgres fleet state, Stripe, website cloud module, scheduler rules and the minute cron, translation to vphoned RPC, the vphone-cli fleet host agent, phones pinned to one host, and new CLI commands. Companion to plans/cloud-phones.md.
 ---
 
 # Cloud phones design
 
 A user pays $49/month and gets one virtual iPhone. It runs on one of our Macs (a **host**) as a
 VPhone VM and is driven with the same ghosthand MCP, REST, CLI and phone tasks as a USB iPhone.
-The website translates the ghosthand API into vphoned RPC; the host only runs VMs.
+The website translates the ghosthand API into vphoned RPC; the host only runs VMs. Each phone is
+pinned to one host forever: that host's disk holds the only copy of its VM, and we back up host
+Macs with normal machine backups.
 
 ```
 MCP / REST / CLI ──> ghosthand.dev Worker (auth: OAuth, API key, Mac session -> orgId)
@@ -21,7 +23,7 @@ MCP / REST / CLI ──> ghosthand.dev Worker (auth: OAuth, API key, Mac session
                                        host Mac: cloudflared ──> vphone-cli fleet serve
                                            │ vm launch --headless --hosted, vphone.sock
                                            v
-   R2 ghosthand-phones (binding) ──> the Worker moves chunks and IPAs over the same tunnel
+   R2 ghosthand-phones (binding) ──> the Worker sends catalog IPAs over the same tunnel
 ```
 
 Names used below:
@@ -30,7 +32,7 @@ Names used below:
 |---|---|
 | host | A Mac of ours that runs VMs. Slug like `mint`, private IP like `10.77.0.1` |
 | phone | One rented iPhone, row `cloud_phone`, id `cph_<ulid>`. Also the VM folder name on a host |
-| version | Storage version of a phone. +1 on every stop. The newest copy is on a host or in R2 |
+| pinned | A phone's host: set at its first start, never changed. Its VM lives only on that host |
 | `cloud:<n>` | A cloud lease, as MCP and the CLI see it. `n` is the `cloud_lease` identity column |
 
 ## One tap, end to end
@@ -51,7 +53,7 @@ Names used below:
 ## Database
 
 Postgres holds every fact, once. Facts that follow from others are derived in the query that
-needs them, never stored. Migration `db/drizzle/*_cloud_phones`, applied with
+needs them, never stored. Migrations `db/drizzle/*_cloud_phones` and `*_cloud_phones_pinned`, applied with
 `pnpm db:migrate:prod` before the deploy.
 
 ```prisma
@@ -60,9 +62,9 @@ model CloudHost {
   environment String                            // the Worker's ENVIRONMENT: preview and production share the database
   address     String                            // "10.77.0.1:7400", the private IP its tunnel routes
   slots       Int                               // most phones running at once
-  status      String    @default("active")      // active | draining (no new starts)
+  status      String    @default("active")      // active | draining (no new phones pinned; its own phones still start)
   lastSeenAt  DateTime?                         // last status answer; online = within 3 minutes
-  phones      CloudPhone[]
+  phones      CloudPhone[]                      // pinned phones; deleting a host with phones is refused (onDelete: Restrict)
 }
 
 model CloudPhone {
@@ -71,11 +73,9 @@ model CloudPhone {
   name           String
   subscriptionId String?   @unique                       // null: not paid yet; access = this subscription's status
   template       String                                  // VPhone template key
-  state          String    @default("stored")            // stored | starting | running | stopping
-  hostSlug       String?                                 // where it runs, or the host whose disk has its newest copy
-  version        Int       @default(0)                   // newest hashed version, +1 on every stop
-  savedVersion   Int       @default(0)                   // newest version in R2 (0: the template)
-  saveCursor     Int       @default(0)                   // chunks of `version` already copied to R2
+  state          String    @default("stopped")           // stopped | starting | running | stopping
+  hostSlug       String?                                 // pinned host: null until the first start, then never changed
+  firstRunAt     DateTime?                               // its host first reported it running; set: never clone the template again
   stateChangedAt DateTime  @default(now())
   leases         CloudLease[]
   @@unique([orgId], where: "subscription_id is null")     // one unpaid phone per org
@@ -107,8 +107,11 @@ model Subscription {
 | A host is online | `last_seen_at` within `HOST_ONLINE_MS` (3 min); the cron asks every minute |
 | A lease is live | `ended_at is null and last_used_at + idle_timeout_s > now()` |
 | A phone is idle since | `greatest(state_changed_at, its last lease's end)`, null while a lease is live |
-| Only its host has the newest copy | `version > saved_version` |
-| A save is in progress | stored and `version > saved_version`; `save_cursor` is its only progress |
+| Its VM must exist on its host | `first_run_at is not null`; a host that does not report it has lost it |
+
+`first_run_at` is the one runtime fact `host_slug` cannot give: `host_slug` is set when the first
+start is decided, and that start may fail before the host clones anything. Until the host reports
+the VM running, a start may clone the template (`create`); after it, never.
 
 - `kind` keeps cloud subscriptions out of `entitlementFor`, `subscribeRedirectUrl` and the plan
   shown on the dashboard. Without it a cloud phone would make the org Pro.
@@ -135,7 +138,7 @@ lookup key), for test and live mode:
 4. Route `GET /cloud-phones/new` in `server.tsx` (login first if signed out, like `/subscribe`).
 
 Abandoned checkouts leave unpaid rows. The minute cron deletes rows older than one day that have
-no subscription and never ran (`version = 0`).
+no subscription and never ran (`first_run_at is null`).
 
 **Webhook** (`website/src/stripe-webhook.ts`), the same four events:
 
@@ -146,8 +149,8 @@ no subscription and never ran (`version = 0`).
   `syncSourceAccess` runs only for `pro`.
 - Nothing else is told: every lease and every command reads the linked subscription's status.
   Allowed is `active`, `trialing` or `past_due` (Stripe is still retrying, same as Pro).
-  `canceled` and `unpaid` refuse new leases and the next command of a running one. Storage stays
-  forever. Renewing from the dashboard runs a new checkout with the same `cloudPhoneId`, so the
+  `canceled` and `unpaid` refuse new leases and the next command of a running one. The VM stays
+  on its host forever. Renewing from the dashboard runs a new checkout with the same `cloudPhoneId`, so the
   same phone comes back.
 
 **Fixes needed in existing code:** `entitlementFor`, `subscribeRedirectUrl` (including its "open
@@ -168,12 +171,12 @@ expiry and grace are compared with `now()` in SQL.
 |---|---|
 | `listPhones({orgId})` | The org's paid phones with state and live lease, for `/v1/devices` and `list` |
 | `acquire({orgId, phoneId, label, reason, idleTimeoutS, waitS, force, signal})` | Polls every 3 s until it leases, or the deadline (`waitS`, default 300 s). Each poll: `advance` the phone, then `decide` |
-| `decide` (inside acquire) | One transaction. `SELECT ... FOR UPDATE` on the phone (and its subscription): two acquires of one phone take turns. A running phone whose host answered gets a lease. A stored phone: lock the environment's host rows `FOR UPDATE` (no two starts count one free slot), run `place()`, then either set it `starting` on a host, or lock the victim `FOR UPDATE SKIP LOCKED` and set it `stopping` |
+| `decide` (inside acquire) | One transaction. `SELECT ... FOR UPDATE` on the phone (and its subscription): two acquires of one phone take turns. A running phone whose host answered gets a lease. A stopped phone: lock the environment's host rows `FOR UPDATE` (no two starts count one free slot), run `place()`, then either set it `starting` on its host (pinning it there on the first start), lock the victim `FOR UPDATE SKIP LOCKED` and set it `stopping`, or refuse at once with `tunnel-offline` when its host is offline |
 | `useLease({orgId, n, command})` | One `UPDATE cloud_lease ... FROM cloud_phone JOIN subscription JOIN cloud_host ... RETURNING`: live lease, this org's phone, running, allowed. Restarts the idle timeout |
 | `release({orgId, n})` | Sets `ended_at` on a live lease of this org |
-| `advance(phoneId)` | Reads the row, asks its host for status, runs `reconcile()`, writes the change with compare-and-set on (state, version, host), and only then makes the host call. Deduplicated per phone in an isolate |
-| `runFleetCron()` | Every minute: status of every host of this environment (refreshes `last_seen_at` and copies the host's `slots`), then `advance` for every phone placed on one, and saves to R2, 500 chunks per run |
-| `listHosts`, `setHost`, `removeHost`, `recover`, `listFleetPhones` | Operator routes (`admin.ts`) |
+| `advance(phoneId)` | Reads the row, asks its host for status, runs `reconcile()`, writes the change with compare-and-set on (state, host), and only then makes the host call. Deduplicated per phone in an isolate |
+| `runFleetCron()` | Every minute: status of every host of this environment (refreshes `last_seen_at` and copies the host's `slots`), then `advance` for every phone pinned to one |
+| `listHosts`, `setHost`, `removeHost`, `listFleetPhones` | Operator routes (`admin.ts`). `removeHost` refuses while any phone is pinned to the host |
 | `readFleet()` | Rows of the admin fleet page: hosts, paid phones with idle time, live and recent leases, org emails |
 
 Host calls happen after commit. After a decision, the acquire runs `advance` of the phones it
@@ -183,39 +186,44 @@ after a slot frees gets it.
 
 ```
 acquire ──> advance(phone) ──> decide ─┬─ running, host answered ──> INSERT cloud_lease ──> 201
-            (status, reconcile)        ├─ stored, free slot ──> state starting ──> waitUntil(advance): start
-                                       ├─ stored, full, idle >= 10 min ──> victim stopping ──> waitUntil(advance): stop
+            (status, reconcile)        ├─ stopped, its host offline ──> 503 tunnel-offline (never moves)
+            lost VM ──> 404 no-device  ├─ stopped, free slot on its host ──> starting ──> waitUntil(advance): start
+                                       ├─ stopped, host full, idle >= 10 min there ──> victim stopping ──> waitUntil(advance): stop
                                        └─ leased / starting / freeing ──> sleep 3 s, poll again
-cron (1 min) ──> status of each host ──> advance(each placed phone): mark running, stopped,
-                                         crashed; continue a load; save a stored version to R2
+cron (1 min) ──> status of each host ──> advance(each pinned phone): mark running, stopped, crashed, lost
 ```
 
 ### `scheduler.ts`: pure rules
 
 Two pure functions, tested as tables in `scheduler.test.ts`:
 
-- `place({phone, hosts, placed, now})`: where a stored phone starts, which idle phone stops for
+- `place({phone, hosts, placed, now})`: where a stopped phone starts, which idle phone stops for
   it, or why it waits (`host-offline`, `freeing`, `full`).
-- `reconcile({phone, report})`: what a host's report of one phone means: a new state, a new
-  version, forgetting an evicted cached copy, ending leases after a crash, and the host call
-  (`start`, `load`, `stop`, `save`). Level-triggered: the same row and report always give the
-  same step, so repeating it after a lost call is safe.
+- `reconcile({phone, report})`: what a host's report of one phone means: a new state, its first
+  run, ending leases after a crash, a lost VM, and the host call (`start`, `stop`).
+  Level-triggered: the same row and report always give the same step, so repeating it after a
+  lost call is safe.
 
 Rules:
 
-1. A phone runs on at most one host. Never start a phone whose newest copy is on an offline host;
-   it waits for that host (Mac crash case). Only `recover` moves it to its R2 version.
-2. A stored, allowed phone starts on, first match:
-   - its own host, if online, active and with a free slot (no download);
-   - else, if R2 has its newest copy: the usable host with the most free slots, then slug;
-   - else a slot freed by stopping the unleased running phone idle longest, if idle at least
-     `GRACE_MS` (10 min), on a host it can use; while a stop is in flight there, it waits for it;
-   - else it waits.
-3. A running phone with no lease keeps running until a stored one needs its slot.
-4. A stop hashes the disk as `version + 1` on the host; the cron copies it to R2 and sets
-   `saved_version`. A VM that stopped by itself (crash, host restart) is hashed the same way, and
-   its lease ends.
-5. Only a host report moves a phone out of a transition. A failed or timed-out call proves
+1. A phone is pinned to one host forever. Its first start sets `host_slug`; nothing changes it.
+2. A stopped phone with a host starts there, first match:
+   - the host is offline: acquire fails at once with `tunnel-offline` ("the machine that holds
+     this cloud iPhone is offline right now"). It never starts elsewhere;
+   - the host has a free slot: start;
+   - a stop in flight on that host: wait for it;
+   - stop the unleased running phone idle longest on that host, if idle at least `GRACE_MS`
+     (10 min);
+   - else wait (full).
+3. A phone with no host yet gets the online, active host with the most free slots, then slug; if
+   all are full, an idle phone on any of them stops for it. TODO: no cap on phones pinned per host
+   (disk, oversell) yet.
+4. A running phone with no lease keeps running until a stopped one needs its slot.
+5. A start sends `create: true` only while `first_run_at` is null. A host that does not report a
+   phone that already ran has lost it: the row goes to `stopped`, its leases end, the error goes
+   to Strada and the admin page (`phone-lost`), and acquire answers `no-device` telling the user
+   to rent a new phone. It is never cloned again under the same id.
+6. Only a host report moves a phone out of a transition. A failed or timed-out call proves
    nothing: the next `advance` sends it again (the host answers 409 while it is busy).
 
 ### `api.ts`: ghosthand REST to vphoned
@@ -271,9 +279,8 @@ curl -s -H "authorization: Bearer $GHOSTHAND_TOKEN" https://ghosthand.dev/api/cl
 ### `host.ts`, `storage.ts`, `apps.ts`
 
 - `host.ts`: typed client for the fleet API below, through the `HOSTS` VPC binding.
-- `storage.ts`: R2 key layout, manifest types, and the chunk moves: host to R2 after a stop,
-  R2 to host before a start (see "Storage moves through the Worker" below). Uses the `PHONES`
-  binding only, no S3 keys.
+- `storage.ts`: `TEMPLATES` (model, iOS, screen size per VPhone template) and `sendBlob`, which
+  pipes a catalog IPA from the `PHONES` binding to a host. No S3 keys.
 - `apps.ts`: the catalog. `{id: "tiktok", name: "TikTok", bundleId, appStoreId: 835599320,
   version, key: "apps/tiktok/33.8.0.ipa", sha256}`. `install` streams the IPA from R2 to the
   host's blob store (skipped when the host has that sha256), then pushes it into the guest.
@@ -290,9 +297,9 @@ curl -s -H "authorization: Bearer $GHOSTHAND_TOKEN" https://ghosthand.dev/api/cl
 | `components/account-pages.tsx` | "Cloud iPhones" section after Plan: one row per phone (name, paid status, renews or ended), Rent button, Manage (portal), Rename |
 | `actions.tsx` | `renameCloudPhone` |
 | `telemetry.ts` | `cloud_phone_checkout_opened`, `cloud_phone_activated`, `cloud_phone_canceled`, `cloud_phone_started` (ids and counts only) |
-| `wrangler.jsonc` (top level and `env.preview`) | Cron `* * * * *` in both; R2 `PHONES` (`ghosthand-phones` in both: preview shares the database, so it shares phone storage); `vpc_networks` binding `HOSTS` (separate vnets); var `ENVIRONMENT` (telemetry and `cloud_host.environment`); var `CLOUD_ADMINS` (user ids). No R2 keys, no admin token |
+| `wrangler.jsonc` (top level and `env.preview`) | Cron `* * * * *` in both; R2 `PHONES` (`ghosthand-phones` in both: catalog IPAs); `vpc_networks` binding `HOSTS` (separate vnets); var `ENVIRONMENT` (telemetry and `cloud_host.environment`); var `CLOUD_ADMINS` (user ids). No R2 keys, no admin token |
 | `test-runtime-worker.ts` | `/__test/cloud-cron` runs `runFleetCron` now |
-| `scripts/cloud-host.ts` | `add <slug> --address` (slots come from the host), `remove`, `drain`, `enable`, `list`, `recover <phone>`, `phones` through admin routes. Auth is the operator's normal ghosthand API key; the route checks the user id is in `CLOUD_ADMINS` |
+| `scripts/cloud-host.ts` | `add <slug> --address` (slots come from the host), `remove` (refused while phones are pinned), `drain`, `enable`, `list`, `phones` through admin routes. Auth is the operator's normal ghosthand API key; the route checks the user id is in `CLOUD_ADMINS` |
 
 ## Host: `vphone-cli fleet serve` (VPhone fork)
 
@@ -305,73 +312,52 @@ target; that is the only pbxproj change.
 |---|---|
 | `VPhoneFleetCommand.swift` | `fleet` group (`serve`, `status`), registered in `VPhoneCommand.swift` |
 | `VPhoneFleetServer.swift` | NIO HTTP/1.1 on `--listen 10.77.0.1:7400`, JSON routes below |
-| `VPhoneFleetPhones.swift` | Phone lifecycle: clone from template, launch child `vphone-cli vm launch <id> --headless --hosted` (`VPhoneManagedProcess`), ready when `vphone.sock` answers `ping`, stop with SIGINT then SIGKILL like `vm stop`. State in `<vm>/fleet.json` |
-| `VPhoneFleetStorage.swift` | Manifests of a stopped phone, serving chunks by hash, the local blob store, restoring a version from template + blobs. No network client: the Worker moves every byte |
-| `VPhoneFleetCache.swift` | Free-disk check, least recently used eviction of uploaded stopped phones, IPA cache by sha256 |
+| `VPhoneFleetPhones.swift` | Phone lifecycle: clone from template (only with `create`), launch `vphone-cli vm launch <id> --headless --hosted` in its own session, ready when `vphone.sock` answers `ping`, stop with `vm stop`. State in `<vm>/fleet.json`. The IPA blob store, eviction of old IPAs below `--min-free-gb` (never phones), host metrics |
 
 Fleet API, all JSON, no auth (reachable only through the tunnel):
 
 | Route | Does |
 |---|---|
-| `GET /v1/status` | `{host, slots, freeDiskBytes, bundleVersion, templates, phones: [{id, state, version, savedVersion, lastUsedAt, error?}]}`; state is starting, stopping, restoring, running, stopped or damaged |
-| `POST /v1/phones/{id}/start {version, template}` | `202`. Clone or download to reach `version` if needed, then launch |
-| `POST /v1/phones/{id}/stop {version}` | `202`. Shut down, then hash the disk into the manifest of `version`, which must be newer than the local copy (a crashed VM too). `409` for an equal version while it runs: a late duplicate never stops a new run |
-| `GET /v1/phones/{id}/versions/{v}` | That version's manifest (chunk hashes and small files) |
-| `GET /v1/phones/{id}/chunks/{sha256}`, `.../files/{name}` | One chunk or small file of a local version, with `Content-Length` |
-| `POST /v1/phones/{id}/versions/{v}/saved` | R2 has this version now: the local copy may be evicted |
-| `POST /v1/blobs/missing {hashes}` | Which of these hashes the host has in no template, cached phone or blob |
-| `PUT /v1/blobs/{sha256}` | Store a chunk or IPA; the host checks the hash |
-| `POST /v1/phones/{id}/restore {version, manifest}` | Build that version from the template and blobs (before `start` on a new host) |
+| `GET /v1/status` | `{host, slots, freeDiskBytes, bundleVersion, templates, machine, phones: [{id, state, template, lastUsedAt, footprintBytes, error?}]}`; state is starting, stopping, running or stopped |
+| `POST /v1/phones/{id}/start {template, create}` | `202`, then launch. `create` clones the template first when the phone is not there; without it a missing phone answers `409` |
+| `POST /v1/phones/{id}/stop` | `202`, then `vm stop` |
+| `POST /v1/blobs/missing {hashes}` | Which of these IPA hashes the host lacks |
+| `PUT /v1/blobs/{sha256}` | Store an IPA; the host checks the hash |
 | `POST /v1/phones/{id}/sock` | Relay one vphone.sock JSON line, return its reply. Any new vphone.sock command works without a fleet change |
 | `POST /v1/phones/{id}/push {sha256, path}` | vphone.sock `push` of a blob into the guest |
 
-**R2 layout** (bucket `ghosthand-phones`, written and read only by the Worker's `PHONES` binding):
+**R2** (bucket `ghosthand-phones`, read only by the Worker's `PHONES` binding) holds only
+`apps/<id>/<version>.ipa`, catalog IPAs uploaded by hand.
+
+### Phones stay on their host
+
+The host's disk holds the only copy of each of its phones. Phones never move: no copy in R2, no
+restore on another host, no eviction.
 
 ```
-templates/<key>/manifest.json       chunk list of the template Disk.img and its small files
-chunks/<sha256>                      4 MiB chunk, LZ4 compressed (libcompression)
-phones/<id>/<version>/manifest.json  {template, size, chunks: [sha256 | "0"], files: {...}}
-phones/<id>/<version>/config.plist, SEPStorage, nvram.bin, PatchReceipt.plist, restore-info.json
-apps/<id>/<version>.ipa              catalog IPAs, uploaded by hand
+IPA install   host POST /blobs/missing [sha] ──> PHONES.get ──stream──> PUT /blobs/<sha>
+              ──> POST /push ──> sock rpc apps.install
 ```
 
-### Storage moves through the Worker
-
-Hosts hold **no keys** and never call out. Reaching a host's private IP through its tunnel is
-the only authority, and only our Worker's `HOSTS` binding can. The Worker moves every byte:
-
-```
-save (after stop)    host GET /versions/v ──> diff vs previous + template manifest
-                     for each new hash: host GET /chunks/<h> ──stream──> PHONES.put(chunks/<h>)
-                     small files, then phones/<id>/<v>/manifest.json last ──> POST .../saved
-load (new host)      R2 manifest ──> host POST /blobs/missing ──> for each: PHONES.get ──stream──>
-                     host PUT /blobs/<h> ──> POST /restore ──> POST /start
-IPA install          host POST /blobs/missing [sha] ──> PHONES.get ──stream──> PUT /blobs/<sha>
-                     ──> POST /push ──> sock rpc apps.install
-```
-
-- **Upload on stop:** the host walks only allocated ranges of `Disk.img` (`SEEK_DATA`) and hashes
-  4 MiB chunks. The Worker copies chunks whose hash is not in the previous manifest or the template
-  manifest, then the small files, then the manifest last. A missing manifest means the version does
-  not exist.
-- **Bodies are piped, never read in JS** (Task 1: reading a 1 GiB body in a Worker hit error 1102).
-  Chunks are 4 MiB with a known length, so `PHONES.put` takes the host response body directly.
-- **Batches:** a copy is 2 subrequests per chunk, so the cron copies at most 500 chunks per run
-  and continues in the next (Workers allow 10,000 subrequests per invocation); an acquire copies
-  50 per poll. A save's only progress is `save_cursor`; a load's is the host's own
-  `blobs/missing` answer.
-- **Restore:** `clonefile` the local template, write chunks that differ (from another local cached
-  phone when its manifest has the hash, else the blob store), punch holes for `"0"`, copy the small
-  files. Write `fleet.json` with the version last.
-- The template must exist on every host with the same bytes: the Worker loads it like a phone
-  (`templates/<key>/`), hosts never build their own.
+- **Backups are machine backups.** Tommy backs up host Macs with normal backups. A host that
+  loses its disk loses its phones, like a broken iPhone: their users rent a new phone and sign in
+  again (the Worker detects it, rule 5).
+- **Hosts hold no keys and never call out.** Reaching a host's private IP through its tunnel is
+  the only authority, and only our Worker's `HOSTS` binding can. Bodies are piped, never read in
+  JS (Task 1: reading a 1 GiB body in a Worker hit error 1102).
 - **Tenants never see any of this.** The CLI and MCP use only the user's session, OAuth token or
   API key; the Worker resolves the org and does the rest.
+- Moving phone disks through R2 (4 MiB chunk manifests, saves after each stop, restore on another
+  host) was built and measured, then parked as too complex: ghosthand PR #2 and the fork's PR #3.
+  A boot alone changed 230 to 290 chunks (about 1 GiB) per stop.
+- **TODO: back up app data only.** Later, save each phone's app data (even if encrypted) instead
+  of whole disks, so a phone can come back on a fresh template after a lost host. Model it on
+  upstream's data-preserving iOS OTA workflow (https://github.com/Lakr233/vphone-cli/pull/709).
 
 **Machine setup** (written as `docs/cloud-hosts.md` in this repo): VPhone bundle install,
 `vphone-escalator allow`, `vphone-usb-guard` launchd job (PR #2), `cloudflared` tunnel with the
 host's `/32` route and an `lo0` alias for that IP, `fleet serve` launchd job (no secrets),
-`cloud-host.ts add`, which also loads the template.
+`cloud-host.ts add`. Templates are copied into each host's fleet library by hand.
 
 ## VPhone fork: other changes
 
@@ -423,7 +409,6 @@ tenant gate: `api.ts` exposes only the mapped routes, never a raw RPC.
 | Test | Covers |
 |---|---|
 | `website/src/cloud/scheduler.test.ts` | `place()` and `reconcile()` as tables, inline snapshots |
-| `website/src/cloud/cloud.test.ts` | `api.ts` + `mcp.ts` + `fleet.ts` on Postgres against scripted fake hosts (like the fake Mac in `task.test.ts`): org isolation, MCP tool coverage, an idle phone stopped for another after the grace time, the cron's save to R2, a load on a second host |
+| `website/src/cloud/cloud.test.ts` | `api.ts` + `mcp.ts` + `fleet.ts` on Postgres against scripted fake hosts (like the fake Mac in `task.test.ts`): org isolation, MCP tool coverage, an idle phone on the same host stopped for another after the grace time, a phone that never moves to a free host, a lost VM and an offline host as user errors, catalog IPAs |
 | `website/src/lib/billing.test.ts` | `kind` filter: a cloud subscription does not make an org Pro |
-| fork `VPhoneCommandTests` | Manifest diff and restore on sparse files |
-| e2e on mintmacbook | Buy in Stripe test mode, acquire, tap, install TikTok, stop, start on a second machine folder |
+| e2e on mintmacbook | Buy in Stripe test mode, acquire, tap, install TikTok, stop, start again with its data kept |

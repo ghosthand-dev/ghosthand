@@ -7,7 +7,9 @@ description: New host checklist for the Macs that run cloud iPhones. Cloudflare 
 
 A **host** is a Mac of ours that runs cloud iPhones. The website reaches it through Workers VPC:
 the `HOSTS` binding in `website/wrangler.jsonc` points at the virtual network `ghosthand-hosts`,
-and each host owns one private IP in it, routed to its own Cloudflare Tunnel.
+and each host owns one private IP in it, routed to its own Cloudflare Tunnel. Each cloud iPhone
+lives on one host forever, and that host's disk holds its only copy: **back up every host** with
+normal machine backups. A lost host disk means lost phones.
 
 ```
 website Worker (src/cloud/fleet.ts, cron and requests)
@@ -41,8 +43,9 @@ Measured in the Task 1 spike (`plans/cloud-phones.md`):
   record (the host's `/etc/hosts` is not used), so they add nothing.
 - Round trip Worker to host is about 50 ms. Errors are fast: `ProxyError: destination_unavailable`
   means the tunnel is down, `connection_refused` means the tunnel is up but nothing listens.
-- Tunnel throughput is the host's home link (about 2 MB/s on mint). The Worker pipes bodies; a
-  1 GiB body read chunk by chunk in JS failed with error 1102.
+- Tunnel throughput is the host's home link (about 2 MB/s on mint), so only small things cross it
+  (input, screenshots, catalog IPAs), never phone disks. The Worker pipes bodies; a 1 GiB body
+  read chunk by chunk in JS failed with error 1102.
 
 ## Add a host
 
@@ -271,16 +274,22 @@ rsync -a vphone/.build/XcodeBundle/Build/Products/Debug/VPhone.bundle $HOST:flee
 ssh $HOST "curl -s $IP:7400/v1/status"     # host, slots, freeDiskBytes, templates
 ```
 
-**Templates** must be in the fleet library with the same bytes on every host. Until they load
-from R2, clone one in: `cp -c -R ~/.vphone/machines/.templates/<key> ~/.vphone/fleet/.templates/`.
+**Templates** must be in the fleet library of every host that takes new phones. Clone one in:
+`cp -c -R ~/.vphone/machines/.templates/<key> ~/.vphone/fleet/.templates/`.
 A new bundle is the same script again; running phones keep their old `vphone-vm` until they stop.
 
 **Proxy:** `fleet serve --proxy host:port` puts every new phone in tunnel mode behind that SOCKS5
 proxy (fail closed). Without it phones have no network. mint runs without one for now.
 
+**Backups:** the fleet library (`~/.vphone/fleet`) holds every phone's only copy. Include it in the
+host's machine backup. Restoring that folder on the same host (same slug and IP) brings the phones
+back; the website finds them by id.
+
 ## Remove a host
 
-Drain it first (`scripts/cloud-host.ts drain`), wait until its phones are uploaded, then:
+Phones never move, so a host can be removed only once no phone is pinned to it
+(`scripts/cloud-host.ts remove` refuses otherwise, and so does the database). Drain it first
+(`scripts/cloud-host.ts drain`) so no new phones land there. Then:
 
 ```bash
 ssh $HOST "sudo launchctl bootout system/dev.ghosthand.host-tunnel; sudo launchctl bootout system/dev.ghosthand.host-ip; \

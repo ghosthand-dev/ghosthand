@@ -299,7 +299,7 @@ Fleet API, all JSON, no auth (reachable only through the tunnel):
 |---|---|
 | `GET /v1/status` | `{host, slots, freeDiskBytes, bundleVersion, templates, phones: [{id, state, version, savedVersion, lastUsedAt, error?}]}`; state is starting, stopping, restoring, running, stopped or damaged |
 | `POST /v1/phones/{id}/start {version, template}` | `202`. Clone or download to reach `version` if needed, then launch |
-| `POST /v1/phones/{id}/stop {version}` | `202`. Shut down, then hash the disk into the manifest of `version` |
+| `POST /v1/phones/{id}/stop {version}` | `202`. Shut down, then hash the disk into the manifest of `version`, which must be newer than the local copy (a crashed VM too). `409` for an equal version while it runs: a late duplicate never stops a new run |
 | `GET /v1/phones/{id}/versions/{v}` | That version's manifest (chunk hashes and small files) |
 | `GET /v1/phones/{id}/chunks/{sha256}`, `.../files/{name}` | One chunk or small file of a local version, with `Content-Length` |
 | `POST /v1/phones/{id}/versions/{v}/saved` | R2 has this version now: the local copy may be evicted |

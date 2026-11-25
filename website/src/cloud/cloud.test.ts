@@ -1,5 +1,5 @@
-// Cloud iPhones end to end: the real Worker, hub and CloudFleet Durable Objects, Postgres and
-// MCP OAuth. Only the host Mac is scripted: an HTTP server speaking the fleet API
+// Cloud iPhones end to end: the real Worker, hub Durable Object, Postgres fleet and MCP OAuth.
+// Only the host Mac is scripted: an HTTP server speaking the fleet API
 // (`vphone-cli fleet serve`, docs/cloud-phones.md) with a small Settings app on vphone.sock.
 // The task test calls the real model (Vercel AI Gateway): run with `sigillo run -- pnpm test`.
 import { createHash } from 'node:crypto'
@@ -9,7 +9,6 @@ import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { mcpAccessToken, startTestRuntime } from '../test-runtime.ts'
 import mcpManual from '../../mcp-tools.json'
-import type { TestFleet } from '../test-runtime-worker.ts'
 
 /** DEFAULT_TEMPLATE of storage.ts, which imports cloudflare:workers. */
 const DEFAULT_TEMPLATE = '13e3716a2e12'
@@ -24,7 +23,7 @@ beforeAll(async () => {
   // The operator route scripts/cloud-host.ts calls, with an API key of a user in CLOUD_ADMINS.
   const admin = (token?: string) => runtime.worker.fetch('/api/cloud-admin/hosts/fake', {
     method: 'PUT', headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
-    body: JSON.stringify({ address: host.address, slots: 2, enabled: true }),
+    body: JSON.stringify({ address: host.address, slots: 2, status: 'active' }),
   })
   const stranger = await (await runtime.worker.fetch('/__test/session', { method: 'POST' })).json() as { session: { token: string } }
   expect([(await admin()).status, (await admin(stranger.session.token)).status]).toEqual([401, 403])
@@ -43,7 +42,11 @@ afterAll(async () => {
   await runtime?.close()
 })
 
-const fleet = () => (runtime.env.CLOUD_FLEET as DurableObjectNamespace<TestFleet>).getByName('fleet')
+/** The fleet's minute cron (saves to R2, host status), run now. */
+const cron = async () => (await runtime.worker.fetch('/__test/cloud-cron')).json()
+const setHost = async (slug: string, body: { address: string; slots: number; status: 'active' | 'draining' }) =>
+  runtime.sql(`INSERT INTO cloud_host (slug, environment, address, slots, status, last_seen_at, created_at) VALUES ($1, 'test', $2, $3, $4, now(), now())
+    ON CONFLICT (slug) DO UPDATE SET address = excluded.address, slots = excluded.slots, status = excluded.status`, [slug, body.address, String(body.slots), body.status])
 
 const SCREENS: Record<string, string[]> = {
   home: ['Settings', 'Photos', 'TikTok'],
@@ -53,7 +56,6 @@ const SCREENS: Record<string, string[]> = {
 }
 const TAPS: Record<string, Record<string, string>> = { home: { Settings: 'settings' }, settings: { General: 'general' }, general: { About: 'about' } }
 const ROW_HEIGHT = 44
-const GRACE_MS = 10 * 60_000
 
 type Manifest = { template: string; size: number; chunks: string[]; files: Record<string, { sha256: string; size: number }> }
 const sha = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex')
@@ -64,16 +66,16 @@ const TEMPLATE_MANIFEST: Manifest = {
   files: { 'config.plist': { sha256: sha(TEMPLATE_BLOBS[2]!), size: TEMPLATE_BLOBS[2]!.length } },
 }
 
-/** One host Mac speaking the fleet API, a Settings app on every phone. A stop hashes the
- *  disk as the new version with one changed chunk and a new nvram.bin. `lines` records each
+/** One host Mac speaking the fleet API, a Settings app on every phone. Starts, stops and
+ *  restores finish at once. A stop hashes the disk as the new version with one changed chunk
+ *  and a new nvram.bin. `lines` records each
  *  vphone.sock line, `calls` the storage calls, `puts` each blob the Worker sent. */
 async function fakeHost(name: string) {
-  type FakePhone = { state: 'running' | 'stopped'; version: number; uploadedVersion: number; screen: string; error?: string }
+  type FakePhone = { state: 'running' | 'stopped'; version: number; savedVersion: number; screen: string; error?: string }
   const phones = new Map<string, FakePhone>()
   const blobs = new Map(TEMPLATE_BLOBS.map((text) => [sha(text), Buffer.from(text)]))
   const manifests = new Map<string, Manifest>()
   const lines: Record<string, unknown>[] = []
-  const starts: string[] = []
   const calls: string[] = []
   const puts: { sha256: string; matches: boolean; bytes: number }[] = []
   // A block per row, centers in points: src/fixtures/task-<screen>.jpg draws them there.
@@ -126,7 +128,7 @@ async function fakeHost(name: string) {
     if (url === '/v1/status') {
       return send(200, {
         host: name, slots: 2, freeDiskBytes: 100e9, bundleVersion: 'test', templates: [DEFAULT_TEMPLATE],
-        phones: [...phones].map(([id, p]) => ({ id, state: p.state, version: p.version, uploadedVersion: p.uploadedVersion, ...(p.error ? { error: p.error } : {}) })),
+        phones: [...phones].map(([id, p]) => ({ id, state: p.state, version: p.version, savedVersion: p.savedVersion, ...(p.error ? { error: p.error } : {}) })),
       })
     }
     if (url === '/v1/blobs/missing') return send(200, { missing: (body.hashes as string[]).filter((h) => !blobs.has(h)) })
@@ -141,10 +143,9 @@ async function fakeHost(name: string) {
     const phone = phones.get(id!)
     const [, op, arg] = rest?.match(/^([a-z-]+)(?:\/(.+))?$/) ?? []
     if (op === 'start') {
-      starts.push(id!)
       calls.push(`start ${id} v${body.version}`)
       const local = body.version === 0 || manifests.has(`${id}:${body.version}`)
-      phones.set(id!, { state: local ? 'running' : 'stopped', version: body.version, uploadedVersion: phone?.uploadedVersion ?? 0, screen: 'home', ...(local ? {} : { error: `no local copy of v${body.version}` }) })
+      phones.set(id!, { state: local ? 'running' : 'stopped', version: body.version, savedVersion: phone?.savedVersion ?? 0, screen: 'home', ...(local ? {} : { error: `no local copy of v${body.version}` }) })
       return send(202)
     }
     if (op === 'stop' && phone) {
@@ -159,7 +160,7 @@ async function fakeHost(name: string) {
     }
     if (op === 'versions' && arg?.endsWith('/saved')) {
       calls.push(`saved ${id} v${arg.split('/')[0]}`)
-      phone!.uploadedVersion = Number(arg.split('/')[0])
+      phone!.savedVersion = Number(arg.split('/')[0])
       return send(204)
     }
     if (op === 'versions') {
@@ -174,7 +175,8 @@ async function fakeHost(name: string) {
       if (lacking.length) return send(409, { error: `missing blobs ${lacking.join(', ')}` })
       calls.push(`restore ${id} v${body.version}`)
       manifests.set(`${id}:${body.version}`, manifest)
-      return send(204)
+      phones.set(id!, { state: 'stopped', version: body.version, savedVersion: body.version, screen: 'home' })
+      return send(202)
     }
     if (op === 'push') {
       if (!blobs.has(body.sha256)) return send(404, { error: 'no such blob' })
@@ -185,7 +187,7 @@ async function fakeHost(name: string) {
     send(404, { error: 'not found' })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const fake = { name, server, address: `127.0.0.1:${(server.address() as AddressInfo).port}`, phones, lines, starts, calls, puts }
+  const fake = { name, server, address: `127.0.0.1:${(server.address() as AddressInfo).port}`, phones, lines, calls, puts }
   hosts.push(fake)
   return fake
 }
@@ -196,8 +198,10 @@ async function renter(name: string) {
   const identity = await (await runtime.worker.fetch('/__test/session', { method: 'POST' })).json() as { user: { id: string }; session: { token: string } }
   const orgId = identity.user.id
   const phoneId = `cph_${String(++renters).padStart(26, '0')}`
-  await runtime.sql('INSERT INTO cloud_phone (cloud_phone_id, org_id, name, status, template, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now())', [phoneId, orgId, name, 'active', DEFAULT_TEMPLATE])
-  await fleet().setAccess({ phoneId, orgId, template: DEFAULT_TEMPLATE, allowed: true })
+  const subscriptionId = `sub_${phoneId}`
+  await runtime.sql(`INSERT INTO subscription (subscription_id, org_id, stripe_account_id, stripe_customer_id, price_id, product_id, status, kind, created_at, updated_at)
+    VALUES ($1, $2, 'acct_test', 'cus_test', 'price_test', 'prod_test', 'active', 'cloud_phone', now(), now())`, [subscriptionId, orgId])
+  await runtime.sql('INSERT INTO cloud_phone (cloud_phone_id, org_id, name, subscription_id, template, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, now(), now())', [phoneId, orgId, name, subscriptionId, DEFAULT_TEMPLATE])
   const token = identity.session.token
   const api = (path: string, init: { method?: string; body?: string; headers?: Record<string, string> } = {}) => runtime.worker.fetch(`/macs/cloud/v1${path}`, {
     ...init, headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json', ...init.headers },
@@ -212,12 +216,9 @@ async function renter(name: string) {
     const { result } = await response.json() as { result: { content: { type: string; text?: string; mimeType?: string }[]; isError: boolean } }
     return { isError: result.isError, content: result.content.map((c) => (c.type === 'text' ? c.text : `[${c.type} ${c.mimeType}]`)) }
   }
-  /** Acquire starts a stopped phone: the fleet sees it running at its next poll (the alarm). */
-  const acquire = async (body: object, on = host) => {
-    const pending = api('/leases', { method: 'POST', body: JSON.stringify(body) })
-    await expect.poll(() => on.starts.includes(phoneId)).toBe(true)
-    await fleet().runAlarm()
-    const response = await pending
+  /** Acquire starts a stopped phone and polls its host until it runs. */
+  const acquire = async (body: object) => {
+    const response = await api('/leases', { method: 'POST', body: JSON.stringify(body) })
     return { status: response.status, body: await response.json() as Record<string, unknown> }
   }
   return { orgId, phoneId, token, api, tool, acquire }
@@ -382,7 +383,8 @@ test('a cloud iPhone works like a Mac\'s iPhone through REST and MCP, and org B 
 
   // Org B has its own cloud iPhone, so its calls reach the cloud module: A's lease is unknown there.
   const b = await renter('Cloud iPhone B')
-  const before = (await fleet().devices({ orgId: a.orgId }))[0]!.lease
+  const leaseRow = () => runtime.sql('SELECT last_used_at, last_command FROM cloud_lease WHERE cloud_lease_id = 1')
+  const before = await leaseRow()
   const stolen = await b.api(`/leases/${lease}/tap`, { method: 'POST', body: JSON.stringify({ x: 10, y: 10 }) })
   expect([stolen.status, (await stolen.json() as { code: string }).code]).toEqual([403, 'lease-invalid'])
   expect(await b.tool('screenshot', { lease })).toMatchInlineSnapshot(`
@@ -404,7 +406,7 @@ test('a cloud iPhone works like a Mac\'s iPhone through REST and MCP, and org B 
   const takeover = await b.api('/leases', { method: 'POST', body: JSON.stringify({ reason: 'steal', device: a.phoneId }) })
   expect([takeover.status, (await takeover.json() as { code: string }).code]).toEqual([404, 'device-not-found'])
   // B's calls did not even keep A's lease alive.
-  expect((await fleet().devices({ orgId: a.orgId }))[0]!.lease).toEqual(before)
+  expect(await leaseRow()).toEqual(before)
 
   expect(await a.tool('release', { lease })).toMatchInlineSnapshot(`
     {
@@ -438,52 +440,46 @@ test('a phone task drives a cloud iPhone through the hub', async () => {
 }, 90_000)
 
 test('the Worker saves a stopped phone to R2, loads it on another host, and sends catalog IPAs', async () => {
-  const phoneState = async (phoneId: string) => {
-    const { state } = await fleet().snapshot({ events: 0 })
-    const { state: s, host: h, version, r2Version, unsaved } = state.phones[phoneId]!
-    return { state: s, host: h, version, r2Version, unsaved }
-  }
+  const phoneState = async (phoneId: string) => (await runtime.sql('SELECT state, host_slug, version, saved_version FROM cloud_phone WHERE cloud_phone_id = $1', [phoneId]))[0]
   const mint = await fakeHost('mint')
   // Only mint takes new phones, one at a time.
-  await fleet().setHost({ slug: 'fake', address: host.address, slots: 2, enabled: false })
-  await fleet().setHost({ slug: 'mint', address: mint.address, slots: 1, enabled: true })
+  await setHost('fake', { address: host.address, slots: 2, status: 'draining' })
+  await setHost('mint', { address: mint.address, slots: 1, status: 'active' })
   const e = await renter('Moving iPhone')
-  const first = await e.acquire({ reason: 'first run' }, mint)
+  const first = await e.acquire({ reason: 'first run' })
+  expect(first.status).toBe(201)
   expect((await e.api(`/leases/${first.body.id}`, { method: 'DELETE' })).status).toBe(200)
 
-  // F needs mint's slot after E's grace time: E is stopped and hashed as v1, then saved.
+  // F needs mint's slot after E's grace time: E is stopped and hashed as v1, F starts.
   const f = await renter('Second iPhone')
-  await fleet().advance(GRACE_MS + 60_000)
-  const fLease = f.api('/leases', { method: 'POST', body: JSON.stringify({ reason: 'needs the slot', waitSeconds: 600 }) })
-  await expect.poll(() => mint.calls.includes(`stop ${e.phoneId} v1`)).toBe(true)
-  await fleet().runAlarm()
-  expect(mint.calls).toEqual([`start ${e.phoneId} v0`, `stop ${e.phoneId} v1`, `start ${f.phoneId} v0`, `saved ${e.phoneId} v1`])
-  expect(await phoneState(e.phoneId)).toEqual({ state: 'stored', host: 'mint', version: 1, r2Version: 1, unsaved: false })
-  // Only what the template lacks went to R2: one chunk, the small files, the manifest last.
+  await runtime.sql(`UPDATE cloud_lease SET ended_at = now() - interval '11 minutes' WHERE cloud_phone_id = $1`, [e.phoneId])
+  await runtime.sql(`UPDATE cloud_phone SET state_changed_at = now() - interval '11 minutes' WHERE cloud_phone_id = $1`, [e.phoneId])
+  const fLease = await f.acquire({ reason: 'needs the slot', waitSeconds: 600 })
+  expect(fLease.status).toBe(201)
+  expect(mint.calls).toEqual([`start ${e.phoneId} v0`, `stop ${e.phoneId} v1`, `start ${f.phoneId} v0`])
+  expect(await phoneState(e.phoneId)).toEqual({ state: 'stored', host_slug: 'mint', version: 1, saved_version: 0 })
+  // The cron copies E to R2: only what the template lacks, the small files, the manifest last.
+  await cron()
+  expect(mint.calls.at(-1)).toBe(`saved ${e.phoneId} v1`)
+  expect(await phoneState(e.phoneId)).toEqual({ state: 'stored', host_slug: 'mint', version: 1, saved_version: 1 })
   const listed = await runtime.env.PHONES.list()
   expect(listed.objects.map((o) => o.key).filter((k) => !k.startsWith('templates/')).sort()).toEqual([
     `chunks/${sha(`disk ${e.phoneId} v1`)}`, `phones/${e.phoneId}/1/config.plist`, `phones/${e.phoneId}/1/manifest.json`, `phones/${e.phoneId}/1/nvram.bin`,
   ].sort())
   expect(await (await runtime.env.PHONES.get(`chunks/${sha(`disk ${e.phoneId} v1`)}`))!.text()).toBe(`disk ${e.phoneId} v1`)
-  await fleet().runAlarm()
-  expect((await fLease).status).toBe(201)
 
   // mint is full: E starts on studio, which first gets the blobs it lacks from R2.
   const studio = await fakeHost('studio')
-  await fleet().setHost({ slug: 'studio', address: studio.address, slots: 1, enabled: true })
-  const eLease = e.api('/leases', { method: 'POST', body: JSON.stringify({ reason: 'second run' }) })
-  await expect.poll(async () => (await phoneState(e.phoneId)).state).toBe('starting')
-  await fleet().runAlarm()
+  await setHost('studio', { address: studio.address, slots: 1, status: 'active' })
+  const second = await e.acquire({ reason: 'second run' })
+  expect(second.status).toBe(201)
   expect(studio.puts).toEqual([
     { sha256: sha(`disk ${e.phoneId} v1`), matches: true, bytes: `disk ${e.phoneId} v1`.length },
     { sha256: sha(`nvram ${e.phoneId} v1`), matches: true, bytes: `nvram ${e.phoneId} v1`.length },
   ])
   expect(studio.calls).toEqual([`restore ${e.phoneId} v1`, `start ${e.phoneId} v1`])
-  await fleet().runAlarm()
-  const second = await eLease
-  expect(second.status).toBe(201)
-  const lease = (await second.json() as { id: string }).id
-  expect(await phoneState(e.phoneId)).toEqual({ state: 'running', host: 'studio', version: 1, r2Version: 1, unsaved: true })
+  const lease = second.body.id as string
+  expect(await phoneState(e.phoneId)).toEqual({ state: 'running', host_slug: 'studio', version: 1, saved_version: 1 })
 
   // A catalog IPA streams from R2 to the host once; the next install reuses the host's copy.
   const ipa = 'reddit ipa bytes'
@@ -502,4 +498,4 @@ test('the Worker saves a stopped phone to R2, loads it on another host, and send
   // The catalog's sha256 is a placeholder until Task 4 uploads the real IPAs: only the bytes are checked here.
   expect(studio.puts).toEqual([{ sha256: '0'.repeat(64), matches: false, bytes: ipa.length }])
   expect(studio.calls.filter((c) => c.startsWith('push'))).toEqual(['push 00000000 /var/mobile/Media/Downloads/reddit.ipa', 'push 00000000 /var/mobile/Media/Downloads/reddit.ipa'])
-}, 60_000)
+}, 90_000)

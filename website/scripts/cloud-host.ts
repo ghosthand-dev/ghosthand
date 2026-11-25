@@ -7,20 +7,21 @@
 //   bun scripts/cloud-host.ts enable mint
 //   bun scripts/cloud-host.ts remove mint     # refused while it runs or holds a phone
 //   bun scripts/cloud-host.ts recover cph_... # its host is gone: restart from R2
-//   bun scripts/cloud-host.ts snapshot --events 50
+//   bun scripts/cloud-host.ts phones          # every phone's state, host and versions
 //
 // GHOSTHAND_TOKEN is the operator's normal API key; the route checks the user is in CLOUD_ADMINS.
 // The origin of GHOSTHAND_URL picks the site (default https://ghosthand.dev; the preview fleet
-// is https://preview.ghosthand.dev and must never get a production host).
+// is https://preview.ghosthand.dev). Each site manages only the hosts of its own environment.
 import { parseArgs } from 'node:util'
 
 const REQUEST_TIMEOUT_MS = 30_000
-const USAGE = 'usage: bun scripts/cloud-host.ts list | add <slug> --address <ip:port> --slots <n> | drain <slug> | enable <slug> | remove <slug> | recover <phone> | snapshot [--events <n>]'
+const USAGE = 'usage: bun scripts/cloud-host.ts list | add <slug> --address <ip:port> --slots <n> | drain <slug> | enable <slug> | remove <slug> | recover <phone> | phones'
 
-type HostView = { slug: string; address: string; slots: number; enabled: boolean; online: boolean; lastSeenAt: number | null; running: number; cached: number }
+type HostStatus = 'active' | 'draining'
+type HostView = { slug: string; address: string; slots: number; status: HostStatus; online: boolean; lastSeenAt: number | null; running: number; cached: number }
 
 const { values, positionals } = parseArgs({
-  options: { address: { type: 'string' }, slots: { type: 'string' }, events: { type: 'string' } },
+  options: { address: { type: 'string' }, slots: { type: 'string' } },
   allowPositionals: true,
 })
 const [command, target] = positionals
@@ -52,18 +53,18 @@ function printHosts(hosts: HostView[]): void {
   if (!hosts.length) return console.log('no hosts')
   for (const h of hosts) {
     const seen = h.lastSeenAt ? new Date(h.lastSeenAt).toISOString() : 'never'
-    console.log(`${h.slug}  ${h.address}  ${h.running}/${h.slots} running, ${h.cached} cached  ${h.online ? 'online' : 'offline'}${h.enabled ? '' : '  [draining]'}  last seen ${seen}`)
+    console.log(`${h.slug}  ${h.address}  ${h.running}/${h.slots} running, ${h.cached} cached  ${h.online ? 'online' : 'offline'}${h.status === 'draining' ? '  [draining]' : ''}  last seen ${seen}`)
   }
 }
 
-async function setEnabled(slug: string, enabled: boolean): Promise<void> {
+async function setStatus(slug: string, status: HostStatus): Promise<void> {
   const { hosts } = await call<{ hosts: HostView[] }>('GET', '/hosts')
   const host = hosts.find((h) => h.slug === slug)
   if (!host) {
     console.error(`no host ${slug}; hosts: ${hosts.map((h) => h.slug).join(', ') || 'none'}`)
     process.exit(1)
   }
-  printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${slug}`, { address: host.address, slots: host.slots, enabled })).hosts)
+  printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${slug}`, { address: host.address, slots: host.slots, status })).hosts)
 }
 
 switch (command) {
@@ -76,7 +77,7 @@ switch (command) {
       console.error(USAGE)
       process.exit(1)
     }
-    printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${target}`, { address: values.address, slots, enabled: true })).hosts)
+    printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${target}`, { address: values.address, slots, status: 'active' })).hosts)
     break
   }
   case 'drain':
@@ -85,7 +86,7 @@ switch (command) {
       console.error(USAGE)
       process.exit(1)
     }
-    await setEnabled(target, command === 'enable')
+    await setStatus(target, command === 'enable' ? 'active' : 'draining')
     break
   case 'remove':
     if (!target) {
@@ -104,8 +105,8 @@ switch (command) {
     console.log(`${target} restarts from its R2 version ${version} on its next acquire`)
     break
   }
-  case 'snapshot':
-    console.log(JSON.stringify(await call('GET', `/snapshot${values.events ? `?events=${Number(values.events)}` : ''}`), null, 2))
+  case 'phones':
+    console.log(JSON.stringify(await call('GET', '/phones'), null, 2))
     break
   default:
     console.error(USAGE)

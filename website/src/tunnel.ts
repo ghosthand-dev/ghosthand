@@ -22,9 +22,11 @@
 // stores it and passes it to the other Macs (and to a Mac that connects, and an empty list
 // when a Mac goes offline). Nothing here runs on a timer, so idle Macs never wake the DO.
 //
-// Cloud iPhones are the Mac `cloud` (src/cloud/): `/macs/cloud/v1/...`, `daemonFetch('cloud')`
-// and MCP calls routed to `cloud` run in this object through cloud/api.ts, not over a socket.
-// The org's id is the object's name (getHub), the trusted source of who is calling.
+// Cloud iPhones are the Mac `cloud` (src/cloud/). `/macs/cloud/v1/...` and MCP calls that name
+// `cloud` (lease `cloud:<n>` or `mac: "cloud"`) are answered in the Worker, so they never wake
+// this object; `list` and calls that name no Mac come here, and the Worker tells the hub
+// whether the org has cloud iPhones in a trusted header. The org's id is the object's name
+// (getHub), the trusted source of who is calling.
 
 import { DurableObject, env } from 'cloudflare:workers'
 import { createResourceServerChallenge } from '@better-auth/oauth-provider'
@@ -38,6 +40,7 @@ import {
   routeMcpCall,
   rpcError,
   toolCallResult,
+  toolCallTarget,
   type JsonRpcId,
   type JsonRpcMessage,
   type MacReply,
@@ -72,6 +75,8 @@ export type HubMac = { sessionId: string; slug: string; name: string; online: bo
 const UPSTREAM_PATH = '/tunnel/upstream'
 const SESSION_HEADER = 'x-ghosthand-session-id'
 const MAC_NAME_HEADER = 'x-ghosthand-mac-name'
+/** Set by the Worker: the org has cloud iPhones (`/macs` and `list` show `cloud`). */
+const CLOUD_HEADER = 'x-ghosthand-cloud'
 // A daemon restart reconnects within seconds: calls wait for it instead of failing.
 const RECONNECT_WAIT_MS = 5_000
 const RECENTLY_ONLINE_MS = 60_000
@@ -117,7 +122,16 @@ async function handleMcpRequest(request: Request): Promise<Response> {
   if (claims instanceof Response) return claims
   if (typeof claims.sub !== 'string' || !claims.sub) return new Response(null, { status: 401 })
   const org = await getPersonalOrg(claims.sub)
-  return getHub(org.orgId).fetch(new Request(request, { headers: withoutTrustedHeaders(request.headers) }))
+  const cloud = hasCloudPhones(org)
+  const text = await request.text()
+  const parsed = parseJsonRpc(text)
+  if (cloud && parsed.ok && toolCallTarget(parsed.message) === CLOUD_SLUG) {
+    // The same routing as the hub, with only the cloud reachable: it checks the protocol version.
+    const route = routeMcpCall({ message: parsed.message, online: [], offline: [], cloud, now: Date.now(), site: getBaseUrl() })
+    if (route.kind === 'cloud') return Response.json(await callCloud({ orgId: org.orgId, message: parsed.message, signal: request.signal }))
+    if (route.kind === 'reply') return route.body ? Response.json(route.body, { status: route.status }) : new Response(null, { status: route.status })
+  }
+  return getHub(org.orgId).fetch(new Request(request, { headers: hubHeaders({ source: request.headers, cloud }), body: text }))
 }
 
 /** `GET /macs` and `/macs/<slug>/v1/...` for scripts (API token) and for the daemon of another
@@ -138,7 +152,32 @@ async function handleApiRequest(request: Request): Promise<Response> {
     })
   }
   const org = await getPersonalOrg(userId)
-  return getHub(org.orgId).fetch(new Request(request, { headers: withoutTrustedHeaders(request.headers) }))
+  const url = new URL(request.url)
+  const cloudPath = url.pathname.match(/^\/macs\/cloud(\/v1\/.*)$/)?.[1]
+  if (cloudPath) return cloudApi({ orgId: org.orgId, request, path: cloudPath + url.search })
+  return getHub(org.orgId).fetch(new Request(request, { headers: hubHeaders({ source: request.headers, cloud: hasCloudPhones(org) }) }))
+}
+
+/** Paid at least once: pending phones (no subscription yet) are not shown. */
+function hasCloudPhones(org: { cloudPhones: { subscriptionId: string | null }[] }): boolean {
+  return org.cloudPhones.some((phone) => phone.subscriptionId !== null)
+}
+
+function hubHeaders({ source, cloud }: { source: Headers; cloud: boolean }): Headers {
+  const headers = withoutTrustedHeaders(source)
+  if (cloud) headers.set(CLOUD_HEADER, '1')
+  return headers
+}
+
+/** A tool call on the org's cloud iPhones, as the JSON-RPC answer a Mac would give. */
+async function callCloud({ orgId, message, signal }: { orgId: string; message: JsonRpcMessage; signal: AbortSignal }): Promise<object> {
+  const params = message.params ?? {}
+  const value = await callCloudTool({
+    ctx: { orgId, signal },
+    name: String(params.name ?? ''),
+    args: (params.arguments ?? {}) as Record<string, unknown>,
+  })
+  return toolCallResult({ message, site: getBaseUrl(), value })
 }
 
 async function connectUpstream(request: Request): Promise<Response> {
@@ -190,15 +229,6 @@ export class GhosthandHub extends DurableObject<Env> {
     if (pathname === UPSTREAM_PATH) return this.openUpstream(request)
     if (pathname === '/macs' || pathname.startsWith('/macs/')) return this.handleApi(request)
     return this.handleMcp(request)
-  }
-
-  /** Set by CloudFleet when the org gets a cloud iPhone: `list` and `/macs` then show `cloud`. */
-  async setCloud(hasPhones: boolean): Promise<void> {
-    this.ctx.storage.kv.put('cloud', hasPhones)
-  }
-
-  private hasCloud(): boolean {
-    return this.ctx.storage.kv.get<boolean>('cloud') ?? false
   }
 
   private orgId(): string {
@@ -309,10 +339,11 @@ export class GhosthandHub extends DurableObject<Env> {
     if (!parsed.ok) return Response.json(parsed.body, { status: parsed.status })
     const { message } = parsed
 
-    let route = this.route(message)
+    const cloud = request.headers.get(CLOUD_HEADER) === '1'
+    let route = this.route({ message, cloud })
     if (route.kind === 'reply' && route.offline && this.recentlyOnline()) {
       await this.waitForUpstream()
-      route = this.route(message)
+      route = this.route({ message, cloud })
     }
     const rpcId = message.id ?? null
     switch (route.kind) {
@@ -321,7 +352,7 @@ export class GhosthandHub extends DurableObject<Env> {
       case 'forward':
         return this.dispatch({ slug: route.slug, request, method: 'POST', path: '/mcp', body: text, fail: mcpFail(rpcId) })
       case 'cloud':
-        return Response.json(await this.callCloud(message, request.signal))
+        return Response.json(await callCloud({ orgId: this.orgId(), message, signal: request.signal }))
       case 'fanout': {
         const replies = await Promise.all(route.slugs.map((slug) => this.collect({ slug, request, method: 'POST', path: '/mcp', body: text, fail: mcpFail(rpcId) })))
         return Response.json(mergeListReplies(rpcId, replies))
@@ -329,25 +360,14 @@ export class GhosthandHub extends DurableObject<Env> {
     }
   }
 
-  private route(message: JsonRpcMessage) {
+  private route({ message, cloud }: { message: JsonRpcMessage; cloud: boolean }) {
     const online = this.onlineMacs()
     const onlineIds = new Set(online.map((mac) => mac.sessionId))
     const offline = Object.entries(this.registry())
       .filter(([sessionId]) => !onlineIds.has(sessionId))
       .map(([, mac]) => mac)
       .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
-    return routeMcpCall({ message, online, offline, cloud: this.hasCloud(), now: Date.now(), site: getBaseUrl() })
-  }
-
-  /** A tool call on the org's cloud iPhones, as the JSON-RPC answer a Mac would give. */
-  private async callCloud(message: JsonRpcMessage, signal: AbortSignal): Promise<object> {
-    const params = message.params ?? {}
-    const value = await callCloudTool({
-      ctx: { orgId: this.orgId(), signal },
-      name: String(params.name ?? ''),
-      args: (params.arguments ?? {}) as Record<string, unknown>,
-    })
-    return toolCallResult({ message, site: getBaseUrl(), value })
+    return routeMcpCall({ message, online, offline, cloud, now: Date.now(), site: getBaseUrl() })
   }
 
   /** `/macs` lists the Macs; `/macs/<slug>/v1/...` replays the request on that Mac's daemon. */
@@ -356,7 +376,8 @@ export class GhosthandHub extends DurableObject<Env> {
     if (url.pathname === '/macs') {
       if (request.method !== 'GET') return problem({ status: 405, code: 'method-not-allowed', title: 'Method not allowed', detail: 'Use GET.', headers: { allow: 'GET' } })
       const macs = (await this.macs()).map(({ slug, name, online }) => ({ slug, name, online }))
-      return Response.json({ macs: this.hasCloud() ? [...macs, { slug: CLOUD_SLUG, name: 'Cloud', online: true }] : macs })
+      const cloud = request.headers.get(CLOUD_HEADER) === '1'
+      return Response.json({ macs: cloud ? [...macs, { slug: CLOUD_SLUG, name: 'Cloud', online: true }] : macs })
     }
     const match = url.pathname.match(/^\/macs\/([a-z0-9-]+)(\/v1\/.*)$/)
     if (!match) {
@@ -367,7 +388,8 @@ export class GhosthandHub extends DurableObject<Env> {
   }
 
   /** One daemon API request (`/v1/...`) on Mac `slug`, for the tools of a task (task.ts).
-   *  Called over RPC with a Request the Worker built, after it checked the account. */
+   *  Called over RPC with a Request the Worker built, after it checked the account. Cloud
+   *  leases never come here: task.ts calls cloud/api.ts itself. */
   async daemonFetch(slug: string, request: Request): Promise<Response> {
     await this.refreshExpiredSessions()
     const url = new URL(request.url)
@@ -375,7 +397,6 @@ export class GhosthandHub extends DurableObject<Env> {
   }
 
   private async forwardApi({ slug, request, path }: { slug: string; request: Request; path: string }): Promise<Response> {
-    if (slug === CLOUD_SLUG) return cloudApi({ orgId: this.orgId(), request, path })
     if (Number(request.headers.get('content-length')) > MAX_API_BODY) return tooLarge()
     const hasBody = request.method !== 'GET' && request.method !== 'HEAD'
     const body = hasBody ? await readBounded(request, MAX_API_BODY) : null
@@ -426,7 +447,7 @@ export class GhosthandHub extends DurableObject<Env> {
   private async collect(options: Parameters<GhosthandHub['dispatch']>[0]): Promise<MacReply> {
     const { slug } = options
     try {
-      if (slug === CLOUD_SLUG) return { slug, message: await this.callCloud(JSON.parse(options.body as string), options.request.signal) }
+      if (slug === CLOUD_SLUG) return { slug, message: await callCloud({ orgId: this.orgId(), message: JSON.parse(options.body as string), signal: options.request.signal }) }
       const response = await this.dispatch(options)
       const text = await response.text()
       if (!response.ok) return { slug, error: `HTTP ${response.status} ${text.slice(0, 200)}` }

@@ -9,25 +9,7 @@ import { runAction } from 'spiceflow/testing'
 import { signOutMac } from './actions.tsx'
 
 import { cloudAdminApp } from './cloud/admin.ts'
-import { CloudFleet } from './cloud/fleet.ts'
-
-/** The real fleet; `runAlarm` runs its alarm now (alarm() itself is not callable over RPC),
- *  `advance` moves its clock, e.g. past the grace time of an idle phone. */
-export class TestFleet extends CloudFleet {
-  private offsetMs = 0
-
-  protected override now(): number {
-    return Date.now() + this.offsetMs
-  }
-
-  async advance(ms: number): Promise<void> {
-    this.offsetMs += ms
-  }
-
-  async runAlarm(): Promise<void> {
-    await this.alarm()
-  }
-}
+import { runFleetCron } from './cloud/fleet.ts'
 
 /** HOSTS in tests: host.ts calls http://127.0.0.1:<port>/v1/..., a scripted host in the test. */
 export class TestHosts extends WorkerEntrypoint {
@@ -90,6 +72,8 @@ export default {
       const session = await context.internalAdapter.createSession(user.id)
       return Response.json({ user, session })
     }
+    // The minute cron of the cloud fleet, without waiting for the minute.
+    if (url.pathname === '/__test/cloud-cron') return Response.json(await runFleetCron())
     if (url.pathname.startsWith('/__test/task/')) {
       return getTask({ orgId: url.searchParams.get('org')!, taskId: url.searchParams.get('task')! }).fetch(request)
     }

@@ -144,9 +144,7 @@ export function routeMcpCall({ message, online, offline, cloud, now, site }: {
   })
 
   if (message.method === 'tools/call') {
-    const args = (params.arguments ?? {}) as Record<string, unknown>
-    const leaseSlug = typeof args.lease === 'string' ? args.lease.match(LEASE_PATTERN)?.[1] : undefined
-    const target = leaseSlug ?? (typeof args.mac === 'string' ? args.mac : undefined)
+    const target = toolCallTarget(message)
     // Every place a call can go, Macs first, newest connection first.
     const reachable = cloud ? [...online, CLOUD_MAC] : online
     const to = (slug: string): McpRoute => (slug === CLOUD_SLUG && cloud ? { kind: 'cloud' } : { kind: 'forward', slug })
@@ -193,6 +191,15 @@ export function routeMcpCall({ message, online, offline, cloud, now, site }: {
     default:
       return { kind: 'reply', status: 200, body: rpcError(id, -32601, `Method not found: ${message.method}`) }
   }
+}
+
+/** The Mac a tool call names: its lease prefix (`studio:42`), else its `mac` argument. The
+ *  Worker answers calls naming `cloud` itself, without waking the hub. */
+export function toolCallTarget(message: JsonRpcMessage): string | undefined {
+  if (message.method !== 'tools/call') return undefined
+  const args = (message.params?.arguments ?? {}) as Record<string, unknown>
+  const leaseSlug = typeof args.lease === 'string' ? args.lease.match(LEASE_PATTERN)?.[1] : undefined
+  return leaseSlug ?? (typeof args.mac === 'string' ? args.mac : undefined)
 }
 
 /** Same as MCPServer.serverInfo in the daemon. `icons` (MCP 2025-11-25) is the logo MCP clients show for the connector. */

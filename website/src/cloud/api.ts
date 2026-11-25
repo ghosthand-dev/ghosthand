@@ -2,9 +2,9 @@
 // A cloud iPhone is one more Mac, slug `cloud`, so every client that speaks the daemon API
 // (the CLI through lease forwarding, scripts, phone tasks) works unchanged:
 //
-//   /macs/cloud/v1/... (tunnel.ts) ──> cloudApi() ──> ops below ──> CloudFleet (lease check)
-//   MCP tools for cloud:<n> (mcp.ts) ──────────────────┘   │
-//   task tools: GhosthandHub.daemonFetch('cloud') ─────────┘   └──> host.ts sock ──> vphone.sock
+//   /macs/cloud/v1/... (tunnel.ts, in the Worker) ──> cloudApi() ──> ops below ──> fleet.ts (lease check)
+//   MCP tools for cloud:<n> (mcp.ts) ─────────────────────┘   │
+//   task tools (task.ts, slug `cloud`) ───────────────────────┘   └──> host.ts sock ──> vphone.sock
 //
 // Coordinates are screen points on both sides (vphoned gestures and the daemon's default
 // scale). The website is the only tenant gate: only the routes below exist, never a raw RPC.
@@ -19,7 +19,7 @@ import type { components } from '../generated/daemon-api.ts'
 import { getTask } from '../task.ts'
 import type { TaskPhone } from '../task-agent.ts'
 import { catalogApp, publicCatalog } from './apps.ts'
-import { getFleet, type FleetPhone, type LeaseInfo, type LeaseTarget, type LeaseView } from './fleet.ts'
+import { acquire as acquireLease, listPhones, release as releaseLease, useLease, type FleetPhone, type LeaseInfo, type LeaseTarget, type LeaseView } from './fleet.ts'
 import { hostClient, type Json, type SockLine, type SockReply } from './host.ts'
 import { DEFAULT_IDLE_TIMEOUT_S } from './scheduler.ts'
 import { sendBlob, templateInfo } from './storage.ts'
@@ -88,8 +88,8 @@ export class CloudProblem extends Error {
 
 export type Ctx = { orgId: string; signal: AbortSignal }
 
-/** One of the org's cloud iPhones: what was bought (Postgres) and where it runs (CloudFleet). */
-export type CloudDevice = FleetPhone & { name: string; model: string; modelName: string; iosVersion: string }
+/** One of the org's cloud iPhones, with its model from the template. */
+export type CloudDevice = FleetPhone & { model: string; modelName: string; iosVersion: string }
 
 /** Input options every input route takes after the input (daemon `AfterInput`). */
 export type After = { waitText?: string; timeoutMs?: number; screenshot?: 'png' | 'jpeg'; screentext?: boolean; language?: string }
@@ -101,14 +101,10 @@ type FinalInput = { line: SockLine; message: string; logs?: string[] }
 // ── devices and leases ──
 
 export async function listDevices(ctx: Ctx): Promise<CloudDevice[]> {
-  const [phones, rows] = await Promise.all([
-    getFleet().devices({ orgId: ctx.orgId }),
-    getDb().query.cloudPhone.findMany({ where: { orgId: ctx.orgId }, columns: { cloudPhoneId: true, name: true } }),
-  ])
-  const names = new Map(rows.map((row) => [row.cloudPhoneId, row.name]))
+  const phones = await listPhones({ orgId: ctx.orgId })
   return phones.map((phone) => {
     const template = templateInfo(phone.template)
-    return { ...phone, name: names.get(phone.phoneId) ?? phone.phoneId, model: template.model, modelName: template.modelName, iosVersion: template.iosVersion }
+    return { ...phone, model: template.model, modelName: template.modelName, iosVersion: template.iosVersion }
   })
 }
 
@@ -131,16 +127,10 @@ export async function acquire(ctx: Ctx, input: AcquireInput): Promise<CloudLease
   if (input.force && input.waitSeconds !== undefined) return new CloudProblem('invalid-request', 'force cannot be combined with waitSeconds')
   const device = pickDevice({ devices: await listDevices(ctx), device: input.device })
   if (device instanceof Error) return device
-  const fleet = getFleet()
-  const { waiterId, result: now } = await fleet.acquire({
+  const result = await acquireLease({
     orgId: ctx.orgId, phoneId: device.phoneId, label: input.label, reason: input.reason,
-    idleTimeoutS: input.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_S, waitS: input.waitSeconds, force: input.force,
+    idleTimeoutS: input.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_S, waitS: input.waitSeconds, force: input.force, signal: ctx.signal,
   })
-  // A signal does not cross Durable Object RPC: a client that goes away cancels its wait here.
-  const onAbort = () => void fleet.cancel({ waiterId })
-  ctx.signal.addEventListener('abort', onAbort, { once: true })
-  const result = now ?? await fleet.waitFor({ waiterId })
-  ctx.signal.removeEventListener('abort', onAbort)
   if (!result.ok) return new CloudProblem(result.code, result.detail)
   const { n, ...lease } = result.lease
   return { ...lease, id: leaseId(n), deviceName: device.name }
@@ -149,7 +139,7 @@ export async function acquire(ctx: Ctx, input: AcquireInput): Promise<CloudLease
 export async function release(ctx: Ctx, lease: string): Promise<string | CloudProblem> {
   const n = parseLease(lease)
   if (n instanceof Error) return n
-  return await getFleet().release({ orgId: ctx.orgId, n }) ? 'lease released' : 'lease was already ended (expired, released, or taken with --force)'
+  return await releaseLease({ orgId: ctx.orgId, n }) ? 'lease released' : 'lease was already ended (expired, released, or taken with --force)'
 }
 
 export function leaseId(n: number): string {
@@ -168,7 +158,7 @@ export function parseLease(lease: string): number | CloudProblem {
 async function openLease(ctx: Ctx, { lease, command }: { lease: string; command: string }): Promise<Phone | CloudProblem> {
   const n = parseLease(lease)
   if (n instanceof Error) return n
-  const target = await getFleet().lease({ orgId: ctx.orgId, n, command })
+  const target = await useLease({ orgId: ctx.orgId, n, command })
   if (!target) return new CloudProblem('lease-invalid', `lease ${leaseId(n)} is unknown, expired or released. Acquire the cloud iPhone again.`)
   const client = hostClient(target.address)
   return {

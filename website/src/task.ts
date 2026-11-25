@@ -29,6 +29,7 @@ import { DurableObject, env } from 'cloudflare:workers'
 import { convertToModelMessages, generateId, isToolUIPart, readUIMessageStream, streamText, type UIMessage, type UIMessageChunk } from 'ai'
 import { createDaemonClient, taskStreamOptions, type TaskPhone } from './task-agent.ts'
 import { getHub } from './tunnel.ts'
+import { CLOUD_SLUG, cloudApi } from './cloud/api.ts'
 import { captureException, reportErrors, trackEvent } from './telemetry.ts'
 
 const HEARTBEAT_MS = 30_000
@@ -147,9 +148,12 @@ export class GhosthandTask extends DurableObject<Env> {
     const hub = getHub(meta.orgId)
     // An aborted turn sends no more input; a request in flight still ends on the Mac (an
     // AbortSignal does not cross Durable Object RPC), but the turn stops waiting for it.
+    // Cloud iPhones are answered here, without the hub.
     const daemon = createDaemonClient((request) => {
       signal.throwIfAborted()
-      return untilAborted(hub.daemonFetch(mac!, request), signal)
+      if (mac !== CLOUD_SLUG) return untilAborted(hub.daemonFetch(mac!, request), signal)
+      const url = new URL(request.url)
+      return untilAborted(cloudApi({ orgId: meta.orgId, request, path: url.pathname + url.search }), signal)
     })
     try {
       // The heartbeat is set once per turn and re-armed only by the alarm: one row per 30 s.

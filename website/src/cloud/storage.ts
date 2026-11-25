@@ -1,11 +1,11 @@
 // Phone storage in R2 (bucket ghosthand-phones) and the VPhone templates phones start from.
-// Hosts hold no keys and never call out: CloudFleet moves every byte between the PHONES
+// Hosts hold no keys and never call out: the Worker (fleet.ts) moves every byte between the PHONES
 // binding and the host over the tunnel (host.ts). Bodies are piped, never read in JS.
 //
 //   save (after stop)  host manifest ──> diff vs previous + template manifest ──> each new chunk:
 //                      host GET chunk ──stream──> PHONES.put; small files; manifest last; saved
 //   load (new host)    R2 manifest ──> host blobs/missing ──> each: PHONES.get ──stream──> host
-//                      PUT blob ──> restore (CloudFleet then starts it)
+//                      PUT blob ──> restore (fleet.ts then starts it)
 //   IPA install        sendBlob: blobs/missing [sha] ──> PHONES.get ──stream──> PUT blob (api.ts)
 //
 //   templates/<key>/manifest.json       chunk list of the template Disk.img and its small files

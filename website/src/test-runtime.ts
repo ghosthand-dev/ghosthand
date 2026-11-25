@@ -54,6 +54,8 @@ export async function startTestRuntime() {
       // Task tests call the real model through Vercel AI Gateway: run them with `sigillo run`.
       AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY ?? '',
       CLOUD_ADMINS: 'cloud-admin-test',
+      // cloud_host.environment of the scripted hosts (src/cloud/fleet.ts).
+      ENVIRONMENT: 'test',
     },
     hyperdrive: [{ binding: 'HYPERDRIVE', id: 'local-test', localConnectionString: database.url }],
     r2_buckets: [{ binding: 'UPLOADS', bucket_name: 'security-test' }, { binding: 'PHONES', bucket_name: 'phones-test' }],
@@ -65,10 +67,9 @@ export async function startTestRuntime() {
       bindings: [
         { name: 'GHOSTHAND_HUB', class_name: 'TestHub' },
         { name: 'GHOSTHAND_TASK', class_name: 'TestTask' },
-        { name: 'CLOUD_FLEET', class_name: 'TestFleet' },
       ],
     },
-    migrations: [{ tag: 'v1', new_sqlite_classes: ['TestHub', 'TestTask', 'TestFleet'] }],
+    migrations: [{ tag: 'v1', new_sqlite_classes: ['TestHub', 'TestTask'] }],
   }
   const server = createTestHarness({ root, workers: [{ config }] })
   try {

@@ -27,8 +27,9 @@ import { cliApp } from './cli-api.ts'
 import { uploadsApp } from './uploads.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
 import { cloudAdminApp } from './cloud/admin.ts'
+import { runFleetCron } from './cloud/fleet.ts'
 import { getAuth, getBaseUrl, getDb, getMcpResource, getPersonalOrg, getSession, listMacSessions } from './db.ts'
-import { entitlementFor, isProStatus } from './lib/billing.ts'
+import { cloudPhoneStatus, entitlementFor, isProStatus } from './lib/billing.ts'
 import { DAEMON_INVITATIONS_URL, DAEMON_REPO_URL, reconcileSourceAccess } from './lib/github.ts'
 import { cloudPhoneCheckoutUrl, deleteAbandonedCloudPhones, reconcileSubscriptions, subscribeRedirectUrl } from './lib/stripe.ts'
 import { approveDevice, consentMcp, denyDevice, removeDevice, removeSourceAccessAction, renameCloudPhone, requestSourceAccessAction, signOutMac } from './actions.tsx'
@@ -286,7 +287,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
     const cloudPhones = org.cloudPhones.map((phone) => ({
       cloudPhoneId: phone.cloudPhoneId,
       name: phone.name,
-      status: phone.status,
+      status: cloudPhoneStatus(phone.subscription?.status),
       currentPeriodEnd: phone.subscription?.currentPeriodEnd ?? null,
       cancelAtPeriodEnd: phone.subscription?.cancelAtPeriodEnd ?? false,
     }))
@@ -374,7 +375,9 @@ declare module 'spiceflow/react' {
 
 export { GhosthandHub } from './tunnel.ts'
 export { GhosthandTask } from './task.ts'
-export { CloudFleet } from './cloud/fleet.ts'
+
+/** wrangler.jsonc triggers: this one in every environment, the daily one in production only. */
+const FLEET_CRON = '* * * * *'
 
 export default {
   fetch(request: Request): Promise<Response> {
@@ -384,15 +387,21 @@ export default {
     const route = pathname.startsWith('/macs/') ? '/macs/:mac/*' : pathname
     return startSpan({ name: `${request.method} ${route}` }, () => routeHubRequest(request))
   },
-  // Daily: mirrors Stripe subscriptions again, then fixes drift between Pro orgs and the
-  // daemon repo's read-only collaborators (which reads those subscriptions).
-  async scheduled() {
+  // Every minute: the cloud fleet (hosts, starts, stops, saves to R2) and unpaid phones.
+  // Daily (production only): mirrors Stripe subscriptions again, then fixes drift between Pro
+  // orgs and the daemon repo's read-only collaborators (which reads those subscriptions).
+  async scheduled(controller) {
+    if (controller.cron === FLEET_CRON) {
+      await startSpan({ name: 'cron cloud fleet' }, async () => {
+        const fleet = await runFleetCron()
+        const deleted = await deleteAbandonedCloudPhones()
+        if (fleet.hosts || deleted) console.log(`cloud fleet: ${fleet.online}/${fleet.hosts} hosts online, ${fleet.phones} phones placed, ${fleet.copied} chunks copied, ${deleted} unpaid phones deleted`)
+      })
+      return
+    }
     await startSpan({ name: 'cron reconcileSubscriptions' }, async () => {
       const { synced, failed } = await reconcileSubscriptions()
       console.log(`subscriptions: ${synced} synced, ${failed} failed`)
-    })
-    await startSpan({ name: 'cron deleteAbandonedCloudPhones' }, async () => {
-      console.log(`cloud phones: ${await deleteAbandonedCloudPhones()} abandoned pending rows deleted`)
     })
     await startSpan({ name: 'cron reconcileSourceAccess' }, async () => {
       const { granted, revoked } = await reconcileSourceAccess()

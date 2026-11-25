@@ -3,7 +3,7 @@
 // Cloudflare Tunnel, no auth (nothing else can reach it). All host addressing lives here.
 // Hosts hold no keys and never call out: the Worker moves every byte (storage.ts).
 //
-//   CloudFleet, api.ts ──HOSTS.fetch http://10.77.0.1:7400/v1/...──> cloudflared ──> fleet serve
+//   fleet.ts, api.ts ──HOSTS.fetch http://10.77.0.1:7400/v1/...──> cloudflared ──> fleet serve
 //
 //   GET  /v1/status                           host, slots, free disk, phones and their state
 //   POST /v1/phones/{id}/start                202: clone the template or a local version, launch
@@ -54,9 +54,12 @@ export type SockReply = {
 }
 
 export class HostError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+  /** The host's HTTP status; absent when it did not answer. 409: busy with another operation. */
+  readonly status?: number
+  constructor(message: string, options?: { cause?: unknown; status?: number }) {
     super(message, options)
     this.name = 'HostError'
+    this.status = options?.status
   }
 }
 
@@ -75,7 +78,7 @@ export function hostClient(address: string) {
     const response = await env.HOSTS.fetch(request).catch((cause) => new HostError(`host ${address} did not answer ${method} ${path}: ${messageOf(cause)}`, { cause }))
     if (response instanceof Error || response.ok) return response
     const text = await response.text().catch(() => '')
-    return new HostError(`host ${address} answered ${response.status} to ${method} ${path}: ${text.slice(0, 300)}`)
+    return new HostError(`host ${address} answered ${response.status} to ${method} ${path}: ${text.slice(0, 300)}`, { status: response.status })
   }
 
   async function call<T>(options: Send): Promise<T | HostError> {

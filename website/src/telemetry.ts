@@ -21,7 +21,7 @@ void strada.initStrada({
   projectId: env.STRADA_PROJECT_ID ?? '',
   token: env.STRADA_TOKEN,
   service: 'ghosthand-website',
-  environment: env.STRADA_ENVIRONMENT,
+  environment: env.ENVIRONMENT,
   // In the Vite dev server import.meta.hot is set: keep telemetry local.
   enabled: !import.meta.hot,
 })
@@ -67,7 +67,7 @@ export type WebsiteEvents = {
   cloud_phone_activated: { org_id: string; cloud_phone_id: string }
   /** A cloud phone's subscription ended: no new leases, storage kept. */
   cloud_phone_canceled: { org_id: string; cloud_phone_id: string }
-  /** CloudFleet started a stopped cloud phone on a host. */
+  /** The fleet started a stopped cloud phone on a host. */
   cloud_phone_started: { org_id: string; cloud_phone_id: string }
   mcp_consent: { accepted: boolean }
   mac_signed_out: {}

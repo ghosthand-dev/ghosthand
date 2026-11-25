@@ -1,445 +1,453 @@
-// CloudFleet: the one Durable Object that decides where cloud iPhones run. It is the only
-// writer of runtime state (hosts, placement, versions, leases, waiting acquires), so every
-// decision is serialized. Postgres keeps what was bought (cloud_phone); this keeps where it runs.
+// Where cloud iPhones run: Postgres holds every fact (cloud_host, the runtime columns of
+// cloud_phone, cloud_lease), this file reads and writes it and calls the hosts. The rules
+// are pure functions in scheduler.ts. Nothing runs on a timer here: expiry and grace are
+// compared with now() in SQL, and a cron every minute moves the fleet forward.
 //
-//   api.ts, webhook, scripts ──RPC──> apply(event) ──step()──> state + actions
-//                                        │ saves changed rows      │ grant / reject: settle the acquire
-//                                        │ logs the event          │ start / stop: host.ts, 202, then poll
-//                                        ▼                         ▼
-//                                 alarm: lease expiry, waiter deadlines, host polling every 3 s
-//                                 only while a start or stop is in flight (no timer when idle),
-//                                 and storage transfers (storage.ts), 500 chunks per run:
-//                                   save: a stopped phone's new version, host to R2
-//                                   load: before a start on a host without the copy, R2 to host
+//   acquire ──> decide(): one transaction, the phone row FOR UPDATE ──> lease, or a start or
+//               a stop committed ──> waitUntil(advance()): the host call ──> poll, decide again
+//   each command ──> useLease(): one UPDATE ... RETURNING, joined to the org and subscription
+//   cron ──> runFleetCron(): host status, advance() for every placed phone, saves to R2
 //
-// Storage (SQLite KV), one row per entry so a tap writes two rows (its lease and its event):
-//   host:<slug>  phone:<id>  lease:<n>  waiter:<id>  counters  event:<seq>  (last 1000 events)
-//   transfer:<phone id>  a save or load in progress
+// advance() is level-triggered: it compares a phone's row with its host's report (reconcile)
+// and writes the change with compare-and-set before any host call, so the cron and an acquire
+// can both run it for one phone. The host refuses a second start or restore while one runs.
 
-import { DurableObject, env } from 'cloudflare:workers'
-import { getHub } from '../tunnel.ts'
-import { captureException, reportErrors, trackEvent } from '../telemetry.ts'
-import { hostClient } from './host.ts'
+import { env, waitUntil } from 'cloudflare:workers'
+import * as orm from 'drizzle-orm'
+import * as schema from 'db/schema'
+import { getDb } from '../db.ts'
+import { CLOUD_PHONE_ALLOWED_STATUSES, isCloudPhoneAllowed } from '../lib/billing.ts'
+import { captureException, trackEvent } from '../telemetry.ts'
+import { HostError, hostClient, type HostStatus } from './host.ts'
 import { loadBatch, saveBatch } from './storage.ts'
-import {
-  POLL_WAITING_MS,
-  emptyFleet,
-  leaseExpiresAt,
-  leaseOf,
-  needsPolling,
-  nextWake,
-  pendingSaves,
-  step,
-  type FleetAction,
-  type FleetEvent,
-  type FleetState,
-  type Host,
-  type Lease,
-  type PhoneState,
-  type RejectCode,
-} from './scheduler.ts'
+import { DEFAULT_START_WAIT_S, HOST_ONLINE_MS, place, reconcile, type HostPhone, type PhoneState, type Placement } from './scheduler.ts'
 
-const EVENT_LOG_SIZE = 1000
-const SEQ_DIGITS = 12
+const SECOND_MS = 1_000
+/** Between two attempts of a waiting acquire. */
+const ACQUIRE_POLL_MS = 3_000
+/** One advance of one phone, host calls and a copy batch included. */
+const ADVANCE_TIMEOUT_MS = 5 * 60_000
 const POLL_TIMEOUT_MS = 6_000
-const HOST_CALL_TIMEOUT_MS = 20_000
 /** Each chunk copy is 2 subrequests; an invocation may make 10,000. */
 const CHUNKS_PER_RUN = 500
-/** A failed transfer batch is tried again after this. */
-const TRANSFER_RETRY_MS = POLL_WAITING_MS
-/** One batch, including the restore of a whole disk on the host. */
-const TRANSFER_TIMEOUT_MS = 10 * 60_000
-const TRANSFER_PREFIX = 'transfer:'
-const COLLECTIONS = ['hosts', 'phones', 'leases', 'waiters'] as const
-const PREFIX: Record<(typeof COLLECTIONS)[number], string> = { hosts: 'host:', phones: 'phone:', leases: 'lease:', waiters: 'waiter:' }
+/** An acquire copies less per poll, so it answers on time. */
+const CHUNKS_PER_ACQUIRE = 50
+const HTTP_CONFLICT = 409
 
 /** Who holds a phone, like the daemon's LeaseInfo. Never the lease number. */
 export type LeaseInfo = { label?: string; reason: string; acquiredAt: number; lastUsedAt: number; lastCommand?: string; expiresAt: number }
 
 export type LeaseView = { n: number; phoneId: string; label?: string; reason: string; idleTimeoutS: number; expiresAt: number; replaced?: LeaseInfo }
 
-export type AcquireResult =
-  | { ok: true; lease: LeaseView }
-  | { ok: false; code: RejectCode | 'cancelled'; detail: string }
+export type RejectCode = 'device-not-found' | 'device-leased' | 'subscription-required' | 'tunnel-offline' | 'no-device' | 'cancelled'
 
-export type FleetPhone = {
-  phoneId: string
-  template: string
-  allowed: boolean
-  state: PhoneState
-  lease?: LeaseInfo
-  waiting: { label?: string; reason: string; since: number }[]
+export type AcquireResult = { ok: true; lease: LeaseView } | { ok: false; code: RejectCode; detail: string }
+
+/** One of the org's paid cloud iPhones. */
+export type FleetPhone = { phoneId: string; name: string; template: string; allowed: boolean; state: PhoneState; lease?: LeaseInfo }
+
+/** What an input route needs for a live lease: the phone and where to reach it. */
+export type LeaseTarget = { phoneId: string; template: string; address: string }
+
+type LeaseRow = typeof schema.cloudLease.$inferSelect
+type HostRow = typeof schema.cloudHost.$inferSelect
+type Db = ReturnType<typeof getDb>
+
+/** preview and production share the database; each Worker runs only the hosts its HOSTS binding reaches. */
+function environment(): string {
+  return env.ENVIRONMENT
 }
 
-/** What an input route needs for a lease: the phone and where to reach it. */
-export type LeaseTarget = { phoneId: string; template: string; host: string; address: string }
+const lease = schema.cloudLease
+const phone = schema.cloudPhone
+const host = schema.cloudHost
+const liveLease = orm.sql`${lease.endedAt} is null and ${lease.lastUsedAt} + ${lease.idleTimeoutS} * interval '1 second' > now()`
+const allowedStatuses = orm.sql.join(CLOUD_PHONE_ALLOWED_STATUSES.map((status) => orm.sql`${status}`), orm.sql`, `)
 
-export type HostView = Host & { running: number; cached: number }
-
-/** A save or load of one phone version, persisted across alarm runs. `next`: the first chunk
- *  of the next save batch (a load asks the host what is still missing instead). */
-type Transfer = { kind: 'save' | 'load'; host: string; version: number; next: number; retryAt: number }
-
-export function getFleet() {
-  return env.CLOUD_FLEET.getByName('fleet')
+function leaseInfo(row: LeaseRow): LeaseInfo {
+  return {
+    label: row.label ?? undefined, reason: row.reason, acquiredAt: row.createdAt.getTime(), lastUsedAt: row.lastUsedAt.getTime(),
+    lastCommand: row.lastCommand ?? undefined, expiresAt: row.lastUsedAt.getTime() + row.idleTimeoutS * SECOND_MS,
+  }
 }
 
-export class CloudFleet extends DurableObject<Env> {
-  private state: FleetState
-  private alarmAt: number | null = null
-  private lastEvent: { seq: number; event: FleetEvent } | null = null
-  /** Acquires waiting in waitFor(), by waiter id. */
-  private waiting = new Map<number, (result: AcquireResult) => void>()
-  /** Settled before their client called waitFor(). */
-  private settled = new Map<number, AcquireResult>()
-  /** By phone id. Saves are created when pendingSaves lists a phone, loads by a start action. */
-  private transfers: Record<string, Transfer> = {}
+function isOnline(row: HostRow, now: number): boolean {
+  return row.lastSeenAt !== null && now - row.lastSeenAt.getTime() < HOST_ONLINE_MS
+}
 
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env)
-    this.state = load(ctx.storage.kv)
-    for (const [key, value] of ctx.storage.kv.list<Transfer>({ prefix: TRANSFER_PREFIX })) this.transfers[key.slice(TRANSFER_PREFIX.length)] = value
-    void ctx.blockConcurrencyWhile(async () => {
-      this.alarmAt = await ctx.storage.getAlarm()
-      // The clients of waiting acquires lost their connection with the old instance.
-      if (Object.keys(this.state.waiters).length) this.apply({ type: 'reset', at: this.now() })
+// ── tenants ──
+
+/** The org's paid cloud iPhones (pending ones are not phones yet), oldest first. */
+export async function listPhones({ orgId }: { orgId: string }): Promise<FleetPhone[]> {
+  const rows = await getDb().query.cloudPhone.findMany({
+    where: { orgId, subscriptionId: { isNotNull: true } },
+    orderBy: { createdAt: 'asc' },
+    with: { subscription: true, leases: { where: { endedAt: { isNull: true } }, orderBy: { cloudLeaseId: 'desc' }, limit: 1 } },
+  })
+  const now = Date.now()
+  return rows.map((row) => {
+    const live = row.leases[0] && leaseInfo(row.leases[0])
+    return {
+      phoneId: row.cloudPhoneId, name: row.name, template: row.template, allowed: isCloudPhoneAllowed(row.subscription?.status), state: row.state,
+      ...(live && live.expiresAt > now ? { lease: live } : {}),
+    }
+  })
+}
+
+type AcquireInput = { orgId: string; phoneId: string; label?: string; reason: string; idleTimeoutS: number; waitS?: number; force?: boolean }
+
+type Decision =
+  | { kind: 'lease'; lease: LeaseView }
+  | { kind: 'reject'; code: RejectCode; detail: string }
+  | { kind: 'leased'; holder: LeaseRow }
+  /** `advance`: phones whose state this decision changed: their host calls run after commit. */
+  | { kind: 'wait'; reason: 'starting' | 'host-quiet' | Extract<Placement, { kind: 'wait' }>['reason']; advance: string[] }
+
+/** Leases the phone now, or starts it (stopping an idle one for its slot) and polls until it
+ *  runs. `waitS`: also wait for another lease to end, like `ghosthand wait`. */
+export async function acquire(input: AcquireInput & { signal: AbortSignal }): Promise<AcquireResult> {
+  const started = Date.now()
+  const deadline = started + (input.waitS ?? DEFAULT_START_WAIT_S) * SECOND_MS
+  let hostError: string | undefined
+  for (;;) {
+    // Pushes a start along, and checks the VM of a running phone still runs before leasing it.
+    const pushed = advance({ phoneId: input.phoneId, budget: CHUNKS_PER_ACQUIRE, saves: false })
+    waitUntil(pushed)
+    const progress = await untilDeadline(pushed, deadline)
+    hostError = progress?.error ?? hostError
+    const decision = await decide({ ...input, hostAnswered: progress?.answered ?? false })
+    if (decision.kind === 'lease') return { ok: true, lease: decision.lease }
+    if (decision.kind === 'reject') return { ok: false, code: decision.code, detail: decision.detail }
+    if (decision.kind === 'leased' && input.waitS === undefined) {
+      return { ok: false, code: 'device-leased', detail: `the cloud iPhone is in use by ${describeHolder(decision.holder)}. Decide first: if that task is still active, give up or tell the user the iPhone is busy.` }
+    }
+    if (decision.kind === 'wait') {
+      for (const phoneId of decision.advance) waitUntil(advance({ phoneId, budget: CHUNKS_PER_ACQUIRE, saves: false }))
+    }
+    if (input.signal.aborted) return { ok: false, code: 'cancelled', detail: 'the client went away' }
+    if (Date.now() + ACQUIRE_POLL_MS > deadline) return timedOut({ decision, hostError, waitedS: Math.round((Date.now() - started) / SECOND_MS) })
+    await sleep({ ms: ACQUIRE_POLL_MS, signal: input.signal })
+  }
+}
+
+function timedOut({ decision, hostError, waitedS }: { decision: Decision; hostError?: string; waitedS: number }): AcquireResult {
+  const waited = `waited ${waitedS}s`
+  if (decision.kind === 'leased') return { ok: false, code: 'device-leased', detail: `${waited}; the cloud iPhone is still used by ${describeHolder(decision.holder)}. Give up or tell the user it is busy.` }
+  const reason = decision.kind === 'wait' ? decision.reason : 'full'
+  if (reason === 'host-offline' || reason === 'host-quiet') {
+    return { ok: false, code: 'tunnel-offline', detail: `${waited}; the server that holds this cloud iPhone is offline. Try again later.` }
+  }
+  if (reason === 'starting') {
+    return { ok: false, code: 'no-device', detail: `${waited}; the cloud iPhone is still starting${hostError ? ` (last server error: ${hostError})` : ''}. Acquire again to keep waiting.` }
+  }
+  return { ok: false, code: 'no-device', detail: `${waited}; every cloud server is full right now. Acquire again later.` }
+}
+
+/** One acquire attempt, in one transaction: the phone row is locked, so two acquires of one
+ *  phone take turns, and the environment's host rows are locked before a placement, so two
+ *  starts never count the same free slot. Host calls happen after commit. */
+function decide(input: AcquireInput & { hostAnswered: boolean }): Promise<Decision> {
+  const { orgId, phoneId } = input
+  return getDb().transaction(async (tx): Promise<Decision> => {
+    const [row] = await tx.select({ phone, status: schema.subscription.status })
+      .from(phone)
+      .leftJoin(schema.subscription, orm.eq(schema.subscription.subscriptionId, phone.subscriptionId))
+      .where(orm.and(orm.eq(phone.cloudPhoneId, phoneId), orm.eq(phone.orgId, orgId), orm.isNotNull(phone.subscriptionId)))
+      .for('update', { of: phone })
+    if (!row) return { kind: 'reject', code: 'device-not-found', detail: 'this account has no such cloud iPhone. Call list for its cloud iPhones.' }
+    if (!isCloudPhoneAllowed(row.status)) return { kind: 'reject', code: 'subscription-required', detail: 'the subscription of this cloud iPhone ended. Renew it on the dashboard: its data is kept.' }
+    // Lock every unended lease, expired ones too: a command renewing one at its expiry commits
+    // first, and the liveness read below sees its new last_used_at.
+    await tx.select({ n: lease.cloudLeaseId }).from(lease).where(orm.and(orm.eq(lease.cloudPhoneId, phoneId), orm.isNull(lease.endedAt))).for('update')
+    const [live] = await tx.select().from(lease).where(orm.and(orm.eq(lease.cloudPhoneId, phoneId), liveLease)).orderBy(orm.desc(lease.cloudLeaseId)).limit(1)
+    if (live && !input.force) return { kind: 'leased', holder: live }
+
+    if (row.phone.state === 'running') {
+      // Its host did not answer just now: the VM may be gone. The next poll decides.
+      if (!input.hostAnswered) return { kind: 'wait', reason: 'host-quiet', advance: [] }
+      if (live) await tx.update(lease).set({ endedAt: orm.sql`now()` }).where(orm.eq(lease.cloudLeaseId, live.cloudLeaseId))
+      const [created] = await tx.insert(lease).values({ cloudPhoneId: phoneId, label: input.label ?? null, reason: input.reason, idleTimeoutS: input.idleTimeoutS }).returning()
+      const view = leaseInfo(created!)
+      return {
+        kind: 'lease',
+        lease: {
+          n: created!.cloudLeaseId, phoneId, label: view.label, reason: view.reason, idleTimeoutS: created!.idleTimeoutS,
+          expiresAt: view.expiresAt, ...(live ? { replaced: leaseInfo(live) } : {}),
+        },
+      }
+    }
+    if (row.phone.state !== 'stored') return { kind: 'wait', reason: 'starting', advance: [] }
+
+    const hosts = await tx.select().from(host).where(orm.eq(host.environment, environment())).orderBy(host.slug).for('update')
+    const clock = (await tx.execute<{ now: Date }>(orm.sql`select now() as now`)).rows[0]!
+    const nowMs = new Date(clock.now).getTime()
+    const slugs = hosts.map((h) => h.slug)
+    const placed = slugs.length ? await tx.select({ id: phone.cloudPhoneId, host: phone.hostSlug, state: phone.state, idleSince: idleSince() })
+      .from(phone).where(orm.and(orm.inArray(phone.hostSlug, slugs), orm.ne(phone.state, 'stored'))) : []
+    const placement = place({
+      phone: { host: row.phone.hostSlug, version: row.phone.version, savedVersion: row.phone.savedVersion },
+      hosts: hosts.map((h) => ({ slug: h.slug, slots: h.slots, usable: h.status === 'active' && isOnline(h, nowMs) })),
+      placed: placed.map((p) => ({ id: p.id, host: p.host!, state: p.state, idleSince: p.idleSince ? new Date(p.idleSince).getTime() : null })),
+      now: nowMs,
     })
-  }
-
-  /** The org's cloud iPhones with their state, for `/v1/devices` and `list`. */
-  async devices({ orgId }: { orgId: string }): Promise<FleetPhone[]> {
-    const waiters = Object.values(this.state.waiters).sort((a, b) => a.id - b.id)
-    return Object.values(this.state.phones)
-      .filter((phone) => phone.orgId === orgId)
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((phone) => {
-        const lease = leaseOf(this.state, phone.id)
-        return {
-          phoneId: phone.id, template: phone.template, allowed: phone.allowed, state: phone.state,
-          lease: lease && leaseInfo(lease),
-          waiting: waiters.filter((w) => w.phoneId === phone.id).map((w) => ({ label: w.label, reason: w.reason, since: w.createdAt })),
-        }
-      })
-  }
-
-  /** Leases now, or starts the phone, or queues. `result` is set when it is decided at once;
-   *  otherwise call waitFor(waiterId), and cancel(waiterId) when the client goes away. */
-  async acquire(input: { orgId: string; phoneId: string; label?: string; reason: string; idleTimeoutS: number; waitS?: number; force?: boolean }): Promise<{ waiterId: number; result?: AcquireResult }> {
-    // A running phone is leased only if its host still runs it: ask the host first.
-    const phone = this.state.phones[input.phoneId]
-    if (phone?.orgId === input.orgId && phone.state === 'running' && phone.host) await this.pollHost(phone.host)
-    const waiterId = this.state.nextWaiter
-    this.apply({ type: 'acquire', at: this.now(), waiterId, ...input })
-    const result = this.settled.get(waiterId)
-    this.settled.delete(waiterId)
-    return { waiterId, result }
-  }
-
-  async waitFor({ waiterId }: { waiterId: number }): Promise<AcquireResult> {
-    const done = this.settled.get(waiterId)
-    if (done) {
-      this.settled.delete(waiterId)
-      return done
+    // Pushes the stops it waits for, so their slots free before the next cron.
+    if (placement.kind === 'wait') return { kind: 'wait', reason: placement.reason, advance: placement.reason === 'freeing' ? placement.stopping : [] }
+    if (placement.kind === 'start') {
+      await tx.update(phone).set({ state: 'starting', hostSlug: placement.host, stateChangedAt: orm.sql`now()`, updatedAt: new Date() })
+        .where(orm.eq(phone.cloudPhoneId, phoneId))
+      return { kind: 'wait', reason: 'starting', advance: [phoneId] }
     }
-    if (!this.state.waiters[waiterId]) return { ok: false, code: 'cancelled', detail: 'the wait ended (server restart). Acquire again.' }
-    return new Promise((resolve) => this.waiting.set(waiterId, resolve))
-  }
+    // A victim being acquired right now is locked: skip it and decide again at the next poll.
+    const [victim] = await tx.select({ id: phone.cloudPhoneId }).from(phone)
+      .where(orm.and(
+        orm.eq(phone.cloudPhoneId, placement.victim), orm.eq(phone.state, 'running'),
+        orm.notExists(tx.select({ n: lease.cloudLeaseId }).from(lease).where(orm.and(orm.eq(lease.cloudPhoneId, phone.cloudPhoneId), liveLease))),
+      ))
+      .for('update', { skipLocked: true })
+    if (!victim) return { kind: 'wait', reason: 'full', advance: [] }
+    await tx.update(phone).set({ state: 'stopping', stateChangedAt: orm.sql`now()`, updatedAt: new Date() }).where(orm.eq(phone.cloudPhoneId, victim.id))
+    return { kind: 'wait', reason: 'freeing', advance: [victim.id] }
+  })
+}
 
-  async cancel({ waiterId }: { waiterId: number }): Promise<void> {
-    if (this.state.waiters[waiterId]) this.apply({ type: 'cancel', at: this.now(), waiterId })
-    this.settle(waiterId, { ok: false, code: 'cancelled', detail: 'the client went away' })
-    this.settled.delete(waiterId)
-  }
+/** A running phone without a live lease: when its last lease ended, or when it started. */
+function idleSince() {
+  return orm.sql<Date | null>`case when ${phone.state} <> 'running' then null
+    when exists (select 1 from ${lease} where ${lease.cloudPhoneId} = ${phone.cloudPhoneId} and ${liveLease}) then null
+    else greatest(${phone.stateChangedAt}, (select max(least(coalesce(${lease.endedAt}, 'infinity'), ${lease.lastUsedAt} + ${lease.idleTimeoutS} * interval '1 second'))
+      from ${lease} where ${lease.cloudPhoneId} = ${phone.cloudPhoneId})) end`
+}
 
-  /** False when the lease had already ended. */
-  async release({ orgId, n }: { orgId: string; n: number }): Promise<boolean> {
-    const lease = this.state.leases[n]
-    if (!lease || lease.orgId !== orgId || leaseExpiresAt(lease) <= this.now()) return false
-    this.apply({ type: 'release', at: this.now(), orgId, n })
-    return true
-  }
+/** False when the lease had already ended. */
+export async function release({ orgId, n }: { orgId: string; n: number }): Promise<boolean> {
+  const db = getDb()
+  const ended = await db.update(lease).set({ endedAt: orm.sql`now()` })
+    .where(orm.and(
+      orm.eq(lease.cloudLeaseId, n), liveLease,
+      orm.exists(db.select({ id: phone.cloudPhoneId }).from(phone).where(orm.and(orm.eq(phone.cloudPhoneId, lease.cloudPhoneId), orm.eq(phone.orgId, orgId)))),
+    ))
+    .returning()
+  return ended.length > 0
+}
 
-  /** The phone of a live lease of this org, and its host. Each call restarts the idle timeout. */
-  async lease({ orgId, n, command }: { orgId: string; n: number; command: string }): Promise<LeaseTarget | null> {
-    const now = this.now()
-    const lease = this.state.leases[n]
-    // Another org's number is unknown here: it must not even keep that lease alive.
-    if (!lease || lease.orgId !== orgId) return null
-    if (leaseExpiresAt(lease) <= now) {
-      this.apply({ type: 'tick', at: now })
-      return null
-    }
-    this.apply({ type: 'used', at: now, orgId, n, command })
-    const phone = this.state.phones[lease.phoneId]
-    const host = phone?.host ? this.state.hosts[phone.host] : undefined
-    if (!phone || phone.state !== 'running' || !host) return null
-    return { phoneId: phone.id, template: phone.template, host: host.slug, address: host.address }
-  }
+/** The running phone of a live lease of this org, in one statement; it restarts the idle timeout.
+ *  Another org's number, an ended subscription or a stopped VM all answer null. */
+export async function useLease({ orgId, n, command }: { orgId: string; n: number; command: string }): Promise<LeaseTarget | null> {
+  const { rows } = await getDb().execute<{ cloud_phone_id: string; template: string; address: string }>(orm.sql`
+    update ${lease} set last_used_at = now(), last_command = ${command}
+    from ${phone}
+    join ${schema.subscription} on ${schema.subscription.subscriptionId} = ${phone.subscriptionId}
+    join ${host} on ${host.slug} = ${phone.hostSlug}
+    where ${lease.cloudLeaseId} = ${n} and ${lease.cloudPhoneId} = ${phone.cloudPhoneId} and ${phone.orgId} = ${orgId}
+      and ${liveLease} and ${phone.state} = 'running' and ${schema.subscription.status} in (${allowedStatuses})
+    returning ${phone.cloudPhoneId}, ${phone.template}, ${host.address}`)
+  const row = rows[0]
+  return row ? { phoneId: row.cloud_phone_id, template: row.template, address: row.address } : null
+}
 
-  /** From the Stripe webhook: a new phone, a renewal (allowed) or a cancel. Storage is kept. */
-  async setAccess({ phoneId, orgId, template, allowed }: { phoneId: string; orgId: string; template: string; allowed: boolean }): Promise<void> {
-    this.apply({ type: 'access', at: this.now(), phoneId, orgId, template, allowed })
-    await getHub(orgId).setCloud(true)
-  }
+// ── moving phones forward ──
 
-  // ── operator (scripts/cloud-host.ts through admin.ts) ──
+type Progress = {
+  /** The phone's host answered its status call. */
+  answered: boolean
+  /** Chunks copied. */
+  copied: number
+  /** The host's last error for this phone, or a failed call. */
+  error?: string
+}
 
-  async setHost(host: { slug: string; address: string; slots: number; enabled: boolean }): Promise<HostView[]> {
-    this.apply({ type: 'host-set', at: this.now(), ...host })
-    await this.pollHost(host.slug)
-    return this.hosts()
-  }
+/** One advance per phone at a time in this isolate: an acquire's poll joins the one its
+ *  waitUntil started. The cron runs in another isolate; the host refuses its overlapping calls. */
+const advancing = new Map<string, Promise<Progress>>()
 
-  /** Refuses while the host runs a phone or holds the only copy of one. */
-  async removeHost({ slug }: { slug: string }): Promise<{ ok: true } | { ok: false; detail: string }> {
-    const busy = Object.values(this.state.phones).filter((p) => p.host === slug && (p.state !== 'stored' || p.unsaved))
-    if (busy.length) return { ok: false, detail: `${slug} runs or holds the newest copy of ${busy.map((p) => p.id).join(', ')}: drain it and wait, or recover those phones first` }
-    this.apply({ type: 'host-removed', at: this.now(), slug })
-    return { ok: true }
-  }
+/** Reads the phone, asks its host, and takes the next step (scheduler.ts reconcile).
+ *  `saves: false`: an acquire leaves copying a stored phone to R2 to the cron. */
+function advance({ phoneId, budget, saves }: { phoneId: string; budget: number; saves: boolean }): Promise<Progress> {
+  const running = advancing.get(phoneId)
+  if (running) return running
+  const work = (async (): Promise<Progress> => {
+    const signal = AbortSignal.timeout(ADVANCE_TIMEOUT_MS)
+    const db = getDb()
+    const row = await db.query.cloudPhone.findFirst({ where: { cloudPhoneId: phoneId }, with: { host: true } })
+    if (!row?.host || row.host.environment !== environment()) return { answered: false, copied: 0 }
+    const status = await pollHost({ db, row: row.host, signal })
+    if (status instanceof Error) return { answered: false, copied: 0, error: status.message }
+    return { answered: true, ...await step({ db, row, hostRow: row.host, report: status.phones.find((p) => p.id === phoneId), budget, saves, signal }) }
+  })().catch((cause) => {
+    captureException(cause, { tags: { handler: 'cloud.advance' } })
+    return { answered: false, copied: 0, error: cause instanceof Error ? cause.message : String(cause) }
+  }).finally(() => advancing.delete(phoneId))
+  advancing.set(phoneId, work)
+  return work
+}
 
-  /** The host with the newest copy is gone: the phone restarts from its newest R2 version. */
-  async recover({ phoneId }: { phoneId: string }): Promise<{ ok: boolean; version?: number }> {
-    if (!this.state.phones[phoneId]) return { ok: false }
-    this.apply({ type: 'recover', at: this.now(), phoneId })
-    return { ok: true, version: this.state.phones[phoneId]!.version }
-  }
+/** Status of a host; an answer refreshes its last_seen_at. */
+async function pollHost({ db, row, signal }: { db: Db; row: HostRow; signal: AbortSignal }): Promise<HostStatus | HostError> {
+  const status = await hostClient(row.address).status({ signal: AbortSignal.any([signal, AbortSignal.timeout(POLL_TIMEOUT_MS)]) })
+  if (status instanceof Error) return status
+  await db.update(host).set({ lastSeenAt: orm.sql`now()` }).where(orm.eq(host.slug, row.slug))
+  return status
+}
 
-  async hosts(): Promise<HostView[]> {
-    const phones = Object.values(this.state.phones)
-    return Object.values(this.state.hosts).sort((a, b) => a.slug.localeCompare(b.slug)).map((host) => ({
-      ...host,
-      running: phones.filter((p) => p.host === host.slug && p.state !== 'stored').length,
-      cached: phones.filter((p) => p.host === host.slug && p.state === 'stored').length,
-    }))
-  }
-
-  /** The whole state and the newest events, for debugging a decision. */
-  async snapshot({ events = 100 }: { events?: number } = {}): Promise<{ state: FleetState; events: FleetEvent[] }> {
-    // kv.list throws on limit 0.
-    const log = events ? [...this.ctx.storage.kv.list<FleetEvent>({ prefix: 'event:', reverse: true, limit: events })].map(([, event]) => event).reverse() : []
-    return { state: this.state, events: log }
-  }
-
-  async alarm(): Promise<void> {
-    await reportErrors('CloudFleet.alarm', async () => {
-      this.alarmAt = null
-      this.apply({ type: 'tick', at: this.now() })
-      if (needsPolling(this.state)) await Promise.all(Object.keys(this.state.hosts).map((slug) => this.pollHost(slug)))
-      await this.runTransfers()
-      this.scheduleAlarm()
+/** reconcile() for one phone, read before its host's report. The row is written only if it is
+ *  still as read, and the host call is made only after that write. */
+async function step({ db, row, hostRow, report, budget, saves, signal }: {
+  db: Db; row: typeof schema.cloudPhone.$inferSelect; hostRow: HostRow; report: HostPhone | undefined; budget: number; saves: boolean; signal: AbortSignal
+}): Promise<{ copied: number; error?: string }> {
+  const next = reconcile({ phone: row, report })
+  if (next.call === 'save' && !saves) return { copied: 0 }
+  if (!next.state && next.version === undefined && !next.clearHost && !next.call) return { copied: 0, error: report?.error }
+  const written = await db.update(phone)
+    .set({
+      updatedAt: new Date(),
+      ...(next.state ? { state: next.state, stateChangedAt: orm.sql`now()` } : {}),
+      ...(next.version !== undefined ? { version: next.version, saveCursor: 0 } : {}),
+      ...(next.clearHost ? { hostSlug: null } : {}),
     })
-  }
+    .where(orm.and(
+      orm.eq(phone.cloudPhoneId, row.cloudPhoneId), orm.eq(phone.state, row.state), orm.eq(phone.version, row.version), orm.eq(phone.hostSlug, hostRow.slug),
+      // Also claims the step: of two advances that read the same row, one sends the host call.
+      // Milliseconds, as the row was read into a Date.
+      orm.sql`date_trunc('milliseconds', ${phone.updatedAt}) = ${row.updatedAt}`,
+    ))
+    .returning()
+  // Someone else moved or claimed the phone since it was read: their step wins.
+  if (!written.length) return { copied: 0 }
+  if (next.endLeases) await db.update(lease).set({ endedAt: orm.sql`now()` }).where(orm.and(orm.eq(lease.cloudPhoneId, row.cloudPhoneId), orm.isNull(lease.endedAt)))
+  if (!next.call) return { copied: 0, error: report?.error }
 
-  /** Overridden by tests to move the clock. */
-  protected now(): number {
-    return Date.now()
+  const client = hostClient(hostRow.address)
+  const phoneId = row.cloudPhoneId
+  const failed = (error: Error, copied = 0) => {
+    // 409: the host is busy with this phone (another advance got there first).
+    if (!(error instanceof HostError && error.status === HTTP_CONFLICT)) captureException(error, { tags: { handler: `cloud.${next.call}` } })
+    return { copied, error: error.message }
   }
-
-  /** The transfers that still apply to the fleet state; others are dropped (e.g. a phone that
-   *  started again before its save ended: its next stop makes a newer version). */
-  private liveTransfers(): [string, Transfer][] {
-    const live: [string, Transfer][] = []
-    for (const phone of pendingSaves(this.state)) {
-      const saved = this.transfers[phone.id]
-      const fresh = saved?.kind === 'save' && saved.version === phone.version && saved.host === phone.host
-      live.push([phone.id, fresh ? saved : { kind: 'save', host: phone.host!, version: phone.version, next: 0, retryAt: 0 }])
+  switch (next.call) {
+    case 'start': {
+      const started = await client.start({ phoneId, version: row.version, template: row.template, signal })
+      if (started instanceof Error) return failed(started)
+      trackEvent('cloud_phone_started', { org_id: row.orgId, cloud_phone_id: phoneId })
+      return { copied: 0 }
     }
-    for (const [phoneId, transfer] of Object.entries(this.transfers)) {
-      const phone = this.state.phones[phoneId]
-      if (transfer.kind === 'load' && phone?.state === 'starting' && phone.callPending && phone.host === transfer.host) live.push([phoneId, transfer])
+    case 'stop': {
+      const stopped = await client.stop({ phoneId, version: row.version + 1, signal })
+      return stopped instanceof Error ? failed(stopped) : { copied: 0 }
     }
-    return live
-  }
-
-  private setTransfer(phoneId: string, transfer: Transfer | null): void {
-    if (transfer) this.transfers[phoneId] = transfer
-    else delete this.transfers[phoneId]
-    if (transfer) this.ctx.storage.kv.put(TRANSFER_PREFIX + phoneId, transfer)
-    else this.ctx.storage.kv.delete(TRANSFER_PREFIX + phoneId)
-  }
-
-  /** Copies up to CHUNKS_PER_RUN chunks, one transfer after another; the alarm comes back for more. */
-  private async runTransfers(): Promise<void> {
-    const live = this.liveTransfers()
-    const ids = new Set(live.map(([phoneId]) => phoneId))
-    for (const phoneId of Object.keys(this.transfers)) if (!ids.has(phoneId)) this.setTransfer(phoneId, null)
-    let budget = CHUNKS_PER_RUN
-    for (const [phoneId, transfer] of live) {
-      if (budget <= 0) return
-      if (transfer.retryAt > this.now()) continue
-      const phone = this.state.phones[phoneId]!
-      const host = this.state.hosts[transfer.host]
-      if (!host) continue
-      const client = hostClient(host.address)
-      const signal = AbortSignal.timeout(TRANSFER_TIMEOUT_MS)
-      const batch = transfer.kind === 'save'
-        ? await saveBatch({ host: client, phoneId, template: phone.template, version: transfer.version, previous: phone.r2Version, next: transfer.next, budget, signal })
-        : await loadBatch({ host: client, phoneId, version: transfer.version, budget, signal })
-      if (batch instanceof Error) {
-        captureException(batch, { tags: { handler: `CloudFleet.${transfer.kind}` } })
-        if (transfer.kind === 'load') {
-          // Like a failed start call: the waiters hear it, the host's status decides the rest.
-          this.setTransfer(phoneId, null)
-          this.apply({ type: 'call-failed', at: this.now(), phoneId, error: `copying its data to the server failed: ${batch.message}` })
-          continue
-        }
-        this.setTransfer(phoneId, { ...transfer, retryAt: this.now() + TRANSFER_RETRY_MS })
-        // An offline host drops the save from pendingSaves until it answers again.
-        await this.pollHost(transfer.host)
-        continue
-      }
-      budget -= batch.copied
-      if (!batch.done) {
-        this.setTransfer(phoneId, { ...transfer, next: batch.next })
-        continue
-      }
-      this.setTransfer(phoneId, null)
-      if (transfer.kind === 'save') {
-        this.apply({ type: 'saved', at: this.now(), phoneId, version: transfer.version })
-        continue
-      }
-      await this.callHost({ type: 'start', phoneId, host: transfer.host, version: transfer.version, template: phone.template, load: false })
+    case 'load': {
+      const batch = await loadBatch({ host: client, phoneId, version: row.version, budget, signal })
+      return batch instanceof Error ? failed(batch) : { copied: batch.copied }
     }
-  }
-
-  private async pollHost(slug: string): Promise<void> {
-    const host = this.state.hosts[slug]
-    if (!host) return
-    const status = await hostClient(host.address).status({ signal: AbortSignal.timeout(POLL_TIMEOUT_MS) })
-    if (status instanceof Error) return void this.apply({ type: 'host-status', at: this.now(), slug, online: false })
-    this.apply({ type: 'host-status', at: this.now(), slug, online: true, phones: status.phones })
-  }
-
-  /** One step: save the changed rows and the event, then run the actions. Synchronous up to
-   *  the host calls, so no other event can interleave with a decision. */
-  private apply(event: FleetEvent): void {
-    const { state, actions } = step(this.state, event)
-    const changed = save({ kv: this.ctx.storage.kv, before: this.state, after: state })
-    this.state = state
-    // An event that changed nothing cannot change a replay: no row for it.
-    if (changed || actions.length) this.log(event)
-    for (const action of actions) this.perform(action)
-    this.scheduleAlarm()
-  }
-
-  private perform(action: FleetAction): void {
-    switch (action.type) {
-      case 'grant': {
-        const lease = this.state.leases[action.n]!
-        return this.settle(action.waiterId, {
-          ok: true,
-          lease: {
-            n: lease.n, phoneId: lease.phoneId, label: lease.label, reason: lease.reason, idleTimeoutS: lease.idleTimeoutS,
-            expiresAt: leaseExpiresAt(lease), replaced: action.replaced && leaseInfo(action.replaced),
-          },
-        })
-      }
-      case 'reject':
-        return this.settle(action.waiterId, { ok: false, code: action.code, detail: action.detail })
-      case 'start':
-        if (action.load) return this.setTransfer(action.phoneId, { kind: 'load', host: action.host, version: action.version, next: 0, retryAt: 0 })
-        return this.ctx.waitUntil(this.callHost(action))
-      case 'stop':
-        return this.ctx.waitUntil(this.callHost(action))
+    case 'save': {
+      const batch = await saveBatch({ host: client, phoneId, template: row.template, version: row.version, previous: row.savedVersion, next: row.saveCursor, budget, signal })
+      if (batch instanceof Error) return failed(batch)
+      await db.update(phone)
+        .set(batch.done ? { savedVersion: row.version, saveCursor: 0, updatedAt: new Date() } : { saveCursor: batch.next, updatedAt: new Date() })
+        .where(orm.and(orm.eq(phone.cloudPhoneId, phoneId), orm.eq(phone.version, row.version)))
+      return { copied: batch.copied }
     }
-  }
-
-  /** The host answers 202 at once; polling sees the end. The call's outcome is an event. */
-  private async callHost(action: Extract<FleetAction, { type: 'start' | 'stop' }>): Promise<void> {
-    const host = this.state.hosts[action.host]
-    const phone = this.state.phones[action.phoneId]
-    if (!host || !phone) return
-    const client = hostClient(host.address)
-    const signal = AbortSignal.timeout(HOST_CALL_TIMEOUT_MS)
-    const result = action.type === 'start'
-      ? await client.start({ phoneId: action.phoneId, version: action.version, template: action.template, signal })
-      : await client.stop({ phoneId: action.phoneId, version: action.version, signal })
-    if (!(result instanceof Error)) {
-      if (action.type === 'start') trackEvent('cloud_phone_started', { org_id: phone.orgId, cloud_phone_id: phone.id })
-      return this.apply({ type: 'call-answered', at: this.now(), phoneId: action.phoneId })
-    }
-    captureException(result, { tags: { handler: `CloudFleet.${action.type}` } })
-    this.apply({ type: 'call-failed', at: this.now(), phoneId: action.phoneId, error: result.message })
-  }
-
-  private settle(waiterId: number, result: AcquireResult): void {
-    const resolve = this.waiting.get(waiterId)
-    this.waiting.delete(waiterId)
-    if (resolve) resolve(result)
-    else this.settled.set(waiterId, result)
-  }
-
-  /** One alarm at the next deadline; it never moves later while one is set. */
-  private scheduleAlarm(): void {
-    const now = this.now()
-    const times = [nextWake(this.state, now), ...this.liveTransfers().map(([, t]) => Math.max(now, t.retryAt))].filter((t) => t !== null)
-    const wake = times.length ? Math.min(...times) : null
-    if (wake === null) {
-      if (this.alarmAt === null) return
-      this.alarmAt = null
-      void this.ctx.storage.deleteAlarm()
-      return
-    }
-    if (this.alarmAt !== null && this.alarmAt <= wake) return
-    this.alarmAt = wake
-    void this.ctx.storage.setAlarm(wake)
-  }
-
-  /** Appends the event; repeated `used` of one lease replace each other (only the last counts). */
-  private log(event: FleetEvent): void {
-    const kv = this.ctx.storage.kv
-    const last = this.lastEvent ?? { seq: kv.get<number>('eventSeq') ?? 0, event: null }
-    const coalesce = event.type === 'used' && last.event?.type === 'used' && last.event.n === event.n
-    const seq = coalesce ? last.seq : last.seq + 1
-    kv.put(`event:${pad(seq)}`, event)
-    if (!coalesce) {
-      kv.put('eventSeq', seq)
-      if (seq > EVENT_LOG_SIZE) kv.delete(`event:${pad(seq - EVENT_LOG_SIZE)}`)
-    }
-    this.lastEvent = { seq, event }
   }
 }
 
-function leaseInfo(lease: Lease): LeaseInfo {
-  return { label: lease.label, reason: lease.reason, acquiredAt: lease.acquiredAt, lastUsedAt: lease.lastUsedAt, lastCommand: lease.lastCommand, expiresAt: leaseExpiresAt(lease) }
-}
-
-function load(kv: SyncKvStorage): FleetState {
-  const state = emptyFleet()
-  for (const name of COLLECTIONS) {
-    const target = state[name] as Record<string, unknown>
-    for (const [key, value] of kv.list({ prefix: PREFIX[name] })) target[key.slice(PREFIX[name].length)] = value
+/** Every minute: asks each host of this environment for its status, then moves every phone
+ *  placed on one (start, stop, crash, save to R2), CHUNKS_PER_RUN chunks at most. */
+export async function runFleetCron(): Promise<{ hosts: number; online: number; phones: number; copied: number }> {
+  const signal = AbortSignal.timeout(ADVANCE_TIMEOUT_MS)
+  const db = getDb()
+  const hosts = await db.query.cloudHost.findMany({ where: { environment: environment() } })
+  // Rows first, reports second: a report is never older than the row it is compared with.
+  const phones = hosts.length ? await db.query.cloudPhone.findMany({ where: { hostSlug: { in: hosts.map((h) => h.slug) } }, orderBy: { cloudPhoneId: 'asc' } }) : []
+  const statuses = new Map(await Promise.all(hosts.map(async (h) => [h.slug, await pollHost({ db, row: h, signal })] as const)))
+  let budget = CHUNKS_PER_RUN
+  let copied = 0
+  for (const row of phones) {
+    const hostRow = hosts.find((h) => h.slug === row.hostSlug)!
+    const status = statuses.get(hostRow.slug)
+    if (!status || status instanceof Error) continue
+    const done = await step({ db, row, hostRow, report: status.phones.find((p) => p.id === row.cloudPhoneId), budget: Math.max(budget, 0), saves: budget > 0, signal })
+    budget -= done.copied
+    copied += done.copied
   }
-  const counters = kv.get<{ nextLease: number; nextWaiter: number }>('counters')
-  if (counters) Object.assign(state, counters)
-  return state
+  const online = [...statuses.values()].filter((s) => !(s instanceof Error)).length
+  return { hosts: hosts.length, online, phones: phones.length, copied }
 }
 
-/** Writes the rows that differ. Returns how many. */
-function save({ kv, before, after }: { kv: SyncKvStorage; before: FleetState; after: FleetState }): number {
-  let changed = 0
-  for (const name of COLLECTIONS) {
-    const old = before[name] as Record<string, unknown>
-    const next = after[name] as Record<string, unknown>
-    for (const [key, value] of Object.entries(next)) {
-      if (JSON.stringify(old[key]) === JSON.stringify(value)) continue
-      kv.put(PREFIX[name] + key, value)
-      changed++
+// ── operator (scripts/cloud-host.ts through admin.ts) ──
+
+export type HostView = { slug: string; address: string; slots: number; status: 'active' | 'draining'; online: boolean; lastSeenAt: number | null; running: number; cached: number }
+
+export async function listHosts(): Promise<HostView[]> {
+  const rows = await getDb().query.cloudHost.findMany({ where: { environment: environment() }, orderBy: { slug: 'asc' }, with: { phones: true } })
+  const now = Date.now()
+  return rows.map((row) => ({
+    slug: row.slug, address: row.address, slots: row.slots, status: row.status, online: isOnline(row, now), lastSeenAt: row.lastSeenAt?.getTime() ?? null,
+    running: row.phones.filter((p) => p.state !== 'stored').length, cached: row.phones.filter((p) => p.state === 'stored').length,
+  }))
+}
+
+/** Adds or changes a host of this environment, then asks it for its status once. */
+export async function setHost({ slug, address, slots, status }: { slug: string; address: string; slots: number; status: 'active' | 'draining' }): Promise<HostView[] | Error> {
+  const [row] = await getDb().insert(host).values({ slug, environment: environment(), address, slots, status })
+    .onConflictDoUpdate({ target: host.slug, set: { address, slots, status }, setWhere: orm.eq(host.environment, environment()) })
+    .returning()
+  if (!row) return new Error(`host ${slug} belongs to another environment`)
+  // An unreachable host is added anyway: the list shows it offline.
+  const answer = await pollHost({ db: getDb(), row, signal: AbortSignal.timeout(POLL_TIMEOUT_MS) })
+  if (answer instanceof Error) console.warn(`host ${slug} did not answer: ${answer.message}`)
+  return listHosts()
+}
+
+/** Refused while the host runs a phone or holds the only copy of one. */
+export async function removeHost({ slug }: { slug: string }): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const db = getDb()
+  const busy = await db.query.cloudPhone.findMany({ where: { hostSlug: slug, OR: [{ state: { ne: 'stored' } }, { RAW: (t) => orm.sql`${t.version} > ${t.savedVersion}` }] } })
+  if (busy.length) return { ok: false, detail: `${slug} runs or holds the newest copy of ${busy.map((p) => p.cloudPhoneId).join(', ')}: drain it and wait for the saves, or recover those phones first` }
+  await db.delete(host).where(orm.and(orm.eq(host.slug, slug), orm.eq(host.environment, environment())))
+  return { ok: true }
+}
+
+/** The host with the newest copy is gone: the phone restarts from its newest R2 version. */
+export async function recover({ phoneId }: { phoneId: string }): Promise<{ version: number } | null> {
+  const db = getDb()
+  const [row] = await db.update(phone)
+    .set({ state: 'stored', hostSlug: null, version: orm.sql`${phone.savedVersion}`, saveCursor: 0, stateChangedAt: orm.sql`now()`, updatedAt: new Date() })
+    .where(orm.eq(phone.cloudPhoneId, phoneId))
+    .returning()
+  if (!row) return null
+  await db.update(lease).set({ endedAt: orm.sql`now()` }).where(orm.and(orm.eq(lease.cloudPhoneId, phoneId), orm.isNull(lease.endedAt)))
+  return { version: row.version }
+}
+
+/** Every phone's runtime columns, for debugging a decision. */
+export async function listFleetPhones() {
+  const rows = await getDb().query.cloudPhone.findMany({ where: { subscriptionId: { isNotNull: true } }, orderBy: { cloudPhoneId: 'asc' } })
+  return rows.map(({ cloudPhoneId, orgId, state, hostSlug, version, savedVersion, saveCursor, stateChangedAt }) => ({ cloudPhoneId, orgId, state, hostSlug, version, savedVersion, saveCursor, stateChangedAt }))
+}
+
+function describeHolder(row: LeaseRow): string {
+  return `${row.label ? `"${row.label}"` : 'an unlabeled client'} for "${row.reason}"`
+}
+
+/** The promise's value, or undefined when the deadline passes first (the work goes on). */
+async function untilDeadline<T>(promise: Promise<T>, deadline: number): Promise<T | undefined> {
+  const done = new AbortController()
+  const timeout = sleep({ ms: Math.max(0, deadline - Date.now()), signal: done.signal }).then(() => undefined)
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    done.abort()
+  }
+}
+
+function sleep({ ms, signal }: { ms: number; signal: AbortSignal }): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', done)
+      resolve()
     }
-    for (const key of Object.keys(old)) {
-      if (key in next) continue
-      kv.delete(PREFIX[name] + key)
-      changed++
-    }
-  }
-  if (before.nextLease !== after.nextLease || before.nextWaiter !== after.nextWaiter) {
-    kv.put('counters', { nextLease: after.nextLease, nextWaiter: after.nextWaiter })
-    changed++
-  }
-  return changed
-}
-
-function pad(n: number): string {
-  return String(n).padStart(SEQ_DIGITS, '0')
+    const timer = setTimeout(done, ms)
+    if (signal.aborted) return done()
+    signal.addEventListener('abort', done, { once: true })
+  })
 }

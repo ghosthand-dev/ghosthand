@@ -4,7 +4,8 @@
 //   user ──< apikey                                  (tokens for scripts: HTTP API through the Mac tunnel)
 //   user ──< oauth_consent, oauth_*_token >── oauth_client   (remote MCP OAuth; jwks signs tokens)
 //   user ──< org_member >── org ──< stripe_customer  one per (org, Stripe account)
-//                               ──< subscription     mirrored from Stripe webhooks
+//                               ──< subscription     mirrored from Stripe webhooks (kind pro | cloud_phone)
+//                               ──< cloud_phone      rented virtual iPhones, one subscription each
 //                               ──< org_device       the free iPhone and the paid Macs
 //                               ──< task_run         one row per phone task prompt (Free monthly limit)
 //                               ──  source_access    GitHub account with read access to the daemon repo
@@ -16,7 +17,7 @@
 // Every Stripe row stores its Stripe account id, so a later move to another Stripe
 // account keeps old subscriptions working next to new ones.
 
-import { defineRelations } from 'drizzle-orm'
+import { defineRelations, sql } from 'drizzle-orm'
 import * as p from 'drizzle-orm/pg-core'
 import { ulid } from 'ulid'
 
@@ -347,10 +348,37 @@ export const subscription = p.pgTable('subscription', {
   cancelAtPeriodEnd: p.boolean('cancel_at_period_end').notNull().default(false),
   /** The Stripe quantity: Pro is priced per Mac. */
   paidMacs: p.integer('paid_macs').notNull().default(1),
+  /** From the product metadata: only `pro` counts for the plan; `cloud_phone` pays one cloud phone. */
+  kind: p.text('kind', { enum: ['pro', 'cloud_phone'] }).notNull().default('pro'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (table) => [
   p.index('subscription_org_id_idx').on(table.orgId),
+])
+
+// ── cloud phones ────────────────────────────────────────────────────
+
+/**
+ * A rented virtual iPhone ($49/month). Postgres keeps what was bought; the CloudFleet
+ * Durable Object keeps where it runs. Storage is never deleted: renewing a canceled phone
+ * runs a new Checkout with the same id, and its new subscription takes over the row.
+ */
+export const cloudPhone = p.pgTable('cloud_phone', {
+  /** "cph_" + ulid; also the VM folder name on a host. */
+  cloudPhoneId: p.text('cloud_phone_id').primaryKey().$defaultFn(() => `cph_${ulid()}`),
+  orgId: p.text('org_id').notNull().references(() => org.orgId, { onDelete: 'cascade' }),
+  name: p.text('name').notNull(),
+  /** The subscription paying for it now, set by the webhook. */
+  subscriptionId: p.text('subscription_id').unique().references(() => subscription.subscriptionId, { onDelete: 'set null' }),
+  status: p.text('status', { enum: ['pending', 'active', 'past_due', 'canceled'] }).notNull().default('pending'),
+  /** VPhone template key the phone was cloned from. */
+  template: p.text('template').notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (table) => [
+  p.index('cloud_phone_org_id_idx').on(table.orgId),
+  // One unpaid pending phone per org: concurrent Rent clicks reuse it instead of adding rows.
+  p.uniqueIndex('cloud_phone_org_unpaid_unique').on(table.orgId).where(sql`${table.status} = 'pending' and ${table.subscriptionId} is null`),
 ])
 
 // ── plan limits ─────────────────────────────────────────────────────
@@ -403,7 +431,7 @@ export const relations = defineRelations(
   {
     user, session, account, verification, deviceCode, apikey,
     jwks, oauthClient, oauthResource, oauthClientResource, oauthRefreshToken, oauthAccessToken, oauthConsent, oauthClientAssertion,
-    org, orgMember, stripeCustomer, subscription, orgDevice, taskRun, sourceAccess,
+    org, orgMember, stripeCustomer, subscription, cloudPhone, orgDevice, taskRun, sourceAccess,
   },
   (r) => ({
     user: {
@@ -471,6 +499,7 @@ export const relations = defineRelations(
       members: r.many.orgMember(),
       stripeCustomers: r.many.stripeCustomer(),
       subscriptions: r.many.subscription(),
+      cloudPhones: r.many.cloudPhone(),
       devices: r.many.orgDevice(),
       taskRuns: r.many.taskRun(),
       sourceAccess: r.one.sourceAccess(),
@@ -484,6 +513,11 @@ export const relations = defineRelations(
     },
     subscription: {
       org: r.one.org({ from: r.subscription.orgId, to: r.org.orgId }),
+      cloudPhone: r.one.cloudPhone(),
+    },
+    cloudPhone: {
+      org: r.one.org({ from: r.cloudPhone.orgId, to: r.org.orgId }),
+      subscription: r.one.subscription({ from: r.cloudPhone.subscriptionId, to: r.subscription.subscriptionId }),
     },
     orgDevice: {
       org: r.one.org({ from: r.orgDevice.orgId, to: r.org.orgId }),

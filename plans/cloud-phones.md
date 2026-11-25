@@ -105,6 +105,16 @@ cron apply them.
   Manual run of the same steps (2026-11-25, SE2 iOS 18.6.2, identity `iphoneseblack`, test Apple ID): Spotlight `itms-apps://apps.apple.com/app/id1064216828` + enter opened Reddit's page; one tap on the download icon; `app list` showed `[installing]`, then missing for one read, then installed after about 55 s. Reddit was uninstalled after.
   Open: a live run of the daemon code needs the website route deployed and a dev daemon on the phone's Mac (both on hold: no deploy and no daemon restart without the user). Cloud leases need Task 5 (`app-catalog` tool and the SSE install route in `api.ts`/`mcp.ts`).
 
+## Task 8: Slots from host memory, admin fleet page (parallel with Tasks 5 to 7)
+
+Mockup: `docs/cloud-fleet-admin-mockup.html`. Decision: `plans/decisions/cloud-vm-memory.md`.
+
+- [ ] `fleet serve` derives its slots from `hw.memsize`: ⌊(RAM − 4 GiB) / 2 GiB⌋, from two constants in `Fleet/` that also set each VM's memory at start; the `--slots` and `--memory` flags are gone. `GET /v1/status` also reports RAM, memory used, compressed, swap, pressure level, CPU load, cores, uptime, and each phone's host footprint. Pass with mint reporting 10 slots and the metrics matching `memory_pressure` and `footprint`.
+- [ ] The cron writes `cloud_host.slots` from each report (the host is the only source); `cloud-host.ts add` drops `--slots`. Pass with a test: a fake host that reports 3 slots gets at most 3 running phones.
+- [ ] `/admin/fleet`, signed-in users in `CLOUD_ADMINS` only (404 for others), with a link on their dashboard. One row per host of this environment: health from `last_seen_at`, a memory map (4 GiB macOS block, one 2 GiB block per slot, colored by org, leased solid, unleased hatched, starting or stopping pulsing, free dashed) with measured use under it, CPU, disk, cached and unsaved phones. Tooltip: email, phone, lease, reason, memory. Host status is fetched live in the page load, never stored. Check with playwriter.
+- [ ] Contention without a queue table: hosts that are full, phones in `starting` or `stopping`, idle phones that may be stopped at their grace time, and recent leases from `cloud_lease` (created, ended, idle) as the activity list. Pass on preview with two hosts, one full.
+- [ ] Customers table: phones, running and leased per org, emails through `org_member`. Colors are a fixed 8-color palette picked by a hash of the org id, the same on every page.
+
 ## Done
 
 - [ ] A new user with no Mac buys a phone, installs TikTok from the catalog, controls it through MCP and a phone task; a second tenant cannot reach it; the phone stops for a waiting one after the grace time and starts later on another Mac with its data kept.

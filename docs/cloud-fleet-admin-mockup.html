@@ -1,0 +1,206 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','-apple-system','BlinkMacSystemFont','sans-serif'],mono:['"JetBrains Mono"','ui-monospace','SFMono-Regular','monospace']}}}}</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{font-feature-settings:"cv11","ss01","tnum"}
+:root{--u1:#5B7BD5;--u2:#3E9C8F;--u3:#C8924A;--u4:#B86A84;--u5:#8473C9;--u6:#6B9A5A;--u7:#4C93B8;--u8:#B07A5E}
+.idle{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.42) 0 2px,transparent 2px 6px)}
+.sys{background-image:repeating-linear-gradient(135deg,#e4e4e7 0 1px,transparent 1px 5px);background-color:#f4f4f5}
+@keyframes b{50%{opacity:.4}} .busy{animation:b 1.6s ease-in-out infinite}
+.tip{box-shadow:0 8px 24px -6px rgba(24,24,27,.25),0 0 0 1px rgba(24,24,27,.06)}
+</style></head>
+<body class="bg-[#FAFAF9] text-zinc-900 antialiased text-[13px]">
+
+<nav class="border-b border-zinc-200/80 bg-white">
+  <div class="mx-auto max-w-[1240px] px-8 h-12 flex items-center gap-6">
+    <span class="font-semibold tracking-tight">ghosthand</span>
+    <span class="text-zinc-300">/</span>
+    <span class="text-zinc-500">Admin</span>
+    <span class="text-zinc-300">/</span>
+    <span class="font-medium">Cloud fleet</span>
+    <div class="ml-auto flex items-center gap-3 text-[12px] text-zinc-500">
+      <span class="flex items-center gap-1.5"><span class="size-1.5 rounded-full bg-emerald-500"></span>Live · updated 3s ago</span>
+      <button class="h-7 rounded-md border border-zinc-200 bg-white px-2.5 font-medium text-zinc-700 hover:bg-zinc-50">Refresh</button>
+    </div>
+  </div>
+</nav>
+
+<main class="mx-auto max-w-[1240px] px-8 py-8 flex flex-col gap-8">
+
+  <!-- KPI strip -->
+  <section class="grid grid-cols-5 rounded-lg border border-zinc-200 bg-white divide-x divide-zinc-200">
+    <div class="px-5 py-4"><p class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Slots in use</p><p class="mt-1 text-[22px] font-medium tracking-tight">17<span class="text-zinc-400"> / 24</span></p></div>
+    <div class="px-5 py-4"><p class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Leased</p><p class="mt-1 text-[22px] font-medium tracking-tight">11</p></div>
+    <div class="px-5 py-4"><p class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">In transition</p><p class="mt-1 text-[22px] font-medium tracking-tight">3 <span class="ml-1 align-middle rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">contention</span></p></div>
+    <div class="px-5 py-4"><p class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Hosts online</p><p class="mt-1 text-[22px] font-medium tracking-tight">2<span class="text-zinc-400"> / 3</span></p></div>
+    <div class="px-5 py-4"><p class="text-[11px] font-medium uppercase tracking-wider text-zinc-400">Phones sold</p><p class="mt-1 text-[22px] font-medium tracking-tight">31</p></div>
+  </section>
+
+  <!-- Hosts -->
+  <section class="flex flex-col gap-3">
+    <div class="flex items-baseline justify-between">
+      <h2 class="text-[15px] font-semibold tracking-tight">Hosts</h2>
+      <p class="text-[12px] text-zinc-500">Each slot is one 2 GiB VM. 4 GiB per host is kept for macOS. Slots = ⌊(RAM − 4 GiB) / 2 GiB⌋</p>
+    </div>
+
+    <div class="rounded-lg border border-zinc-200 bg-white divide-y divide-zinc-100">
+
+      <!-- mint -->
+      <div class="grid grid-cols-[200px_1fr_250px] gap-8 px-5 py-5">
+        <div>
+          <div class="flex items-center gap-2"><span class="size-2 rounded-full bg-emerald-500"></span><span class="font-medium">mint</span></div>
+          <p class="mt-1 font-mono text-[11px] text-zinc-500">10.77.0.1 · 24 GiB · M4</p>
+          <p class="font-mono text-[11px] text-zinc-400">bundle 2.18.0 · up 6d</p>
+        </div>
+        <div class="flex flex-col gap-2.5">
+          <div class="flex items-center justify-between text-[11px] text-zinc-500"><span>Memory map · 8 of 10 slots</span><span class="font-mono">used 19.1 GiB · swap 0.1 GiB · pressure normal</span></div>
+          <div class="relative flex h-14 gap-[3px]">
+            <div class="sys w-[16.6%] rounded-[3px] border border-zinc-200 flex items-end p-1"><span class="text-[10px] text-zinc-400">macOS 4G</span></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u1)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u1)] ring-2 ring-zinc-900 ring-offset-1 relative">
+              <div class="tip absolute left-1/2 top-[calc(100%+10px)] -translate-x-1/2 z-10 w-64 rounded-lg bg-white p-3 text-[12px]">
+                <div class="flex items-center gap-2"><span class="size-2 rounded-full bg-[var(--u1)]"></span><span class="font-medium">anna@studio-k.com</span></div>
+                <dl class="mt-2 grid grid-cols-[72px_1fr] gap-y-1 text-[11px]">
+                  <dt class="text-zinc-400">Phone</dt><dd>Cloud iPhone 2 <span class="font-mono text-zinc-400">cph_…X4</span></dd>
+                  <dt class="text-zinc-400">Lease</dt><dd><span class="font-mono">cloud:42</span> · used 12s ago</dd>
+                  <dt class="text-zinc-400">Reason</dt><dd class="text-zinc-600">reply to DMs</dd>
+                  <dt class="text-zinc-400">Memory</dt><dd><span class="font-mono">2.19 GiB</span> · guest normal</dd>
+                </dl>
+              </div>
+            </div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u5)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u5)] idle"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u4)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u2)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u6)] busy"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u7)] idle"></div>
+            <div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div>
+            <div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div>
+            <!-- measured usage marker -->
+            <div class="pointer-events-none absolute -bottom-2 left-0 h-[3px] w-[79.6%] rounded-full bg-zinc-800/70"></div>
+          </div>
+          <div class="h-6"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-y-2 text-[12px]">
+          <span class="text-zinc-500">CPU</span><span class="text-right font-mono">3.1 / 10</span>
+          <span class="text-zinc-500">Free disk</span><span class="text-right font-mono">612 GB</span>
+          <span class="text-zinc-500">Cached</span><span class="text-right flex justify-end gap-1 items-center"><i class="size-2 rounded-full bg-[var(--u1)]"></i><i class="size-2 rounded-full bg-[var(--u3)]"></i><i class="size-2 rounded-full bg-[var(--u5)]"></i><span class="font-mono ml-1">3</span></span>
+          <span class="text-zinc-500">Tunnel</span><span class="text-right font-mono text-zinc-600">52 ms</span>
+        </div>
+      </div>
+
+      <!-- studio -->
+      <div class="grid grid-cols-[200px_1fr_250px] gap-8 px-5 py-5 bg-amber-50/30">
+        <div>
+          <div class="flex items-center gap-2"><span class="size-2 rounded-full bg-amber-500"></span><span class="font-medium">studio</span><span class="rounded border border-amber-200 bg-amber-50 px-1.5 text-[10px] font-medium text-amber-700">full</span></div>
+          <p class="mt-1 font-mono text-[11px] text-zinc-500">10.77.0.2 · 24 GiB · M4 Pro</p>
+          <p class="font-mono text-[11px] text-zinc-400">bundle 2.18.0 · up 2d</p>
+        </div>
+        <div class="flex flex-col gap-2.5">
+          <div class="flex items-center justify-between text-[11px] text-zinc-500"><span>Memory map · 10 of 10 slots</span><span class="font-mono text-amber-700">used 23.0 GiB · swap 2.4 GiB · pressure warning</span></div>
+          <div class="relative flex h-14 gap-[3px]">
+            <div class="sys w-[16.6%] rounded-[3px] border border-zinc-200 flex items-end p-1"><span class="text-[10px] text-zinc-400">macOS 4G</span></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u3)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u3)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u3)] idle relative"><span class="absolute bottom-1 left-1 font-mono text-[9px] text-white/90">7m</span></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u2)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u2)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u4)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u8)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u8)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u7)]"></div>
+            <div class="flex-1 rounded-[3px] bg-[var(--u6)] busy"></div>
+            <div class="pointer-events-none absolute -bottom-2 left-0 h-[3px] w-[100%] rounded-full bg-amber-500"></div>
+          </div>
+          <p class="mt-2 text-[11px] text-zinc-500">Slot 3 is unleased for 7m. At 10m it can be stopped to free a slot for a waiting acquire.</p>
+        </div>
+        <div class="grid grid-cols-2 gap-y-2 text-[12px]">
+          <span class="text-zinc-500">CPU</span><span class="text-right font-mono">9.8 / 12</span>
+          <span class="text-zinc-500">Free disk</span><span class="text-right font-mono">241 GB</span>
+          <span class="text-zinc-500">Cached</span><span class="text-right flex justify-end gap-1 items-center"><i class="size-2 rounded-full bg-[var(--u2)]"></i><span class="font-mono ml-1">1</span></span>
+          <span class="text-zinc-500">Tunnel</span><span class="text-right font-mono text-zinc-600">61 ms</span>
+        </div>
+      </div>
+
+      <!-- offline -->
+      <div class="grid grid-cols-[200px_1fr_250px] gap-8 px-5 py-5">
+        <div>
+          <div class="flex items-center gap-2"><span class="size-2 rounded-full bg-red-500"></span><span class="font-medium">mini-3</span><span class="rounded border border-red-200 bg-red-50 px-1.5 text-[10px] font-medium text-red-700">offline 14m</span></div>
+          <p class="mt-1 font-mono text-[11px] text-zinc-500">10.77.0.3 · 16 GiB · M2</p>
+          <p class="font-mono text-[11px] text-zinc-400">bundle 2.17.1 · last seen 14:18</p>
+        </div>
+        <div class="flex flex-col gap-2.5">
+          <div class="flex items-center justify-between text-[11px] text-zinc-500"><span>Memory map · 6 slots</span><span class="font-mono text-red-600">destination_unavailable</span></div>
+          <div class="flex h-14 gap-[3px] opacity-50">
+            <div class="sys w-[25%] rounded-[3px] border border-zinc-200 flex items-end p-1"><span class="text-[10px] text-zinc-400">macOS 4G</span></div>
+            <div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div><div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div><div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div><div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div><div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div><div class="flex-1 rounded-[3px] border border-dashed border-zinc-300"></div>
+          </div>
+          <p class="mt-2 text-[11px] text-zinc-600">Holds the only copy of 2 phones. They wait for it, or run <span class="font-mono rounded bg-zinc-100 px-1">cloud-host.ts recover &lt;phone&gt;</span></p>
+        </div>
+        <div class="grid grid-cols-2 gap-y-2 text-[12px] text-zinc-400">
+          <span>CPU</span><span class="text-right font-mono">–</span>
+          <span>Free disk</span><span class="text-right font-mono">–</span>
+          <span>Unsaved</span><span class="text-right flex justify-end gap-1 items-center"><i class="size-2 rounded-full bg-[var(--u4)]"></i><i class="size-2 rounded-full bg-[var(--u6)]"></i><span class="font-mono ml-1 text-zinc-600">2</span></span>
+          <span>Tunnel</span><span class="text-right font-mono">down</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-5 text-[11px] text-zinc-500">
+      <span class="flex items-center gap-1.5"><span class="h-3 w-5 rounded-[2px] bg-[var(--u1)]"></span>leased</span>
+      <span class="flex items-center gap-1.5"><span class="h-3 w-5 rounded-[2px] bg-[var(--u1)] idle"></span>running, unleased</span>
+      <span class="flex items-center gap-1.5"><span class="h-3 w-5 rounded-[2px] bg-[var(--u1)] busy"></span>starting or saving</span>
+      <span class="flex items-center gap-1.5"><span class="h-3 w-5 rounded-[2px] border border-dashed border-zinc-300"></span>free</span>
+      <span class="flex items-center gap-1.5"><span class="h-[3px] w-5 rounded-full bg-zinc-800/70"></span>measured memory</span>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-[1fr_1fr] gap-6">
+    <div class="flex flex-col gap-3">
+      <h2 class="text-[15px] font-semibold tracking-tight">Contention</h2>
+      <div class="rounded-lg border border-zinc-200 bg-white divide-y divide-zinc-100">
+        <div class="flex items-start gap-3 px-4 py-3">
+          <span class="mt-1.5 size-2 rounded-full bg-[var(--u3)]"></span>
+          <div class="flex-1">
+            <p class="font-medium">leo@hypebeat.app <span class="font-mono font-normal text-[11px] text-zinc-400">cph_…7K · studio slot 3</span></p>
+            <p class="text-[12px] text-zinc-500">Running with no lease for 7m. Studio is full, so it is the next one stopped for an acquire.</p>
+          </div>
+          <span class="font-mono text-[11px] text-amber-700">evictable in 2m 50s</span>
+        </div>
+        <div class="flex items-start gap-3 px-4 py-3">
+          <span class="mt-1.5 size-2 rounded-full bg-[var(--u7)]"></span>
+          <div class="flex-1">
+            <p class="font-medium">marco@growth.io <span class="font-mono font-normal text-[11px] text-zinc-400">cph_…A1</span></p>
+            <p class="text-[12px] text-zinc-500">Starting on mint: restoring version 7 from R2.</p>
+            <div class="mt-2 h-1 w-full rounded-full bg-zinc-100"><div class="h-1 w-[38%] rounded-full bg-zinc-800"></div></div>
+          </div>
+          <span class="font-mono text-[11px] text-zinc-500">38%</span>
+        </div>
+      </div>
+
+      <h2 class="mt-4 text-[15px] font-semibold tracking-tight">Customers</h2>
+      <div class="rounded-lg border border-zinc-200 bg-white">
+        <table class="w-full text-[12px]">
+          <thead><tr class="text-[11px] uppercase tracking-wider text-zinc-400"><th class="px-4 py-2.5 text-left font-medium">Account</th><th class="text-right font-medium">Phones</th><th class="text-right font-medium">Running</th><th class="px-4 text-right font-medium">Leased</th></tr></thead>
+          <tbody class="divide-y divide-zinc-100 font-mono">
+            <tr><td class="px-4 py-2.5 font-sans flex items-center gap-2"><span class="size-2 rounded-full bg-[var(--u1)]"></span>anna@studio-k.com</td><td class="text-right">4</td><td class="text-right">2</td><td class="px-4 text-right">2</td></tr>
+            <tr><td class="px-4 py-2.5 font-sans flex items-center gap-2"><span class="size-2 rounded-full bg-[var(--u3)]"></span>leo@hypebeat.app</td><td class="text-right">4</td><td class="text-right">3</td><td class="px-4 text-right">2</td></tr>
+            <tr><td class="px-4 py-2.5 font-sans flex items-center gap-2"><span class="size-2 rounded-full bg-[var(--u2)]"></span>sara@pinwheel.co</td><td class="text-right">3</td><td class="text-right">3</td><td class="px-4 text-right">2</td></tr>
+            <tr><td class="px-4 py-2.5 font-sans flex items-center gap-2"><span class="size-2 rounded-full bg-[var(--u8)]"></span>ops@lumen.dev</td><td class="text-right">3</td><td class="text-right">2</td><td class="px-4 text-right">1</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-3">
+      <h2 class="text-[15px] font-semibold tracking-tight">Recent leases</h2>
+      <div class="rounded-lg border border-zinc-200 bg-white">
+        <table class="w-full text-[12px]">
+          <tbody class="divide-y divide-zinc-100"><tr><td class="pl-4 py-2 font-mono text-[11px] text-zinc-400 w-20">14:32:08</td><td class="w-24"><span class="rounded bg-sky-50 text-sky-700 px-1.5 py-0.5 font-mono text-[10px]">acquired</span></td><td class="pr-4 text-zinc-600"><i class="mr-1.5 inline-block size-1.5 rounded-full bg-[var(--u4)] align-middle"></i>cloud:43 on studio · "post daily video"</td></tr><tr><td class="pl-4 py-2 font-mono text-[11px] text-zinc-400 w-20">14:31:30</td><td class="w-24"><span class="rounded bg-zinc-100 text-zinc-600 px-1.5 py-0.5 font-mono text-[10px]">released</span></td><td class="pr-4 text-zinc-600"><i class="mr-1.5 inline-block size-1.5 rounded-full bg-[var(--u1)] align-middle"></i>cloud:40 after 18m · "reply to DMs"</td></tr><tr><td class="pl-4 py-2 font-mono text-[11px] text-zinc-400 w-20">14:29:51</td><td class="w-24"><span class="rounded bg-amber-50 text-amber-700 px-1.5 py-0.5 font-mono text-[10px]">expired</span></td><td class="pr-4 text-zinc-600"><i class="mr-1.5 inline-block size-1.5 rounded-full bg-[var(--u3)] align-middle"></i>cloud:39 idle 600s on studio slot 3</td></tr><tr><td class="pl-4 py-2 font-mono text-[11px] text-zinc-400 w-20">14:25:12</td><td class="w-24"><span class="rounded bg-sky-50 text-sky-700 px-1.5 py-0.5 font-mono text-[10px]">acquired</span></td><td class="pr-4 text-zinc-600"><i class="mr-1.5 inline-block size-1.5 rounded-full bg-[var(--u8)] align-middle"></i>cloud:41 on studio · "warm up account"</td></tr><tr><td class="pl-4 py-2 font-mono text-[11px] text-zinc-400 w-20">14:24:40</td><td class="w-24"><span class="rounded bg-zinc-100 text-zinc-600 px-1.5 py-0.5 font-mono text-[10px]">taken over</span></td><td class="pr-4 text-zinc-600"><i class="mr-1.5 inline-block size-1.5 rounded-full bg-[var(--u6)] align-middle"></i>cloud:38 replaced by cloud:42 (force)</td></tr><tr><td class="pl-4 py-2 font-mono text-[11px] text-zinc-400 w-20">14:20:02</td><td class="w-24"><span class="rounded bg-amber-50 text-amber-700 px-1.5 py-0.5 font-mono text-[10px]">expired</span></td><td class="pr-4 text-zinc-600"><i class="mr-1.5 inline-block size-1.5 rounded-full bg-[var(--u5)] align-middle"></i>cloud:36 idle 600s on mint</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+</body></html>

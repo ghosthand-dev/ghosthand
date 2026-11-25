@@ -4,6 +4,13 @@ Active plan: `plans/virtual-iphone.md`. Read it before starting work on virtual 
 Active plan: `plans/cloud-phones.md`. Read it before starting work on rented cloud phones.
 Decisions: `plans/decisions/`. Search them before designing or refactoring.
 
+**VPhone submodule:** `vphone/` is our private VPhone fork, [remorses/vphone-cli-private](https://github.com/remorses/vphone-cli-private),
+branch `ghosthand` (upstream Lakr233/vphone-cli). It holds the cloud phone host side
+(`vphone-cli fleet serve`, hosted isolation, proxy). Read `vphone/AGENTS.md` before editing it.
+Same rules as `daemon/`: keep it on `ghosthand`, never a detached HEAD; commit and push inside
+`vphone/` first, then commit the pointer here. Build the bundle on a Mac with Xcode; VMs run on
+mintmacbook (no Xcode, no GitHub credentials: copy builds over SSH). The website never needs it.
+
 The Swift daemon and the private skills live in `daemon/`, the private submodule
 [ghosthand-dev/ghosthand-daemon](https://github.com/ghosthand-dev/ghosthand-daemon) (Pro
 subscribers get read access). Everything else in this repo is public.

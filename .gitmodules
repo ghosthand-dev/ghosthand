@@ -3,3 +3,7 @@
 	url = https://github.com/ghosthand-dev/ghosthand-daemon.git
 	branch = main
 	update = merge
+[submodule "vphone"]
+	path = vphone
+	url = https://github.com/remorses/vphone-cli-private.git
+	branch = ghosthand

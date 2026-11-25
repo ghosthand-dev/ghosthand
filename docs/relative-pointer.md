@@ -91,7 +91,7 @@ Both pointer modes therefore drag with report 7. ghosthand puts the pointer on t
 
 `distance = len · (a + b · len)` fits within 2%. Here `a` is 0.226 and `b` is 0.0458, with Tracking Sensitivity below the default. A diagonal (6, 6) moved 5.0 pt, ~4% under the model. `a` and `b` follow Tracking Sensitivity, so `Controller.dragCurve` fits them on the first swipe of each Bluetooth connection. It sends 12 reports of (6, 0) and 5 of (14, 0), and finds each spot in a frame diff on one row. If a row fails, it tries the next one, up to 3 rows.
 
-**iOS ignores an absolute report equal to the last one.** After relative moves, sending the same (x, y) again does not move the pointer back.
+**iOS ignores an absolute report equal to the last one.** After relative moves, sending the same (x, y) again does not move the pointer back. The same happens when AssistiveTouch restarts: the pointer comes back at a spot of its own (187, 498 on a 375 × 667 screen), and a tap at the spot of the last tap stays there. On an SE2 with iOS 26.6, such taps pressed the Calculator key beside the target, or nothing, every time. `HIDDevice.move` remembers the last report 1 per iPhone and first sends a report one unit away when the new one would repeat it.
 
 **Tests on the phone gave these drag rules:**
 

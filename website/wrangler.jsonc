@@ -31,8 +31,8 @@
   // The Macs that run cloud iPhones (src/cloud/host.ts): each one's private IP is routed by its
   // Cloudflare Tunnel. Remote only: local dev has no hosts. Never add a production host to the
   // preview fleet: two fleets would start phones on the same slots.
-  // TODO: the dedicated hosts virtual network (cf1:vnet:<id>) once the Task 1 tunnel spike made it.
-  "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:network" }],
+  // Virtual network ghosthand-hosts: reaches only the hosts' /32 routes (docs/cloud-hosts.md).
+  "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:vnet:15b24b76-7c4e-4e31-aa7b-8a8a5698439d" }],
   "durable_objects": {
     "bindings": [
       { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },
@@ -95,7 +95,7 @@
         { "binding": "RELEASES", "bucket_name": "ghosthand-releases" },
         { "binding": "PHONES", "bucket_name": "ghosthand-phones-preview" }
       ],
-      "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:network" }],
+      "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:vnet:15b24b76-7c4e-4e31-aa7b-8a8a5698439d" }],
       "durable_objects": {
         "bindings": [
           { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },

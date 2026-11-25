@@ -367,6 +367,7 @@ export const subscription = p.pgTable('subscription', {
 // Facts that follow from others are derived, never stored: access is the linked
 // subscription's status, a host is online while last_seen_at is recent, a lease is live
 // until last_used_at + idle_timeout_s, a phone is idle since its last lease ended.
+// A phone lives on one host forever: that host's disk holds the only copy of its VM.
 
 /** A Mac that runs cloud iPhones, added by scripts/cloud-host.ts. */
 export const cloudHost = p.pgTable('cloud_host', {
@@ -377,7 +378,7 @@ export const cloudHost = p.pgTable('cloud_host', {
   address: p.text('address').notNull(),
   /** Most phones running at once. */
   slots: p.integer('slots').notNull(),
-  /** draining: no new starts. */
+  /** draining: no new phones are pinned to it; its own phones still start. */
   status: p.text('status', { enum: ['active', 'draining'] }).notNull().default('active'),
   /** Its last answer to GET /v1/status. */
   lastSeenAt: timestamp('last_seen_at'),
@@ -386,7 +387,7 @@ export const cloudHost = p.pgTable('cloud_host', {
 
 /**
  * A rented virtual iPhone ($49/month). Pending until its first subscription; access is that
- * subscription's status. Storage is never deleted: renewing a canceled phone runs a new
+ * subscription's status. Its VM is never deleted: renewing a canceled phone runs a new
  * Checkout with the same id, and its new subscription takes over the row.
  */
 export const cloudPhone = p.pgTable('cloud_phone', {
@@ -398,15 +399,15 @@ export const cloudPhone = p.pgTable('cloud_phone', {
   subscriptionId: p.text('subscription_id').unique().references(() => subscription.subscriptionId, { onDelete: 'set null' }),
   /** VPhone template key the phone was cloned from. */
   template: p.text('template').notNull(),
-  state: p.text('state', { enum: ['stored', 'starting', 'running', 'stopping'] }).notNull().default('stored'),
-  /** Where it runs, or the host whose disk has its newest copy. Removing a host is refused while it holds one. */
-  hostSlug: p.text('host_slug').references(() => cloudHost.slug, { onDelete: 'set null' }),
-  /** Newest hashed version. +1 on every stop. */
-  version: p.integer('version').notNull().default(0),
-  /** Newest version in R2. 0: never saved, the template is its copy. */
-  savedVersion: p.integer('saved_version').notNull().default(0),
-  /** Chunks of `version` already copied to R2, while version > saved_version. */
-  saveCursor: p.integer('save_cursor').notNull().default(0),
+  state: p.text('state', { enum: ['stopped', 'starting', 'running', 'stopping'] }).notNull().default('stopped'),
+  /** The host whose disk holds its VM. Null until its first placement, then never changed:
+   *  phones never move. A host with phones cannot be deleted. */
+  hostSlug: p.text('host_slug').references(() => cloudHost.slug, { onDelete: 'restrict' }),
+  /** When its host first reported the VM running. Null: a start may clone the template
+   *  (`create`). Set: the VM must already be on its host, so a host that lost it is an error
+   *  instead of a fresh phone handed to the user. host_slug alone cannot tell: it is set before
+   *  the first start, which may fail before the clone. Also marks unpaid rows safe to delete. */
+  firstRunAt: timestamp('first_run_at'),
   stateChangedAt: timestamp('state_changed_at').notNull().defaultNow(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),

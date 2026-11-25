@@ -1,0 +1,169 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "34bb5fc6-5c9a-44f2-b511-a05ef7442a41",
+  "prevIds": [
+    "bbe38026-c8f0-4dcd-9797-f0c47439d6e8"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "cloud_phone",
+        "first_run_at"
+      ],
+      "writes": [
+        "s|col|public.cloud_phone.first_run_at",
+        "n|col|public.cloud_phone.first_run_at",
+        "e|col|public.cloud_phone.first_run_at"
+      ],
+      "reads": [
+        "n|tbl|public.cloud_phone",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "cloud_phone",
+        "version"
+      ],
+      "writes": [
+        "s|col|public.cloud_phone.version",
+        "n|col|public.cloud_phone.version",
+        "e|col|public.cloud_phone.version"
+      ],
+      "reads": [
+        "n|tbl|public.cloud_phone",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "cloud_phone",
+        "saved_version"
+      ],
+      "writes": [
+        "s|col|public.cloud_phone.saved_version",
+        "n|col|public.cloud_phone.saved_version",
+        "e|col|public.cloud_phone.saved_version"
+      ],
+      "reads": [
+        "n|tbl|public.cloud_phone",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "cloud_phone",
+        "save_cursor"
+      ],
+      "writes": [
+        "s|col|public.cloud_phone.save_cursor",
+        "n|col|public.cloud_phone.save_cursor",
+        "e|col|public.cloud_phone.save_cursor"
+      ],
+      "reads": [
+        "n|tbl|public.cloud_phone",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "alter_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "cloud_phone",
+        "state"
+      ],
+      "writes": [
+        "s|colprop|public.cloud_phone.state.default"
+      ],
+      "reads": [
+        "n|tbl|public.cloud_phone",
+        "n|sch|public",
+        "n|col|public.cloud_phone.state"
+      ],
+      "sqlHash": "7c36664d8675139a"
+    },
+    {
+      "statementType": "recreate_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "cloud_phone"
+      ],
+      "writes": [
+        "s|fk|public.cloud_phone.cloud_phone_host_slug_cloud_host_slug_fkey",
+        "n|fk|public.cloud_phone.cloud_phone_host_slug_cloud_host_slug_fkey",
+        "e|fk|public.cloud_phone.cloud_phone_host_slug_cloud_host_slug_fkey",
+        "n|con|public.cloud_phone.cloud_phone_host_slug_cloud_host_slug_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.cloud_phone",
+        "n|sch|public",
+        "n|tbl|public.cloud_host",
+        "n|sch|public",
+        "n|col|public.cloud_phone.host_slug",
+        "n|col|public.cloud_host.slug",
+        "e|uniqueness|public.cloud_host.slug"
+      ],
+      "sqlHash": "de0c92afcf27d78c"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "cloud_phone",
+        "name": "first_run_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"cloud_phone\",\"version\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"cloud_phone\",\"saved_version\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"cloud_phone\",\"save_cursor\"]"
+    },
+    {
+      "op": "alter",
+      "key": "columns\u0000[\"public\",\"cloud_phone\",\"state\"]",
+      "set": {
+        "default": "'stopped'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "fks\u0000[\"public\",\"cloud_phone\",\"cloud_phone_host_slug_cloud_host_slug_fkey\"]",
+      "set": {
+        "onDelete": "RESTRICT"
+      }
+    }
+  ]
+}

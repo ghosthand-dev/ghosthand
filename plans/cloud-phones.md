@@ -77,6 +77,7 @@ cron apply them.
   Open: no TikTok sign-in to keep. The only TikTok IPA (`~/.local/share/vphone-ipa-trial/tiktok-original.ipa`, 47.8.0, ipatool) is FairPlay encrypted (`cryptid 1`), so it does not run on a VM; the catalog needs a decrypted IPA first.
 - [ ] A second upload of an unchanged phone sends almost nothing. Pass with the byte count.
   Fails as written: a phone that only booted again changes 229 to 290 chunks per stop (445 MiB LZ4 on loopback; 287 chunks, 265 s through the tunnel). A disk compare before and after one boot and 20 s idle: 150 MiB changed at 4 KiB granularity, 523 MiB at 1 MiB, about 1 GiB at 4 MiB. The guest's boot writes are spread over the disk, so smaller chunks only halve it. A stop of a phone that did not run sends nothing (`stop` answers 200, same version). Next: measure the trimmed-services template `7db0faf75773`, or keep running phones longer between stops.
+  Since 2026-11-25 storage is 64 KiB blocks in ~32 MiB packs (format in the fork's `Research/Host/fleet.md`). Loopback on mint, phone cloned from the template: a second version after one more boot sends 168 MB in 5 packs (was about 445 MiB LZ4); a restored phone stopped again without running sends nothing. Restores of both versions into new phones matched the source `Disk.img` sha256 and booted. Not yet run through the tunnel.
 
 ## Task 3: Fork ready for tenants (parallel with Tasks 1 and 2)
 

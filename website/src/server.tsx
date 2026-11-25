@@ -410,7 +410,7 @@ export default {
       await startSpan({ name: 'cron cloud fleet' }, async () => {
         const fleet = await runFleetCron()
         const deleted = await deleteAbandonedCloudPhones()
-        if (fleet.hosts || deleted) console.log(`cloud fleet: ${fleet.online}/${fleet.hosts} hosts online, ${fleet.phones} phones placed, ${fleet.copied} chunks copied, ${deleted} unpaid phones deleted`)
+        if (fleet.hosts || deleted) console.log(`cloud fleet: ${fleet.online}/${fleet.hosts} hosts online, ${fleet.phones} phones placed, ${fleet.copied} pack copies, ${deleted} unpaid phones deleted`)
       })
       return
     }

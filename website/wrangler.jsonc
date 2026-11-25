@@ -90,7 +90,8 @@
         { "binding": "RELEASES", "bucket_name": "ghosthand-releases" },
         { "binding": "PHONES", "bucket_name": "ghosthand-phones-preview" }
       ],
-      "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:vnet:15b24b76-7c4e-4e31-aa7b-8a8a5698439d" }],
+      // ghosthand-hosts-preview: production hosts never get a route here.
+      "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:vnet:dee9e1cd-0f6c-40c4-8aa4-0db0f77666af" }],
       "durable_objects": {
         "bindings": [
           { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },

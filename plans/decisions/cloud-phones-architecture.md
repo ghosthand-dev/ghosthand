@@ -27,7 +27,11 @@ R2: template chunks, per-phone deltas, SEPStorage, nvram, config; supported app 
 - (agent) **Machine side is VPhone commands:** the host agent is a `vphone-cli fleet` subcommand in the fork.
 - (agent) **Settle is captured on the host** (`vphone-vm`, `VPhoneGraphicsDisplayCapture`, exposed as vphone.sock `settle`), not in vphoned: the guest does no work for it.
 - (agent) **Fleet talks only to vphone.sock** and relays raw lines, so new vphone.sock commands need no fleet change. The website never exposes a raw RPC to tenants.
-- (agent) **Hosts hold an R2 token for the phones bucket** and sync chunks themselves; the Worker only presigns catalog IPAs. Worker subrequest limits rule out presigning thousands of chunks.
+- User, 2026-11-25: "we should use a higher level API that workers will have not exposed directly ... Even better if we can use the tunnel as the way to do this authentication ... so we don't need any key, and we keep everything super simple."
+- User, 2026-11-25: "the Ghost hand CLI and MCP should work only using the user session and token and not any r2 key ... tenants that shouldn't know anything about how the cloud workers work or about any kind of key."
+- **Hosts hold no keys and never call out.** CloudFleet moves every byte (chunks, small files, IPAs) between the `PHONES` R2 binding and the host over the tunnel. Reachability through the `HOSTS` VPC binding is the only authority. No R2 S3 keys anywhere, no presigned URLs.
+- (agent) Why not host to Worker calls authenticated by the tunnel: a Worker cannot tell traffic from a tunnel without Cloudflare Access device identity (WARP, Zero Trust policies), which is far heavier than inverting the direction.
+- (agent) Operator routes use the operator's normal ghosthand API key and a `CLOUD_ADMINS` user id list, not a separate admin token.
 - (agent) **One Stripe subscription per phone**, `subscription.kind` separates it from Pro. Cancel stops access, never deletes storage.
 - (agent) **Two stores, split by owner:** Postgres holds what was bought (phone, org, subscription); the CloudFleet DO holds where it runs (placement, versions, leases, queue).
 - Lost: running the ghosthand daemon on rental Macs (`plans/archive/cloud-phones-daemon-on-mac.md`), per-minute billing, a WebSocket DO link to the Macs, a separate private Worker (for now).

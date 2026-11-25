@@ -20,7 +20,7 @@ MCP / REST / CLI ──> ghosthand.dev Worker (auth: OAuth, API key, Mac session
    Postgres: cloud_phone,          host Mac: cloudflared ──> vphone-cli fleet serve
    subscription.kind                   │ vm launch --headless --hosted, vphone.sock
                                        v
-   R2 ghosthand-phones <──S3──>    VMs (vphoned RPC), local disk cache, chunk sync
+   R2 ghosthand-phones (binding) ──> CloudFleet moves chunks and IPAs over the same tunnel
 ```
 
 Names used below:
@@ -255,10 +255,12 @@ entry.
 ### `host.ts`, `storage.ts`, `apps.ts`
 
 - `host.ts`: typed client for the fleet API below, through the `HOSTS` VPC binding.
-- `storage.ts`: R2 key layout and manifest types, shared with the fleet docs. The Worker only
-  reads manifests (sizes for the dashboard); hosts do the uploads.
+- `storage.ts`: R2 key layout, manifest types, and the chunk moves: host to R2 after a stop,
+  R2 to host before a start (see "Storage moves through the Worker" below). Uses the `PHONES`
+  binding only, no S3 keys.
 - `apps.ts`: the catalog. `{id: "tiktok", name: "TikTok", bundleId, appStoreId: 835599320,
-  version, key: "apps/tiktok/33.8.0.ipa", sha256}`. `install` presigns a GET for the host (1 hour).
+  version, key: "apps/tiktok/33.8.0.ipa", sha256}`. `install` streams the IPA from R2 to the
+  host's blob store (skipped when the host has that sha256), then pushes it into the guest.
   Also served at `GET /api/cli/apps/catalog` for the daemon's App Store path.
 
 ### Changes to existing website files
@@ -272,9 +274,9 @@ entry.
 | `components/account-pages.tsx` | "Cloud iPhones" section after Plan: one row per phone (name, running/stopped/queued, renews or ended), Rent button, Manage (portal), Rename |
 | `actions.tsx` | `renameCloudPhone` |
 | `telemetry.ts` | `cloud_phone_checkout_opened`, `cloud_phone_activated`, `cloud_phone_canceled`, `cloud_phone_started` (ids and counts only) |
-| `wrangler.jsonc` (top level and `env.preview`) | DO `CLOUD_FLEET` + migration `cloud-fleet-v1`; R2 `PHONES` (`ghosthand-phones`, preview bucket separate); `vpc_networks` binding `HOSTS`; secrets `R2_PHONES_ACCESS_KEY_ID`, `R2_PHONES_SECRET_ACCESS_KEY` (presigning) |
+| `wrangler.jsonc` (top level and `env.preview`) | DO `CLOUD_FLEET` + migration `cloud-fleet-v1`; R2 `PHONES` (`ghosthand-phones`, preview bucket separate); `vpc_networks` binding `HOSTS`; var `CLOUD_ADMINS` (user ids). No R2 keys, no admin token |
 | `test-runtime-worker.ts` | Export `CloudFleet` |
-| `scripts/cloud-host.ts` | `add <slug> --address --slots`, `remove`, `drain`, `list`, `recover <phone>` through an admin-only route |
+| `scripts/cloud-host.ts` | `add <slug> --address --slots`, `remove`, `drain`, `list`, `recover <phone>` through admin routes. Auth is the operator's normal ghosthand API key; the route checks the user id is in `CLOUD_ADMINS` |
 
 ## Host: `vphone-cli fleet serve` (VPhone fork)
 
@@ -288,7 +290,7 @@ target; that is the only pbxproj change.
 | `VPhoneFleetCommand.swift` | `fleet` group (`serve`, `status`), registered in `VPhoneCommand.swift` |
 | `VPhoneFleetServer.swift` | NIO HTTP/1.1 on `--listen 10.77.0.1:7400`, JSON routes below |
 | `VPhoneFleetPhones.swift` | Phone lifecycle: clone from template, launch child `vphone-cli vm launch <id> --headless --hosted` (`VPhoneManagedProcess`), ready when `vphone.sock` answers `ping`, stop with SIGINT then SIGKILL like `vm stop`. State in `<vm>/fleet.json` |
-| `VPhoneFleetStorage.swift` | Chunk sync with R2 over the S3 API (SigV4 with CryptoKit, `URLSession`) |
+| `VPhoneFleetStorage.swift` | Manifests of a stopped phone, serving chunks by hash, the local blob store, restoring a version from template + blobs. No network client: the Worker moves every byte |
 | `VPhoneFleetCache.swift` | Free-disk check, least recently used eviction of uploaded stopped phones, IPA cache by sha256 |
 
 Fleet API, all JSON, no auth (reachable only through the tunnel):
@@ -297,11 +299,17 @@ Fleet API, all JSON, no auth (reachable only through the tunnel):
 |---|---|
 | `GET /v1/status` | `{host, slots, freeDiskBytes, bundleVersion, templates, phones: [{id, state, version, uploadedVersion, lastUsedAt, error?}]}` |
 | `POST /v1/phones/{id}/start {version, template}` | `202`. Clone or download to reach `version` if needed, then launch |
-| `POST /v1/phones/{id}/stop {uploadVersion}` | `202`. Shut down, upload as `uploadVersion` |
+| `POST /v1/phones/{id}/stop {version}` | `202`. Shut down, then hash the disk into the manifest of `version` |
+| `GET /v1/phones/{id}/versions/{v}` | That version's manifest (chunk hashes and small files) |
+| `GET /v1/phones/{id}/chunks/{sha256}`, `.../files/{name}` | One chunk or small file of a local version, with `Content-Length` |
+| `POST /v1/phones/{id}/versions/{v}/saved` | R2 has this version now: the local copy may be evicted |
+| `POST /v1/blobs/missing {hashes}` | Which of these hashes the host has in no template, cached phone or blob |
+| `PUT /v1/blobs/{sha256}` | Store a chunk or IPA; the host checks the hash |
+| `POST /v1/phones/{id}/restore {version, manifest}` | Build that version from the template and blobs (before `start` on a new host) |
 | `POST /v1/phones/{id}/sock` | Relay one vphone.sock JSON line, return its reply. Any new vphone.sock command works without a fleet change |
-| `POST /v1/phones/{id}/push-url {url, sha256, path}` | Download to the IPA cache (or reuse), then vphone.sock `push` |
+| `POST /v1/phones/{id}/push {sha256, path}` | vphone.sock `push` of a blob into the guest |
 
-**R2 layout** (bucket `ghosthand-phones`; the host has an R2 token for this bucket only):
+**R2 layout** (bucket `ghosthand-phones`, written and read only by the Worker's `PHONES` binding):
 
 ```
 templates/<key>/manifest.json       chunk list of the template Disk.img and its small files
@@ -311,19 +319,41 @@ phones/<id>/<version>/config.plist, SEPStorage, nvram.bin, PatchReceipt.plist, r
 apps/<id>/<version>.ipa              catalog IPAs, uploaded by hand
 ```
 
-- **Upload on stop:** walk only allocated ranges of `Disk.img` (`SEEK_DATA`), hash 4 MiB chunks,
-  upload chunks whose hash is not in the previous manifest or the template manifest, then the small
-  files, then the manifest last. A missing manifest means the version does not exist.
-- **Download on start:** `clonefile` the local template, read the manifest, write chunks that
-  differ (from another local cached phone when its manifest has the hash, else from R2), punch
-  holes for `"0"`, then copy the small files. Write `fleet.json` with the version last.
-- The template must exist on every host with the same bytes: hosts download it from
-  `templates/<key>/` once, never build their own.
+### Storage moves through the Worker
+
+Hosts hold **no keys** and never call out. Reaching a host's private IP through its tunnel is
+the only authority, and only our Worker's `HOSTS` binding can. CloudFleet moves every byte:
+
+```
+save (after stop)    host GET /versions/v ──> diff vs previous + template manifest
+                     for each new hash: host GET /chunks/<h> ──stream──> PHONES.put(chunks/<h>)
+                     small files, then phones/<id>/<v>/manifest.json last ──> POST .../saved
+load (new host)      R2 manifest ──> host POST /blobs/missing ──> for each: PHONES.get ──stream──>
+                     host PUT /blobs/<h> ──> POST /restore ──> POST /start
+IPA install          host POST /blobs/missing [sha] ──> PHONES.get ──stream──> PUT /blobs/<sha>
+                     ──> POST /push ──> sock rpc apps.install
+```
+
+- **Upload on stop:** the host walks only allocated ranges of `Disk.img` (`SEEK_DATA`) and hashes
+  4 MiB chunks. The Worker copies chunks whose hash is not in the previous manifest or the template
+  manifest, then the small files, then the manifest last. A missing manifest means the version does
+  not exist.
+- **Bodies are piped, never read in JS** (Task 1: reading a 1 GiB body in a Worker hit error 1102).
+  Chunks are 4 MiB with a known length, so `PHONES.put` takes the host response body directly.
+- **Batches:** a copy is 2 subrequests per chunk, so CloudFleet copies at most 500 chunks per alarm
+  run and continues in the next (Workers allow 10,000 subrequests per invocation).
+- **Restore:** `clonefile` the local template, write chunks that differ (from another local cached
+  phone when its manifest has the hash, else the blob store), punch holes for `"0"`, copy the small
+  files. Write `fleet.json` with the version last.
+- The template must exist on every host with the same bytes: CloudFleet loads it like a phone
+  (`templates/<key>/`), hosts never build their own.
+- **Tenants never see any of this.** The CLI and MCP use only the user's session, OAuth token or
+  API key; the Worker resolves the org and does the rest.
 
 **Machine setup** (written as `docs/cloud-hosts.md` in this repo): VPhone bundle install,
 `vphone-escalator allow`, `vphone-usb-guard` launchd job (PR #2), `cloudflared` tunnel with the
-host's `/32` route and an `lo0` alias for that IP, `fleet serve` launchd job with the R2 token from
-Sigillo, template download.
+host's `/32` route and an `lo0` alias for that IP, `fleet serve` launchd job (no secrets),
+`cloud-host.ts add`, which also loads the template.
 
 ## VPhone fork: other changes
 

@@ -46,8 +46,27 @@ One pure function over the DO state. Same events in, same actions out.
 
 ## Task 1: Tunnel spike (parallel with Tasks 2 and 3, first)
 
-- [ ] A Worker with a Workers VPC binding reaches a stub on mintmacbook `127.0.0.1` through `cloudflared`, no public hostname. Pass with round-trip times, a streamed JPEG, a WebSocket upgrade and the largest body that passes, written here.
-- [ ] Two Macs addressed by one binding. Pass with both stubs answering by name.
+- [x] A Worker with a Workers VPC binding reaches a stub on mintmacbook `127.0.0.1` through `cloudflared`, no public hostname. Pass with round-trip times, a streamed JPEG, a WebSocket upgrade and the largest body that passes, written here.
+  Evidence (2026-11-25, cloudflared 2026.11.2, QUIC, Worker on `*.workers.dev`, colo MXP):
+  - `tunnel_id` binding: `127.0.0.1:7401` on mint answered (`{"name":"mint-loopback"}`); so did `10.77.0.1:7400` (lo0 alias) through both `tunnel_id` and `cf1:network` with a `/32` route.
+  - Round trip, 30 sequential `GET /ping`: p50 51-55 ms, p90 60 ms, min 43 ms, from a Worker and from a DO alike. mint to the edge is 20 ms by ICMP, so Workers VPC adds about 30 ms. First call after deploy: 60-200 ms.
+  - Streamed JPEG (273 KB, 16 KiB chunks): first byte at 70-100 ms (200 ms cold), all of it at 240-400 ms. With a 50 ms gap per chunk, chunks arrive as sent (first byte 67 ms, end 940 ms), so the response really streams.
+  - WebSocket: `fetch(url, {headers: {Upgrade: 'websocket'}})` on the binding gives `101` and `res.webSocket`. Upgrade 80-100 ms, echo p50 43-47 ms from a Worker, 22 ms from a DO.
+  - Bodies, streamed both ways, sizes and sha256 checked: 1, 10 and 100 MiB pass each way. Throughput about 2.1-2.2 MB/s both ways; mint's own uplink is 2.4 MB/s, its downlink 10 MB/s, so downloads to the host are slower through the tunnel than direct. Hosts must fetch IPAs and R2 chunks directly, never through the tunnel. 1 GiB request body to the host: 200 in 458 s, sha256 matched. 1 GiB response passed through the Worker unread (`new Response(res.body)`): 200, all bytes, 445 s. 1 GiB response read chunk by chunk in the Worker failed after 384 s with `error code: 1102` (Worker exceeded resource limits, from the JS read loop, not the tunnel). So no size limit was found; `host.ts` must pipe big bodies, never loop over them.
+  - 20 parallel JPEGs through one binding: all 200 and complete, 0.3-2.4 s, bound by mint's 2.4 MB/s uplink. Quiet-link round trip: mint p50 51 ms, laptop p50 68 ms.
+  - Long responses: `/slow` with no byte for 60 s, 120 s and 300 s returned 200 on time, from a Worker and from a DO. A 300 s response with a line every 10 s streamed all 30 lines.
+  - Errors are fast (about 200 ms) and typed: `ProxyError: destination_unavailable` (tunnel down), `connection_refused` (tunnel up, nothing listening), `destination_ip_prohibited` (no route for the IP), `dns_error`. A restarted `cloudflared` answered again within 1 s.
+- [x] Two Macs addressed by one binding. Pass with both stubs answering by name.
+  Evidence: one binding `{"network_id": "cf1:vnet:<vnet>"}` on the virtual network `ghosthand-cloud-spike-vnet`, two tunnels (mint, and this Mac as the second host), one `/32` route each. `/hosts` mapped the slugs to addresses like the CloudFleet `Host` table and both answered in parallel: `{"mint": {"address": "10.77.0.1:7400", "reply": {"name": "mint"}, "ms": 68}, "laptop": {"address": "192.168.1.105:7400", "reply": {"name": "laptop"}, "ms": 63}}`. Round trip to each: p50 76-81 ms while a 1 GiB transfer loaded the shared home link.
+  - The same binding could not reach mint's `127.0.0.1:7401` or its LAN address `192.168.1.6:22` (`destination_ip_prohibited`), and the default-network binding could not reach the laptop route. The vnet binding reaches only the routed `/32`s.
+  - Hostname routes (`mint.ghosthand-cloud-spike.internal` to the mint tunnel) failed with `dns_error` from both binding types, even with the name in mint's `/etc/hosts`: the name is resolved by DNS, not by the host's hosts file. Names need a real DNS record and add nothing over the `Host` table.
+
+  **Addressing for `host.ts`:** by private IP. One Workers VPC binding `HOSTS = {"network_id": "cf1:vnet:<ghosthand-hosts vnet>"}`, in a virtual network used only for hosts. Each host has its own remotely managed tunnel, one route `10.77.0.<n>/32` in that vnet, and the same IP as an `lo0` alias that `fleet serve` listens on (port 7400). `host.ts` builds `http://<Host.address>/v1/...` from the CloudFleet `Host` row; host slugs are names in our table, not DNS. Adding a host is API calls only (tunnel, route, `Host` row), no Worker deploy.
+  - Not `tunnel_id` bindings: one binding per host means a deploy per host, and they reach `127.0.0.1` and the whole LAN of the host (the vphone operator API, the router).
+  - Not `cf1:network`: it reaches every route of the account's default network, and the public internet through Gateway.
+  - `fetch` on the binding throws on network errors; `host.ts` maps `destination_unavailable` to host offline.
+  - Spike leftovers to delete: Workers `ghosthand-cloud-spike-worker` and `ghosthand-cloud-spike-vnet`, tunnels `ghosthand-cloud-spike-mint` and `-laptop`, vnet `ghosthand-cloud-spike-vnet` with its two routes, the default-network route `10.77.0.1/32`, hostname route `mint.ghosthand-cloud-spike.internal`; on mint, Homebrew `cloudflared`, `~/ghosthand-cloud-spike/` and the `lo0` alias `10.77.0.1` (gone on reboot).
+  - Creating vnets, tunnels and routes needs the Connectivity Directory Admin role; the wrangler OAuth token has it (`connectivity (admin)`), and `cf tunnels`, `cf network routes cidr` and `cf network virtual-networks` do it.
 
 ## Task 2: Phone storage in R2 (parallel with Tasks 1 and 3)
 

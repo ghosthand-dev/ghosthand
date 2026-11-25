@@ -1,7 +1,7 @@
 // Page-width hero with an ASCII VideoBackgroundShader, serif title, and a copy-setup-prompt CTA.
 'use client'
 
-import { useState, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore, type ReactNode } from 'react'
 import { preload } from 'react-dom'
 import { VideoBackgroundShader } from '@holocron.so/vite/mdx'
 import { Link, router } from 'spiceflow/react'
@@ -75,6 +75,61 @@ function AgentFaces() {
   )
 }
 
+// Primary pill that copies `text`. Both states share one grid cell, so the hidden idle label keeps the button size.
+function CopyButton({ text, children }: { text: string; children: ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type='button'
+      onClick={async () => {
+        await navigator.clipboard.writeText(text)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }}
+      className={cn(BUTTON, 'cursor-pointer border-transparent bg-primary pl-[7px] pr-[17px] text-primary-foreground hover:opacity-90')}
+    >
+      {/* pl-[10px] evens out the button's 7px/17px padding so "Copied" sits in the visual center. */}
+      <span className='grid place-items-center'>
+        <span className={cn('col-start-1 row-start-1 flex items-center gap-2', copied && 'invisible')}>{children}</span>
+        <span aria-live='polite' className={cn('col-start-1 row-start-1 flex items-center gap-2 pl-[10px]', !copied && 'invisible')}>
+          {copied && (
+            <>
+              <CheckIcon className='size-4' />
+              Copied
+            </>
+          )}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function DownloadButton() {
+  return (
+    <Link href={router.href('/download')} className={cn(BUTTON, 'border-border bg-background/70 text-foreground hover:bg-muted')}>
+      Download for Mac
+    </Link>
+  )
+}
+
+const MCP_URL = 'https://ghosthand.dev/mcp'
+
+// CTA row for the MCP docs overview, same buttons as the homepage hero.
+export function McpCta() {
+  return (
+    <div className='not-prose my-6 flex flex-col items-start gap-2'>
+      <div className='flex flex-wrap items-center gap-3'>
+        <CopyButton text={MCP_URL}>
+          <AgentFaces />
+          Copy MCP URL
+        </CopyButton>
+        <DownloadButton />
+      </div>
+      <p className='text-xs text-muted-foreground'>Add {MCP_URL} to your agent, then install Ghosthand on the Mac with the iPhone</p>
+    </div>
+  )
+}
+
 function subscribeToThemeClass(onChange: () => void) {
   const observer = new MutationObserver(onChange)
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
@@ -82,7 +137,6 @@ function subscribeToThemeClass(onChange: () => void) {
 }
 
 export function HeroSection() {
-  const [copied, setCopied] = useState(false)
   const isDark = useSyncExternalStore(
     subscribeToThemeClass,
     () => document.documentElement.classList.contains('dark'),
@@ -129,35 +183,11 @@ export function HeroSection() {
 
         <div className='flex flex-col items-center gap-2'>
           <div className='flex flex-wrap items-center justify-center gap-3'>
-            <button
-              type='button'
-              onClick={async () => {
-                await navigator.clipboard.writeText(SETUP_PROMPT)
-                setCopied(true)
-                setTimeout(() => setCopied(false), 2000)
-              }}
-              className={cn(BUTTON, 'cursor-pointer border-transparent bg-primary pl-[7px] pr-[17px] text-primary-foreground hover:opacity-90')}
-            >
-              {/* Both states share one grid cell, so the hidden idle label keeps the button size.
-                  pl-[10px] evens out the button's 7px/17px padding so "Copied" sits in the visual center. */}
-              <span className='grid place-items-center'>
-                <span className={cn('col-start-1 row-start-1 flex items-center gap-2', copied && 'invisible')}>
-                  <AgentFaces />
-                  Copy setup prompt
-                </span>
-                <span aria-live='polite' className={cn('col-start-1 row-start-1 flex items-center gap-2 pl-[10px]', !copied && 'invisible')}>
-                  {copied && (
-                    <>
-                      <CheckIcon className='size-4' />
-                      Copied
-                    </>
-                  )}
-                </span>
-              </span>
-            </button>
-            <Link href={router.href('/download')} className={cn(BUTTON, 'border-border bg-background/70 text-foreground hover:bg-muted')}>
-              Download for Mac
-            </Link>
+            <CopyButton text={SETUP_PROMPT}>
+              <AgentFaces />
+              Copy setup prompt
+            </CopyButton>
+            <DownloadButton />
           </div>
           <p className='rounded-xl bg-background/50 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur-md'>
             Paste the prompt into your agent to set up ghosthand

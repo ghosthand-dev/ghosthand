@@ -1562,7 +1562,7 @@ export interface components {
             phoneNumber?: string;
             /** @description True while the iPhone needs its passcode, read over USB (lockdown `PasswordProtected`). Absent when unknown, e.g. two iPhones with the same name. */
             locked?: boolean;
-            /** @description True while AssistiveTouch is on, read over USB. acquire turns it on by itself. Absent when unknown. */
+            /** @description True while AssistiveTouch is on, read over USB. Tap and swipe turn it on by themselves. Absent when unknown. */
             assistiveTouch?: boolean;
             bluetooth?: components["schemas"]["BluetoothLink"];
             lease?: components["schemas"]["LeaseInfo"];

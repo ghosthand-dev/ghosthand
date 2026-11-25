@@ -142,18 +142,18 @@ On the iPhone, open **Settings > Bluetooth**, tap the Mac's name (for example "M
 
 ### 3. AssistiveTouch (automatic)
 
-iOS accepts a mouse only through AssistiveTouch. With AssistiveTouch off, the iPhone shows no pointer and ignores every click (tested). **`acquire` turns it on over USB when it is off, and `release` turns it off again**, so a personal iPhone goes back to how it was when the agent is done. This needs no touch on the phone and works while the phone is locked:
+iOS accepts a mouse only through AssistiveTouch. With AssistiveTouch off, the iPhone shows no pointer and ignores every click (tested). **The first tap or swipe of a lease turns it on over USB when it is off, and `release` turns it off again**, so a personal iPhone goes back to how it was when the agent is done. A lease that only types, presses keys or takes screenshots leaves it off. This needs no touch on the phone and works while the phone is locked:
 
 ```bash
-ghosthand acquire --reason "reply to Anna"  # AssistiveTouch on
+ghosthand tap -l 42 200 400                 # AssistiveTouch on
 ghosthand release -l 42                     # lease released; AssistiveTouch turned off
 ghosthand assistivetouch -l 42 on           # on for good: release leaves it on
 ```
 
-- **`release` turns off only what ghosthand turned on.** If AssistiveTouch was on before `acquire`, for example for a broken Home button, `release` leaves it on.
+- **`release` turns off only what ghosthand turned on.** If AssistiveTouch was on before the lease, for example for a broken Home button, `release` leaves it on.
 - **`assistivetouch on|off` sets the iPhone's own setting**, so `release` leaves it as set.
 - **Expired leases count too.** When a lease ends by its idle timeout, the daemon turns AssistiveTouch off a few seconds later.
-- **Tap, swipe and wake check it again**, in case a person turned it off during the task.
+- **Tap, swipe and wake check it every time**, in case a person turned it off during the task.
 
 `state.db` keeps this state in `phone.assistive_touch_off_after_lease`.
 
@@ -167,7 +167,7 @@ Always Show Menu OFF  ──> hidden while the Mac mouse is connected; taps stil
 ```
 
 - **Set it on the iPhone, once.** USB lockdown has a key to turn AssistiveTouch on and off (`AssistiveTouchEnabledByiTunes`), but no key for this switch. So ghosthand cannot change it over USB. An agent can change it with taps in Settings (tested on an XR, iOS 18.7).
-- **It stays off** when `acquire` and `release` turn AssistiveTouch on and off.
+- **It stays off** when ghosthand turns AssistiveTouch on and off.
 - **Apple Pay needs it on.** Paying without Face ID uses the AssistiveTouch menu, so it needs Always Show Menu on and two more settings. See [Pay with Apple Pay](https://github.com/ghosthand-dev/ghosthand/blob/main/docs/system-dialogs.md#pay-with-apple-pay).
 
 **Home needs no setup.** `key home` sends the keyboard Home key (HID consumer Menu). It works with AssistiveTouch on or off (6 of 6 tries on an SE2 with iOS 18.6 and 26.5, and also on iOS 15.8). `key fn+h` does the same.

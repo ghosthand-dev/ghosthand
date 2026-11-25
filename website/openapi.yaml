@@ -93,8 +93,8 @@ info:
     that holds it, e.g. `studio:42`, so it works from every Mac of the account; only a Mac
     that is signed out returns `42`. The plain `42` also works on the Mac that holds it.
 
-    Acquiring a lease turns AssistiveTouch on when it is off. Releasing the lease (or its
-    expiry) turns it off again, only when ghosthand turned it on.
+    The first pointer input of a lease (tap, swipe, wake) turns AssistiveTouch on when it is
+    off. Releasing the lease (or its expiry) turns it off again, only when ghosthand turned it on.
 
     ## XCTest mode
 
@@ -3023,7 +3023,7 @@ components:
           description: True while the iPhone needs its passcode, read over USB (lockdown `PasswordProtected`). Absent when unknown, e.g. two iPhones with the same name.
         assistiveTouch:
           type: boolean
-          description: True while AssistiveTouch is on, read over USB. acquire turns it on by itself. Absent when unknown.
+          description: True while AssistiveTouch is on, read over USB. Tap and swipe turn it on by themselves. Absent when unknown.
         bluetooth:
           $ref: '#/components/schemas/BluetoothLink'
         lease:

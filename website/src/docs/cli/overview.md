@@ -86,7 +86,7 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`unlock`](/docs/cli/unlock) | Unlock with the Bluetooth keyboard: Enter, Enter, passcode, then check the lock state over USB (~3s). A wrong passcode is not retried |
 | [`mute`](/docs/cli/mute) | Mute all iPhone sound (media in every app too) with the Bluetooth keyboard Mute key, confirmed from the iPhone log over USB |
 | [`unmute`](/docs/cli/unmute) | Turn iPhone sound back on after `mute`, confirmed from the iPhone log over USB |
-| [`assistivetouch`](/docs/cli/assistivetouch) | Show, or turn on or off, AssistiveTouch over USB (no touch on the phone, also while locked). acquire turns it on when off, release turns it off again |
+| [`assistivetouch`](/docs/cli/assistivetouch) | Show, or turn on or off, AssistiveTouch over USB (no touch on the phone, also while locked). The first tap turns it on when off, release turns it off again |
 | [`rename`](/docs/cli/rename) | Set the iPhone's name over USB (Settings &gt; General &gt; About &gt; Name), no touch needed |
 | [`forget`](/docs/cli/forget) | Remove this Mac's Bluetooth bond with the iPhone, to pair again from scratch |
 | [`control`](/docs/cli/control) | Show or switch how input reaches the iPhone: Bluetooth mouse and keyboard (default) or XCTest (WebDriverAgent). Switch only when the user asks |

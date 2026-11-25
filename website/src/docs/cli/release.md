@@ -17,7 +17,7 @@ Also takes the [global options](/docs/cli/overview#global-options).
 
 Waits for a running command of the lease to finish, then ends it.
 - Turns AssistiveTouch off only when ghosthand turned it on (it was off before).
-  AssistiveTouch that was on before acquire stays on.
+  AssistiveTouch that was on before the lease stays on.
 - A lease that ends by its idle timeout does the same, a few seconds later.
 - The output says "AssistiveTouch turned off" when it did. An iPhone not on USB
   is turned off later, when it is plugged in again with no lease.

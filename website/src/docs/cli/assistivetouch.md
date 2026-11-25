@@ -2,7 +2,7 @@
 $schema: https://holocron.so/frontmatter.json
 title: "ghosthand assistivetouch"
 sidebarTitle: "assistivetouch"
-description: "Show, or turn on or off, AssistiveTouch over USB (no touch on the phone, also while locked). acquire turns it on when off, release turns it off again"
+description: "Show, or turn on or off, AssistiveTouch over USB (no touch on the phone, also while locked). The first tap turns it on when off, release turns it off again"
 ---
 
 ## Usage
@@ -17,8 +17,8 @@ Also takes the [global options](/docs/cli/overview#global-options).
 
 Without an argument it prints `on` or `off`. You never need `on` before input.
 - AssistiveTouch is what shows the Bluetooth mouse pointer. With it off the iPhone
-  ignores every click. acquire turns it on; tap, swipe and wake check it
-  again (~35 ms) in case a person turned it off.
+  ignores every click. Tap, swipe and wake turn it on when off (a ~35 ms check),
+  so a lease that only types or reads the screen never shows its button.
 - When ghosthand turned it on, release turns it off again, and so does the daemon
   a few seconds after a lease expires. If it was on before, it stays on.
 - `on` and `off` set the iPhone's own setting: release leaves it as set. Use `on`

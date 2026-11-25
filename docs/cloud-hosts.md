@@ -10,7 +10,7 @@ the `HOSTS` binding in `website/wrangler.jsonc` points at the virtual network `g
 and each host owns one private IP in it, routed to its own Cloudflare Tunnel.
 
 ```
-website Worker / CloudFleet DO
+website Worker (src/cloud/fleet.ts, cron and requests)
    │ env.HOSTS.fetch("http://10.77.0.1:7400/v1/status")    (src/cloud/host.ts)
    v
 vnet ghosthand-hosts ──10.77.0.1/32──> tunnel ghosthand-host-mint ──QUIC, outbound only──┐
@@ -27,6 +27,8 @@ mint  dev.ghosthand.host-tunnel: cloudflared as nobody ──lo0──> 10.77.0.
 Virtual networks: `ghosthand-hosts` (`15b24b76-7c4e-4e31-aa7b-8a8a5698439d`, production `HOSTS`) and
 `ghosthand-hosts-preview` (`dee9e1cd-0f6c-40c4-8aa4-0db0f77666af`, `env.preview` `HOSTS`). A
 production host never gets a route in the preview network, so a preview deploy cannot reach it.
+Both Workers share the database: `cloud_host.environment` (the Worker's `ENVIRONMENT`) says which
+one runs a host, and `scripts/cloud-host.ts` sets it from the site it calls.
 
 ## Why this shape
 
@@ -35,7 +37,7 @@ Measured in the Task 1 spike (`plans/cloud-phones.md`):
 - The vnet binding reaches **only the routed `/32`s**: not the host's `127.0.0.1`, not its LAN,
   not other routes of the account. A `tunnel_id` binding reaches all of those.
 - Adding a host is API calls only. The Worker is not deployed again.
-- Hosts are addressed by IP from the CloudFleet `Host` table. Hostname routes need a real DNS
+- Hosts are addressed by IP from the `cloud_host` table (Postgres). Hostname routes need a real DNS
   record (the host's `/etc/hosts` is not used), so they add nothing.
 - Round trip Worker to host is about 50 ms. Errors are fast: `ProxyError: destination_unavailable`
   means the tunnel is down, `connection_refused` means the tunnel is up but nothing listens.
@@ -56,7 +58,7 @@ Creating tunnels, routes and vnets needs the Connectivity Directory Admin role (
 `cf` OAuth tokens have `connectivity (admin)`).
 
 ```bash
-SLUG=mint            # short host name, also the CloudFleet Host slug
+SLUG=mint            # short host name, also its cloud_host slug
 HOST=mintmacbook     # ssh name (Tailscale)
 IP=10.77.0.1
 VNET=15b24b76-7c4e-4e31-aa7b-8a8a5698439d   # ghosthand-hosts
@@ -176,6 +178,106 @@ Check the pf rule from outside the Mac: a NAT guest on the host (or another LAN 
 route to `$IP` via the host) must time out on `http://$IP:7400`, while the host itself and the
 Worker still get an answer. On mint a guest read a canary page there in 45 ms before the rule and
 timed out after it (9 packets dropped); the Worker still got it in 114 ms.
+
+### 4. fleet serve (on the host, as root)
+
+`vphone-cli fleet serve` (the VPhone fork, `Research/Host/fleet.md` there) runs the phones and
+answers the Worker on `$IP:7400`. It holds no keys and never calls out. Four pieces:
+
+| Piece | Why |
+|---|---|
+| Bundle in `/opt/ghosthand-host/VPhone.bundle`, root-owned | sudoers names its `vphone-cli`; a user-writable copy would make the fleet user root |
+| `/etc/sudoers.d/ghosthand-fleet` | `fleet serve` runs `sudo -n vphone-cli cfw update-environment <phone>` before it starts a phone whose guest vphoned is older than the bundle's (never the live update, which loops on 2.17.1 guests) |
+| `com.vphone.usb-guard` | every phone runs `--hosted`, which does not start without the guard holding its USB link |
+| `dev.ghosthand.fleet-allow`, `dev.ghosthand.fleet` | amfid forgets the `vphone-vm` allowlist at reboot; `fleet serve` runs as the fleet user with `AbandonProcessGroup`, so VMs outlive its restarts |
+
+Phones live in their own library, `~/.vphone/fleet`, never the user's `~/.vphone/machines`. Save
+this block as the fleet script. It needs `BUNDLE` (a built `VPhone.bundle` copied to the host),
+`IP`, `SLUG`, `FLEET_USER` and optionally `SLOTS`:
+
+```bash
+set -euo pipefail
+: "${BUNDLE:?}" "${IP:?}" "${SLUG:?}" "${FLEET_USER:?}"
+HOME_DIR=$(dscl . -read /Users/$FLEET_USER NFSHomeDirectory | awk '{print $2}')
+DEST=/opt/ghosthand-host            # no space: sudoers names the command by its path
+LIBRARY="$HOME_DIR/.vphone/fleet"
+CLI="$DEST/VPhone.bundle/Contents/MacOS/vphone-cli"
+
+install -d -m 755 "$DEST"
+rm -rf "$DEST/VPhone.bundle.new"
+ditto "$BUNDLE" "$DEST/VPhone.bundle.new"
+chown -R root:wheel "$DEST/VPhone.bundle.new"
+chmod -R go-w "$DEST/VPhone.bundle.new"
+rm -rf "$DEST/VPhone.bundle"
+mv "$DEST/VPhone.bundle.new" "$DEST/VPhone.bundle"
+"$DEST/VPhone.bundle/Contents/MacOS/vphone-escalator" allow "$DEST/VPhone.bundle/Contents/MacOS/vphone-vm"
+
+install -o root -g wheel -m 755 "$DEST/VPhone.bundle/Contents/MacOS/vphone-usb-guard" /Library/PrivilegedHelperTools/com.vphone.usb-guard
+install -o root -g wheel -m 644 "$DEST/VPhone.bundle/Contents/Resources/com.vphone.usb-guard.plist" /Library/LaunchDaemons/
+
+echo "$FLEET_USER ALL=(root) NOPASSWD: $CLI cfw update-environment *" > /etc/sudoers.d/ghosthand-fleet
+chmod 440 /etc/sudoers.d/ghosthand-fleet
+visudo -cf /etc/sudoers.d/ghosthand-fleet
+
+cat > /Library/LaunchDaemons/dev.ghosthand.fleet-allow.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.ghosthand.fleet-allow</string>
+  <key>ProgramArguments</key>
+  <array><string>$DEST/VPhone.bundle/Contents/MacOS/vphone-escalator</string><string>allow</string><string>$DEST/VPhone.bundle/Contents/MacOS/vphone-vm</string></array>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+PLIST
+
+sudo -u "$FLEET_USER" mkdir -p "$LIBRARY"
+cat > /Library/LaunchDaemons/dev.ghosthand.fleet.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.ghosthand.fleet</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$CLI</string><string>fleet</string><string>serve</string>
+    <string>--listen</string><string>$IP:7400</string>
+    <string>--host</string><string>$SLUG</string>
+    <string>--slots</string><string>${SLOTS:-4}</string>
+    <string>--library-root</string><string>$LIBRARY</string>
+  </array>
+  <key>UserName</key><string>$FLEET_USER</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>AbandonProcessGroup</key><true/>
+  <key>StandardOutPath</key><string>$HOME_DIR/Library/Logs/ghosthand-fleet.log</string>
+  <key>StandardErrorPath</key><string>$HOME_DIR/Library/Logs/ghosthand-fleet.log</string>
+</dict>
+</plist>
+PLIST
+
+for job in com.vphone.usb-guard dev.ghosthand.fleet-allow dev.ghosthand.fleet; do
+  launchctl bootout system/$job 2>/dev/null || true
+  while launchctl print system/$job >/dev/null 2>&1; do sleep 0.5; done
+  launchctl bootstrap system /Library/LaunchDaemons/$job.plist
+done
+```
+
+```bash
+rsync -a vphone/.build/XcodeBundle/Build/Products/Debug/VPhone.bundle $HOST:fleet-bundle/
+{ security find-generic-password -a tommy -s $HOST -w; cat fleet-script.sh; } \
+  | ssh $HOST "sudo -S -p '' env BUNDLE=/Users/tommy/fleet-bundle/VPhone.bundle IP=$IP SLUG=$SLUG FLEET_USER=tommy SLOTS=3 bash -s"
+ssh $HOST "curl -s $IP:7400/v1/status"     # host, slots, freeDiskBytes, templates
+```
+
+**Templates** must be in the fleet library with the same bytes on every host. Until they load
+from R2, clone one in: `cp -c -R ~/.vphone/machines/.templates/<key> ~/.vphone/fleet/.templates/`.
+A new bundle is the same script again; running phones keep their old `vphone-vm` until they stop.
+
+**Proxy:** `fleet serve --proxy host:port` puts every new phone in tunnel mode behind that SOCKS5
+proxy (fail closed). Without it phones have no network. mint runs without one for now.
 
 ## Remove a host
 

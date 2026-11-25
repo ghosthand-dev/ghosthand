@@ -15,7 +15,7 @@ Shape:
 
 ```
 tenant (MCP, REST, CLI on any Mac) ──> ghosthand.dev Worker: auth, Stripe, hub routing
-   slug `cloud` ──> website/src/cloud: CloudFleet DO (scheduler) + ghosthand API -> vphoned RPC
+   slug `cloud` ──> website/src/cloud: fleet in Postgres + minute cron + ghosthand API -> vphoned RPC
    ──Workers VPC over Cloudflare Tunnel (no auth, no public hostname)──> vphone-cli fleet serve
         (fork: VM start and stop, R2 sync, disk cache, push from URL) ──> VPhone VMs, vphoned RPC
 R2: template chunks, per-phone deltas, SEPStorage, nvram, config; supported app IPAs
@@ -29,11 +29,16 @@ R2: template chunks, per-phone deltas, SEPStorage, nvram, config; supported app 
 - (agent) **Fleet talks only to vphone.sock** and relays raw lines, so new vphone.sock commands need no fleet change. The website never exposes a raw RPC to tenants.
 - User, 2026-11-25: "we should use a higher level API that workers will have not exposed directly ... Even better if we can use the tunnel as the way to do this authentication ... so we don't need any key, and we keep everything super simple."
 - User, 2026-11-25: "the Ghost hand CLI and MCP should work only using the user session and token and not any r2 key ... tenants that shouldn't know anything about how the cloud workers work or about any kind of key."
-- **Hosts hold no keys and never call out.** CloudFleet moves every byte (chunks, small files, IPAs) between the `PHONES` R2 binding and the host over the tunnel. Reachability through the `HOSTS` VPC binding is the only authority. No R2 S3 keys anywhere, no presigned URLs.
+- **Hosts hold no keys and never call out.** The Worker moves every byte (chunks, small files, IPAs) between the `PHONES` R2 binding and the host over the tunnel. Reachability through the `HOSTS` VPC binding is the only authority. No R2 S3 keys anywhere, no presigned URLs.
 - (agent) Why not host to Worker calls authenticated by the tunnel: a Worker cannot tell traffic from a tunnel without Cloudflare Access device identity (WARP, Zero Trust policies), which is far heavier than inverting the direction.
 - (agent) Operator routes use the operator's normal ghosthand API key and a `CLOUD_ADMINS` user id list, not a separate admin token.
 - (agent) **One Stripe subscription per phone**, `subscription.kind` separates it from Pro. Cancel stops access, never deletes storage.
-- (agent) **Two stores, split by owner:** Postgres holds what was bought (phone, org, subscription); the CloudFleet DO holds where it runs (placement, versions, leases, queue).
+- ~~(agent) Two stores, split by owner: Postgres for what was bought, a CloudFleet DO for where it runs.~~ Replaced below.
+- User, 2026-11-25: switch the fleet from the CloudFleet Durable Object to Postgres + a Cloudflare cron, simpler; normalized schema, one source of truth per fact, no duplicated fields.
+- **One store.** `cloud_host`, runtime columns on `cloud_phone`, `cloud_lease`. Acquire is one transaction (`FOR UPDATE` on the phone and the environment's hosts, `SKIP LOCKED` for the victim); host calls after commit in `waitUntil`; waiting acquires poll, no FIFO queue. Each command is one `UPDATE cloud_lease ... RETURNING` joined to the org and subscription. A cron every minute polls hosts, continues transitions and saves to R2. Cloud calls are answered in the Worker before `getHub()`.
+- **Derived, never stored:** access (linked subscription status; pending = no subscription), host online (`last_seen_at`), lease live (`last_used_at + idle_timeout_s`), idle since (last lease end), unsaved copy (`version > saved_version`). Leases carry no `org_id`; a save keeps only `save_cursor`.
+- (agent) `cloud_host.environment`: preview and production share the database, each Worker runs only the hosts its own vnet reaches.
+- Lost: the CloudFleet DO, its event log and alarms, the waiter queue, the webhook's setAccess call.
 - Lost: running the ghosthand daemon on rental Macs (`plans/archive/cloud-phones-daemon-on-mac.md`), per-minute billing, a WebSocket DO link to the Macs, a separate private Worker (for now).
 - Open: availability promise per phone (oversell ratio), phone tasks quota, legal risk.
 - Lives in: `docs/cloud-phones.md` (design), `plans/cloud-phones.md` until built.

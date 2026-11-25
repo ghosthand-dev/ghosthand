@@ -1,6 +1,6 @@
 ---
 title: Cloud phones design
-description: How rented virtual iPhones work end to end. Database, Stripe, website cloud module, scheduler, translation to vphoned RPC, the vphone-cli fleet host agent, R2 storage and new CLI commands. Companion to plans/cloud-phones.md.
+description: How rented virtual iPhones work end to end. Postgres fleet state, Stripe, website cloud module, scheduler rules and the minute cron, translation to vphoned RPC, the vphone-cli fleet host agent, R2 storage and new CLI commands. Companion to plans/cloud-phones.md.
 ---
 
 # Cloud phones design
@@ -11,16 +11,17 @@ The website translates the ghosthand API into vphoned RPC; the host only runs VM
 
 ```
 MCP / REST / CLI ──> ghosthand.dev Worker (auth: OAuth, API key, Mac session -> orgId)
-                       │ GhosthandHub(org): slug `cloud` ──> src/cloud/api.ts (translation)
-                       │                                       │
-                       │                   CloudFleet DO <─────┘ runtime, leases, queue,
-                       │                   (one instance)        scheduler
-                       │                        │ Workers VPC, no auth, private IP per host
-                       v                        v
-   Postgres: cloud_phone,          host Mac: cloudflared ──> vphone-cli fleet serve
-   subscription.kind                   │ vm launch --headless --hosted, vphone.sock
-                                       v
-   R2 ghosthand-phones (binding) ──> CloudFleet moves chunks and IPAs over the same tunnel
+                       │ slug `cloud` (lease cloud:<n>, mac "cloud", /macs/cloud/v1): answered
+                       │ in the Worker, the hub DO never wakes ──> src/cloud/api.ts (translation)
+                       │                                              │
+   Postgres: cloud_host, cloud_phone, cloud_lease <── fleet.ts ───────┘ decide (one transaction),
+   subscription.kind (one store for every fact)        │              useLease (one UPDATE)
+   cron every minute ──> runFleetCron ─────────────────┤ Workers VPC, no auth, private IP per host
+                                                       v
+                                       host Mac: cloudflared ──> vphone-cli fleet serve
+                                           │ vm launch --headless --hosted, vphone.sock
+                                           v
+   R2 ghosthand-phones (binding) ──> the Worker moves chunks and IPAs over the same tunnel
 ```
 
 Names used below:
@@ -30,39 +31,66 @@ Names used below:
 | host | A Mac of ours that runs VMs. Slug like `mint`, private IP like `10.77.0.1` |
 | phone | One rented iPhone, row `cloud_phone`, id `cph_<ulid>`. Also the VM folder name on a host |
 | version | Storage version of a phone. +1 on every stop. The newest copy is on a host or in R2 |
-| `cloud:<n>` | A cloud lease, as MCP and the CLI see it. `n` is a global counter in CloudFleet |
+| `cloud:<n>` | A cloud lease, as MCP and the CLI see it. `n` is the `cloud_lease` identity column |
 
 ## One tap, end to end
 
 1. MCP `tap {lease: "cloud:7", x: 120, y: 640}` reaches `/mcp`. The Worker resolves the org.
-2. `GhosthandHub(org)` routes it: lease prefix `cloud` goes to `src/cloud/mcp.ts`, not a Mac socket.
+2. The Worker sees the lease prefix `cloud` (`toolCallTarget`) and answers the call itself with
+   `src/cloud/mcp.ts`; the hub Durable Object is not woken.
 3. `mcp.ts` calls `api.ts`, the same code as `POST /macs/cloud/v1/leases/7/tap`.
-4. `api.ts` asks CloudFleet for lease 7: it must belong to this org and its phone must be running.
-   It gets back the phone id and its host.
+4. `api.ts` runs one `UPDATE cloud_lease ... RETURNING` (`useLease`): lease 7 must be live, its
+   phone must belong to this org, be running and have an allowed subscription. The same statement
+   restarts the idle timeout and returns the phone id and its host's address.
 5. `host.ts` sends `POST http://10.77.0.1:7400/v1/phones/<id>/sock` with the vphone.sock line
    `{"t":"rpc","method":"input.tap","params":{"x":120,"y":640},"settle":true}`.
 6. `fleet serve` relays the line to `<vm>/vphone.sock`. `vphone-vm` runs the tap, waits for the
    screen to settle and answers with the JPEG frame.
 7. `api.ts` shapes the reply as the daemon's `ActionResult`, and `mcp.ts` as the daemon's MCP text.
-8. CloudFleet records lease activity, so the idle timeout restarts.
 
 ## Database
 
-Postgres keeps what was bought. CloudFleet keeps where it runs. Migration: one new table and one
-new column, `pnpm -C db generate`, applied with `pnpm db:migrate:prod` before the deploy.
+Postgres holds every fact, once. Facts that follow from others are derived in the query that
+needs them, never stored. Migration `db/drizzle/*_cloud_phones`, applied with
+`pnpm db:migrate:prod` before the deploy.
 
 ```prisma
+model CloudHost {
+  slug        String    @id                     // "mint"
+  environment String                            // the Worker's ENVIRONMENT: preview and production share the database
+  address     String                            // "10.77.0.1:7400", the private IP its tunnel routes
+  slots       Int                               // most phones running at once
+  status      String    @default("active")      // active | draining (no new starts)
+  lastSeenAt  DateTime?                         // last status answer; online = within 3 minutes
+  phones      CloudPhone[]
+}
+
 model CloudPhone {
-  id             String    @id @map("cloud_phone_id")   // "cph_" + ulid
-  orgId          String    @map("org_id")              // org.org_id, onDelete: Cascade
-  name           String                                // "Cloud iPhone 1", renamable
-  subscriptionId String?   @unique @map("subscription_id") // Stripe sub id, set by the webhook
-  status         String    // pending | active | past_due | canceled; storage is never deleted
-  template       String    // VPhone template key the phone was cloned from
-  createdAt      DateTime  @map("created_at")
-  updatedAt      DateTime  @map("updated_at")
-  @@index([orgId])
-  @@map("cloud_phone")
+  id             String    @id @map("cloud_phone_id")    // "cph_" + ulid, also the VM folder name
+  orgId          String                                  // org, onDelete: Cascade
+  name           String
+  subscriptionId String?   @unique                       // null: not paid yet; access = this subscription's status
+  template       String                                  // VPhone template key
+  state          String    @default("stored")            // stored | starting | running | stopping
+  hostSlug       String?                                 // where it runs, or the host whose disk has its newest copy
+  version        Int       @default(0)                   // newest hashed version, +1 on every stop
+  savedVersion   Int       @default(0)                   // newest version in R2 (0: the template)
+  saveCursor     Int       @default(0)                   // chunks of `version` already copied to R2
+  stateChangedAt DateTime  @default(now())
+  leases         CloudLease[]
+  @@unique([orgId], where: "subscription_id is null")     // one unpaid phone per org
+}
+
+model CloudLease {
+  id          Int       @id @default(autoincrement()) @map("cloud_lease_id")  // the n of cloud:<n>
+  phoneId     String                                  // cloud_phone, onDelete: Cascade (no org_id: join the phone)
+  label       String?
+  reason      String
+  idleTimeoutS Int
+  lastUsedAt  DateTime  @default(now())
+  lastCommand String?
+  endedAt     DateTime?                               // release, forced takeover, or the VM stopped under it
+  createdAt   DateTime  @default(now())               // acquiredAt
 }
 
 model Subscription {
@@ -71,10 +99,21 @@ model Subscription {
 }
 ```
 
+| Fact | Derived from |
+|---|---|
+| A phone may be leased | `isCloudPhoneAllowed(subscription.status)`: active, trialing or past_due |
+| Pending (not paid yet) | `subscription_id is null`; the cron deletes these after a day |
+| Dashboard status (pending, active, past_due, canceled) | `cloudPhoneStatus(subscription.status)` |
+| A host is online | `last_seen_at` within `HOST_ONLINE_MS` (3 min); the cron asks every minute |
+| A lease is live | `ended_at is null and last_used_at + idle_timeout_s > now()` |
+| A phone is idle since | `greatest(state_changed_at, its last lease's end)`, null while a lease is live |
+| Only its host has the newest copy | `version > saved_version` |
+| A save is in progress | stored and `version > saved_version`; `save_cursor` is its only progress |
+
 - `kind` keeps cloud subscriptions out of `entitlementFor`, `subscribeRedirectUrl` and the plan
   shown on the dashboard. Without it a cloud phone would make the org Pro.
-- `getPersonalOrg` (`website/src/db.ts`) also loads `cloudPhones`. Add the relation to the `org`
-  relations in `db/src/schema.ts`.
+- `getPersonalOrg` (`website/src/db.ts`) loads `cloudPhones` with their subscription; the Worker
+  uses it to tell the hub whether the org has cloud iPhones (`x-ghosthand-cloud`).
 
 ## Stripe
 
@@ -88,26 +127,28 @@ lookup key), for test and live mode:
 
 **Checkout**, new `cloudPhoneCheckoutUrl({org, email, returnUrl})` in `website/src/lib/stripe.ts`:
 
-1. Insert a `cloud_phone` row with status `pending` and a new id.
+1. Insert a `cloud_phone` row with no subscription (pending) and a new id, or reuse the org's unpaid one.
 2. `getOrCreateStripeCustomer` (the same customer as Pro, never a second one).
 3. `checkout.sessions.create`: `mode: subscription`, one line item, quantity 1, no adjustable
    quantity, `metadata` and `subscription_data.metadata` = `{orgId, app, kind: "cloud_phone",
    cloudPhoneId}`. Idempotency key includes the phone id.
 4. Route `GET /cloud-phones/new` in `server.tsx` (login first if signed out, like `/subscribe`).
 
-Abandoned checkouts leave `pending` rows. The daily cron deletes `pending` rows older than one day
-that have no subscription.
+Abandoned checkouts leave unpaid rows. The minute cron deletes rows older than one day that have
+no subscription and never ran (`version = 0`).
 
 **Webhook** (`website/src/stripe-webhook.ts`), the same four events:
 
-- `syncSubscription` sets `kind` from the product metadata and returns it with `cloudPhoneId`
-  from the subscription metadata.
-- For `cloud_phone`: set `cloud_phone.subscription_id` and `status` from the subscription status.
+- `syncSubscription` sets `kind` from the product metadata and finds the phone by
+  `metadata.cloudPhoneId`.
+- For `cloud_phone`: link `cloud_phone.subscription_id` (`linksCloudPhone`: the linked one stays;
+  a renewal takes over only when it allows leases and the linked one does not).
   `syncSourceAccess` runs only for `pro`.
-- Then `CloudFleet.setAccess(phoneId, allowed)`. Allowed is `active`, `trialing` or `past_due`
-  (Stripe is still retrying, same as Pro). `canceled` and `unpaid` block new leases and end the
-  running one at the next scheduler step. Storage stays forever. Renewing from the dashboard runs
-  a new checkout with the same `cloudPhoneId`, so the same phone comes back.
+- Nothing else is told: every lease and every command reads the linked subscription's status.
+  Allowed is `active`, `trialing` or `past_due` (Stripe is still retrying, same as Pro).
+  `canceled` and `unpaid` refuse new leases and the next command of a running one. Storage stays
+  forever. Renewing from the dashboard runs a new checkout with the same `cloudPhoneId`, so the
+  same phone comes back.
 
 **Fixes needed in existing code:** `entitlementFor`, `subscribeRedirectUrl` (including its "open
 checkout" reuse and "live subscription goes to portal" shortcuts) and the dashboard's subscription
@@ -118,104 +159,63 @@ unless the user decides otherwise (open question).
 
 ## Website: `website/src/cloud/`
 
-### `fleet.ts`: CloudFleet Durable Object
+### `fleet.ts`: the fleet in Postgres
 
-One instance (`idFromName("fleet")`), SQLite storage. It is the only writer of runtime state, so
-every decision is serialized.
+No Durable Object, no event log, no timers. Every decision reads and writes the tables above;
+expiry and grace are compared with `now()` in SQL.
 
-```prisma
-model Host {          // set by scripts/cloud-host.ts
-  slug       String  @id
-  address    String  // "10.77.0.1:7400", private IP routed to the host's tunnel
-  slots      Int     // max running phones, from measured RAM per phone and a host reserve
-  enabled    Boolean // false drains: no new starts
-  online     Boolean // last status call answered
-  lastSeenAt DateTime
-}
-model PhoneRuntime {
-  phoneId      String  @id
-  orgId        String
-  allowed      Boolean   // from setAccess
-  state        String    // stored | starting | running | stopping
-  host         String?   // where it runs or is cached
-  version      Int       // newest version anywhere
-  newestOn     String    // host slug or "r2"
-  r2Version    Int       // newest uploaded version, 0 = never
-  idleSince    DateTime? // set when the last lease ended
-}
-model Lease {
-  n            Int     @id // the `<n>` in cloud:<n>
-  phoneId      String
-  orgId        String
-  label        String
-  reason       String
-  idleTimeout  Int      // seconds, default 600, like USB leases
-  lastUsedAt   DateTime
-}
-model Waiter {          // FIFO queue of acquires that wait
-  id        Int @id
-  phoneId   String
-  orgId     String
-  createdAt DateTime
-}
-model Event {           // last 1000 scheduler events, for replay and debugging
-  id      Int @id
-  at      DateTime
-  json    String
-}
-```
-
-RPC methods, called by `api.ts`, the webhook and the scripts:
-
-| Method | Does |
+| Function | Does |
 |---|---|
-| `devices(orgId)` | The org's phones with state, for `/v1/devices` and `list` |
-| `acquire({orgId, phoneId, label, reason, idleTimeout, waitSeconds})` | Lease now, or start the phone and resolve when it runs, or wait in the queue up to `waitSeconds` |
-| `release({orgId, n})` | End a lease |
-| `lease({orgId, n})` | Phone id and host for a running, owned lease; bumps `lastUsedAt` |
-| `setAccess({phoneId, orgId, allowed})` | From the webhook |
-| `addHost`, `removeHost`, `recover(phoneId)` | From `scripts/cloud-host.ts` |
-| `alarm()` | Lease idle expiry, and polling hosts while a start or stop is in flight |
+| `listPhones({orgId})` | The org's paid phones with state and live lease, for `/v1/devices` and `list` |
+| `acquire({orgId, phoneId, label, reason, idleTimeoutS, waitS, force, signal})` | Polls every 3 s until it leases, or the deadline (`waitS`, default 300 s). Each poll: `advance` the phone, then `decide` |
+| `decide` (inside acquire) | One transaction. `SELECT ... FOR UPDATE` on the phone (and its subscription): two acquires of one phone take turns. A running phone whose host answered gets a lease. A stored phone: lock the environment's host rows `FOR UPDATE` (no two starts count one free slot), run `place()`, then either set it `starting` on a host, or lock the victim `FOR UPDATE SKIP LOCKED` and set it `stopping` |
+| `useLease({orgId, n, command})` | One `UPDATE cloud_lease ... FROM cloud_phone JOIN subscription JOIN cloud_host ... RETURNING`: live lease, this org's phone, running, allowed. Restarts the idle timeout |
+| `release({orgId, n})` | Sets `ended_at` on a live lease of this org |
+| `advance(phoneId)` | Reads the row, asks its host for status, runs `reconcile()`, writes the change with compare-and-set on (state, version, host), and only then makes the host call. Deduplicated per phone in an isolate |
+| `runFleetCron()` | Every minute: status of every host of this environment (refreshes `last_seen_at`), then `advance` for every phone placed on one, and saves to R2, 500 chunks per run |
+| `listHosts`, `setHost`, `removeHost`, `recover`, `listFleetPhones` | Operator routes (`admin.ts`) |
 
-The DO runs `step(state, event)` from `scheduler.ts` for every event, saves the new state and the
-event, then performs the returned actions through `host.ts`. Results come back as new events.
-Start and stop take seconds to minutes, so the host answers `202` and the DO polls
-`GET /v1/status` every 3 s from its alarm, only while a transition is in flight. No timers run
-when nothing moves.
+Host calls happen after commit. After a decision, the acquire runs `advance` of the phones it
+changed in `waitUntil`, so a start or a stop goes out even if the client leaves; the next poll
+and the cron carry it on. There is no queue: waiting acquires poll, and the first one to decide
+after a slot frees gets it.
+
+```
+acquire ──> advance(phone) ──> decide ─┬─ running, host answered ──> INSERT cloud_lease ──> 201
+            (status, reconcile)        ├─ stored, free slot ──> state starting ──> waitUntil(advance): start
+                                       ├─ stored, full, idle >= 10 min ──> victim stopping ──> waitUntil(advance): stop
+                                       └─ leased / starting / freeing ──> sleep 3 s, poll again
+cron (1 min) ──> status of each host ──> advance(each placed phone): mark running, stopped,
+                                         crashed; continue a load; save a stored version to R2
+```
 
 ### `scheduler.ts`: pure rules
 
-```ts
-type Event =
-  | { type: 'acquire'; phoneId; orgId; waiterId }
-  | { type: 'lease-ended'; n; at }                  // release or idle timeout
-  | { type: 'host-status'; host; status }           // from polling or a call
-  | { type: 'started' | 'stopped'; phoneId; host; version }
-  | { type: 'access'; phoneId; allowed }
-type Action =
-  | { type: 'start'; phoneId; host; version }        // host downloads first if its copy is older
-  | { type: 'stop'; phoneId; host; uploadVersion }
-  | { type: 'grant'; waiterId }                      // resolve a waiting acquire
-  | { type: 'reject'; waiterId; code }               // subscription-required, ...
-```
+Two pure functions, tested as tables in `scheduler.test.ts`:
 
-Rules, applied in order on every event:
+- `place({phone, hosts, placed, now})`: where a stored phone starts, which idle phone stops for
+  it, or why it waits (`host-offline`, `freeing`, `full`).
+- `reconcile({phone, report})`: what a host's report of one phone means: a new state, a new
+  version, forgetting an evicted cached copy, ending leases after a crash, and the host call
+  (`start`, `load`, `stop`, `save`). Level-triggered: the same row and report always give the
+  same step, so repeating it after a lost call is safe.
+
+Rules:
 
 1. A phone runs on at most one host. Never start a phone whose newest copy is on an offline host;
-   it waits for that host (Mac crash case). Only `recover` moves it to `r2Version`.
-2. For each waiter in FIFO order whose phone is stopped and allowed:
-   - the host with its newest copy, if online, enabled and with a free slot;
-   - else, if the newest copy is in R2: the enabled online host with the most free slots, then
-     slug;
-   - else stop the unleased running phone with the oldest `idleSince`, if idle at least
-     `GRACE` (10 min), on the host the waiter can use; the waiter stays first in line;
-   - else keep waiting.
-3. A running phone with no lease and no waiter for its slot keeps running.
-4. A phone whose access is removed loses its lease and is treated as idle since now.
-5. Stopping always uploads; `newestOn` becomes R2 only after the upload finished.
-
-`scheduler.test.ts` replays event lists and checks the actions with inline snapshots: grace time,
-FIFO order, one host per phone, waiting for an offline host, access removal, host drain.
+   it waits for that host (Mac crash case). Only `recover` moves it to its R2 version.
+2. A stored, allowed phone starts on, first match:
+   - its own host, if online, active and with a free slot (no download);
+   - else, if R2 has its newest copy: the usable host with the most free slots, then slug;
+   - else a slot freed by stopping the unleased running phone idle longest, if idle at least
+     `GRACE_MS` (10 min), on a host it can use; while a stop is in flight there, it waits for it;
+   - else it waits.
+3. A running phone with no lease keeps running until a stored one needs its slot.
+4. A stop hashes the disk as `version + 1` on the host; the cron copies it to R2 and sets
+   `saved_version`. A VM that stopped by itself (crash, host restart) is hashed the same way, and
+   its lease ends.
+5. Only a host report moves a phone out of a transition. A failed or timed-out call proves
+   nothing: the next `advance` sends it again (the host answers 409 while it is busy).
 
 ### `api.ts`: ghosthand REST to vphoned
 
@@ -225,8 +225,8 @@ default scale and vphoned gestures), so no conversion is needed at scale 1.
 
 | Daemon route | vphone.sock / vphoned |
 |---|---|
-| `GET /v1/devices` | `CloudFleet.devices`, model and iOS from the template |
-| `POST /v1/leases`, `DELETE /v1/leases/{n}` | `CloudFleet.acquire`, `release` (SSE wait like the daemon when `waitSeconds`) |
+| `GET /v1/devices` | `fleet.listPhones`, model and iOS from the template |
+| `POST /v1/leases`, `DELETE /v1/leases/{n}` | `fleet.acquire`, `release` (SSE keepalive like the daemon while it waits) |
 | `GET .../screenshot` | `{"t":"screenshot"}`, `settle` passed through; `screentext` adds `ui.ocr` |
 | `GET .../text` | `ui.ocr`; `waitText` polls it until `timeoutMs` |
 | `POST .../tap` (x,y or text) | `input.tap`; text: `ui.ocr`, then tap the match center |
@@ -267,16 +267,16 @@ entry.
 
 | File | Change |
 |---|---|
-| `tunnel.ts` | The Worker passes `x-ghosthand-org` to the hub (trusted, set after stripping client headers). `GET /macs` adds `{slug: "cloud", name: "Cloud", online: true}` when the org has a cloud phone. `forwardApi` and `daemonFetch` send slug `cloud` to `api.ts` before the online-Mac check. `collect` handles `cloud` for the `list` fan-out |
-| `lib/mcp-routing.ts` | New input `cloud: boolean`. Lease prefix `cloud` and `mac: "cloud"` route to `{kind: "cloud"}`. `list` fans out to `cloud` too. A cloud-only org never gets the no-Mac reply; instructions and `setup-status` say the phone is ready to acquire |
-| `task.ts` | Nothing, if the branch is in `daemonFetch`. The task system prompt says "iPhone", which fits |
-| `server.tsx` | `/cloud-phones/new` route, `CloudFleet` export, dashboard data |
-| `components/account-pages.tsx` | "Cloud iPhones" section after Plan: one row per phone (name, running/stopped/queued, renews or ended), Rent button, Manage (portal), Rename |
+| `tunnel.ts` | The Worker answers `/macs/cloud/v1/...` and MCP calls naming `cloud` itself, before `getHub()`. Other calls go to the hub with the trusted header `x-ghosthand-cloud` (the org has a paid phone), so `GET /macs` adds `{slug: "cloud", name: "Cloud", online: true}` and `list` fans out to `cloud` |
+| `lib/mcp-routing.ts` | Input `cloud: boolean`; `toolCallTarget(message)` is the Mac a call names. Lease prefix `cloud` and `mac: "cloud"` route to `{kind: "cloud"}`. A cloud-only org never gets the no-Mac reply; instructions and `setup-status` say the phone is ready to acquire |
+| `task.ts` | Task tools of a `cloud:<n>` lease call `api.ts` directly, not `hub.daemonFetch` |
+| `server.tsx` | `/cloud-phones/new` route, dashboard data, `scheduled()`: the fleet cron every minute, Stripe and source access daily |
+| `components/account-pages.tsx` | "Cloud iPhones" section after Plan: one row per phone (name, paid status, renews or ended), Rent button, Manage (portal), Rename |
 | `actions.tsx` | `renameCloudPhone` |
 | `telemetry.ts` | `cloud_phone_checkout_opened`, `cloud_phone_activated`, `cloud_phone_canceled`, `cloud_phone_started` (ids and counts only) |
-| `wrangler.jsonc` (top level and `env.preview`) | DO `CLOUD_FLEET` + migration `cloud-fleet-v1`; R2 `PHONES` (`ghosthand-phones`, preview bucket separate); `vpc_networks` binding `HOSTS`; var `CLOUD_ADMINS` (user ids). No R2 keys, no admin token |
-| `test-runtime-worker.ts` | Export `CloudFleet` |
-| `scripts/cloud-host.ts` | `add <slug> --address --slots`, `remove`, `drain`, `list`, `recover <phone>` through admin routes. Auth is the operator's normal ghosthand API key; the route checks the user id is in `CLOUD_ADMINS` |
+| `wrangler.jsonc` (top level and `env.preview`) | Cron `* * * * *` in both; R2 `PHONES` (`ghosthand-phones` in both: preview shares the database, so it shares phone storage); `vpc_networks` binding `HOSTS` (separate vnets); var `ENVIRONMENT` (telemetry and `cloud_host.environment`); var `CLOUD_ADMINS` (user ids). No R2 keys, no admin token |
+| `test-runtime-worker.ts` | `/__test/cloud-cron` runs `runFleetCron` now |
+| `scripts/cloud-host.ts` | `add <slug> --address --slots`, `remove`, `drain`, `enable`, `list`, `recover <phone>`, `phones` through admin routes. Auth is the operator's normal ghosthand API key; the route checks the user id is in `CLOUD_ADMINS` |
 
 ## Host: `vphone-cli fleet serve` (VPhone fork)
 
@@ -297,7 +297,7 @@ Fleet API, all JSON, no auth (reachable only through the tunnel):
 
 | Route | Does |
 |---|---|
-| `GET /v1/status` | `{host, slots, freeDiskBytes, bundleVersion, templates, phones: [{id, state, version, uploadedVersion, lastUsedAt, error?}]}` |
+| `GET /v1/status` | `{host, slots, freeDiskBytes, bundleVersion, templates, phones: [{id, state, version, savedVersion, lastUsedAt, error?}]}`; state is starting, stopping, restoring, running, stopped or damaged |
 | `POST /v1/phones/{id}/start {version, template}` | `202`. Clone or download to reach `version` if needed, then launch |
 | `POST /v1/phones/{id}/stop {version}` | `202`. Shut down, then hash the disk into the manifest of `version` |
 | `GET /v1/phones/{id}/versions/{v}` | That version's manifest (chunk hashes and small files) |
@@ -322,7 +322,7 @@ apps/<id>/<version>.ipa              catalog IPAs, uploaded by hand
 ### Storage moves through the Worker
 
 Hosts hold **no keys** and never call out. Reaching a host's private IP through its tunnel is
-the only authority, and only our Worker's `HOSTS` binding can. CloudFleet moves every byte:
+the only authority, and only our Worker's `HOSTS` binding can. The Worker moves every byte:
 
 ```
 save (after stop)    host GET /versions/v ──> diff vs previous + template manifest
@@ -340,12 +340,14 @@ IPA install          host POST /blobs/missing [sha] ──> PHONES.get ──str
   not exist.
 - **Bodies are piped, never read in JS** (Task 1: reading a 1 GiB body in a Worker hit error 1102).
   Chunks are 4 MiB with a known length, so `PHONES.put` takes the host response body directly.
-- **Batches:** a copy is 2 subrequests per chunk, so CloudFleet copies at most 500 chunks per alarm
-  run and continues in the next (Workers allow 10,000 subrequests per invocation).
+- **Batches:** a copy is 2 subrequests per chunk, so the cron copies at most 500 chunks per run
+  and continues in the next (Workers allow 10,000 subrequests per invocation); an acquire copies
+  50 per poll. A save's only progress is `save_cursor`; a load's is the host's own
+  `blobs/missing` answer.
 - **Restore:** `clonefile` the local template, write chunks that differ (from another local cached
   phone when its manifest has the hash, else the blob store), punch holes for `"0"`, copy the small
   files. Write `fleet.json` with the version last.
-- The template must exist on every host with the same bytes: CloudFleet loads it like a phone
+- The template must exist on every host with the same bytes: the Worker loads it like a phone
   (`templates/<key>/`), hosts never build their own.
 - **Tenants never see any of this.** The CLI and MCP use only the user's session, OAuth token or
   API key; the Worker resolves the org and does the rest.
@@ -404,8 +406,8 @@ tenant gate: `api.ts` exposes only the mapped routes, never a raw RPC.
 
 | Test | Covers |
 |---|---|
-| `website/src/cloud/scheduler.test.ts` | Event log replays, inline snapshots |
-| `website/src/cloud/cloud.test.ts` | `api.ts` + `mcp.ts` against a scripted fake host (like the fake Mac in `task.test.ts`), org isolation, MCP tool coverage |
+| `website/src/cloud/scheduler.test.ts` | `place()` and `reconcile()` as tables, inline snapshots |
+| `website/src/cloud/cloud.test.ts` | `api.ts` + `mcp.ts` + `fleet.ts` on Postgres against scripted fake hosts (like the fake Mac in `task.test.ts`): org isolation, MCP tool coverage, an idle phone stopped for another after the grace time, the cron's save to R2, a load on a second host |
 | `website/src/lib/billing.test.ts` | `kind` filter: a cloud subscription does not make an org Pro |
 | fork `VPhoneCommandTests` | Manifest diff and restore on sparse files |
 | e2e on mintmacbook | Buy in Stripe test mode, acquire, tap, install TikTok, stop, start on a second machine folder |

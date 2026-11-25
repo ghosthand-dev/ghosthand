@@ -17,9 +17,10 @@ from the coordinating Mac. Code privacy is out of scope for now.
 
 Full file list, routes, tables and Stripe setup: `docs/cloud-phones.md`. In short:
 
-- **Website** `website/src/cloud/`: CloudFleet DO and pure scheduler, `api.ts` + `mcp.ts`
-  translating the daemon API to vphone.sock and vphoned RPC, catalog, R2 layout. Hub routes slug
-  `cloud` there. Stripe $49 price, `cloud_phone` table, `subscription.kind`.
+- **Website** `website/src/cloud/`: fleet state in Postgres (`fleet.ts`: one acquire
+  transaction, a minute cron) and pure rules (`scheduler.ts`), `api.ts` + `mcp.ts` translating the
+  daemon API to vphone.sock and vphoned RPC, catalog, R2 layout. The Worker answers slug `cloud`
+  before the hub. Stripe $49 price, `cloud_phone`, `cloud_host`, `cloud_lease`, `subscription.kind`.
 - **VPhone fork**: `vphone-cli fleet serve` (start, stop, chunk sync with R2, vphone.sock relay,
   push from URL), vphone.sock `settle`, PR #1 and #2.
 - **Daemon**: `app catalog` and `app install --app <id>`: cloud phones get the R2 IPA through
@@ -27,7 +28,8 @@ Full file list, routes, tables and Stripe setup: `docs/cloud-phones.md`. In shor
 
 ## Scheduler v1 rules
 
-One pure function over the DO state. Same events in, same actions out.
+Pure functions over Postgres rows (`place`, `reconcile`); the acquire transaction and the minute
+cron apply them.
 
 - Each Mac has a fixed slot count (measured RAM per phone plus a host reserve).
 - A phone runs on at most one Mac. Its newest copy is where it last ran: that Mac's cache, or R2
@@ -36,7 +38,7 @@ One pure function over the DO state. Same events in, same actions out.
   1. the Mac that holds its newest copy, if online with a free slot,
   2. if R2 has the newest copy: any Mac with a free slot (fewest running, then slug),
   3. stop the unleased phone idle longest, if idle at least the grace time (default 10 min),
-  4. else queue FIFO; acquire waits like `ghosthand wait`.
+  4. else wait: acquire polls every 3 s like `ghosthand wait` (no queue: the first poll after a slot frees takes it).
 - If the Mac with the newest copy is offline, the phone waits for it. Only the operator script
   moves it to its older R2 copy.
 - A lease ends by release or its idle timeout (same as USB leases, default 600 s). That only
@@ -57,11 +59,11 @@ One pure function over the DO state. Same events in, same actions out.
   - Long responses: `/slow` with no byte for 60 s, 120 s and 300 s returned 200 on time, from a Worker and from a DO. A 300 s response with a line every 10 s streamed all 30 lines.
   - Errors are fast (about 200 ms) and typed: `ProxyError: destination_unavailable` (tunnel down), `connection_refused` (tunnel up, nothing listening), `destination_ip_prohibited` (no route for the IP), `dns_error`. A restarted `cloudflared` answered again within 1 s.
 - [x] Two Macs addressed by one binding. Pass with both stubs answering by name.
-  Evidence: one binding `{"network_id": "cf1:vnet:<vnet>"}` on the virtual network `ghosthand-cloud-spike-vnet`, two tunnels (mint, and this Mac as the second host), one `/32` route each. `/hosts` mapped the slugs to addresses like the CloudFleet `Host` table and both answered in parallel: `{"mint": {"address": "10.77.0.1:7400", "reply": {"name": "mint"}, "ms": 68}, "laptop": {"address": "192.168.1.105:7400", "reply": {"name": "laptop"}, "ms": 63}}`. Round trip to each: p50 76-81 ms while a 1 GiB transfer loaded the shared home link.
+  Evidence: one binding `{"network_id": "cf1:vnet:<vnet>"}` on the virtual network `ghosthand-cloud-spike-vnet`, two tunnels (mint, and this Mac as the second host), one `/32` route each. `/hosts` mapped the slugs to addresses like the fleet's host table and both answered in parallel: `{"mint": {"address": "10.77.0.1:7400", "reply": {"name": "mint"}, "ms": 68}, "laptop": {"address": "192.168.1.105:7400", "reply": {"name": "laptop"}, "ms": 63}}`. Round trip to each: p50 76-81 ms while a 1 GiB transfer loaded the shared home link.
   - The same binding could not reach mint's `127.0.0.1:7401` or its LAN address `192.168.1.6:22` (`destination_ip_prohibited`), and the default-network binding could not reach the laptop route. The vnet binding reaches only the routed `/32`s.
   - Hostname routes (`mint.ghosthand-cloud-spike.internal` to the mint tunnel) failed with `dns_error` from both binding types, even with the name in mint's `/etc/hosts`: the name is resolved by DNS, not by the host's hosts file. Names need a real DNS record and add nothing over the `Host` table.
 
-  **Addressing for `host.ts`:** by private IP. One Workers VPC binding `HOSTS = {"network_id": "cf1:vnet:<ghosthand-hosts vnet>"}`, in a virtual network used only for hosts. Each host has its own remotely managed tunnel, one route `10.77.0.<n>/32` in that vnet, and the same IP as an `lo0` alias that `fleet serve` listens on (port 7400). `host.ts` builds `http://<Host.address>/v1/...` from the CloudFleet `Host` row; host slugs are names in our table, not DNS. Adding a host is API calls only (tunnel, route, `Host` row), no Worker deploy.
+  **Addressing for `host.ts`:** by private IP. One Workers VPC binding `HOSTS = {"network_id": "cf1:vnet:<ghosthand-hosts vnet>"}`, in a virtual network used only for hosts. Each host has its own remotely managed tunnel, one route `10.77.0.<n>/32` in that vnet, and the same IP as an `lo0` alias that `fleet serve` listens on (port 7400). `host.ts` builds `http://<Host.address>/v1/...` from its `cloud_host` row; host slugs are names in our table, not DNS. Adding a host is API calls only (tunnel, route, `cloud_host` row), no Worker deploy.
   - Not `tunnel_id` bindings: one binding per host means a deploy per host, and they reach `127.0.0.1` and the whole LAN of the host (the vphone operator API, the router).
   - Not `cf1:network`: it reaches every route of the account's default network, and the public internet through Gateway.
   - `fetch` on the binding throws on network errors; `host.ts` maps `destination_unavailable` to host offline.
@@ -71,21 +73,30 @@ One pure function over the DO state. Same events in, same actions out.
 ## Task 2: Phone storage in R2 (parallel with Tasks 1 and 3)
 
 - [ ] A stopped phone uploads as template id plus changed chunks and restores into a new machine folder. Pass when the restored phone boots with the TikTok sign-in kept, with sizes and times written here.
+  Done except TikTok (2026-11-25, fork `d02500e3`, numbers in the fork's `Research/Host/fleet.md`): through the tunnel with `website/src/cloud/storage.ts` (`saveBatch`, `loadBatch`) in a throwaway Worker, phone `cph_a` (template `13e3716a2e12`, one IPA installed) saved version 1 as 291 chunks + 13 files, 662 MB LZ4, in 275 s (mint uplink, 2.4 MB/s). Its folder was moved off the host, then version 2 loaded from R2: 367 blobs in 238 s, restore 2.1 s (1.55 GB written), start 24 s, the installed app still listed. On loopback (`vphone/scripts/tests/fleet-storage-roundtrip.zsh`) a marker file and a preference written in the guest survived save (8.5 s), load (6.6 s), restore (4.2 s) and start (24.5 s).
+  Open: no TikTok sign-in to keep. The only TikTok IPA (`~/.local/share/vphone-ipa-trial/tiktok-original.ipa`, 47.8.0, ipatool) is FairPlay encrypted (`cryptid 1`), so it does not run on a VM; the catalog needs a decrypted IPA first.
 - [ ] A second upload of an unchanged phone sends almost nothing. Pass with the byte count.
+  Fails as written: a phone that only booted again changes 229 to 290 chunks per stop (445 MiB LZ4 on loopback; 287 chunks, 265 s through the tunnel). A disk compare before and after one boot and 20 s idle: 150 MiB changed at 4 KiB granularity, 523 MiB at 1 MiB, about 1 GiB at 4 MiB. The guest's boot writes are spread over the disk, so smaller chunks only halve it. A stop of a phone that did not run sends nothing (`stop` answers 200, same version). Next: measure the trimmed-services template `7db0faf75773`, or keep running phones longer between stops.
 
 ## Task 3: Fork ready for tenants (parallel with Tasks 1 and 2)
 
-- [ ] PR #1 and #2 merged; hosted VMs reach the internet only through the fail-closed proxy while `vphone-usb-guard` holds the USB link. Pass when the hosted e2e and a proxy leak test pass on two guests.
-- [ ] `--hosted` works without `--api-listen`, headless. Pass with a hosted VM driven only through `vphone.sock`.
+- [x] PR #1 and #2 merged; hosted VMs reach the internet only through the fail-closed proxy while `vphone-usb-guard` holds the USB link. Pass when the hosted e2e and a proxy leak test pass on two guests.
+  Evidence (2026-11-25, mint, bundle built from fork `d02500e3`): `scripts/tests/hosted-isolation-e2e.zsh` on `iso-tenant-a` and `iso-tenant-b`: 62 PASS, 0 failures. `scripts/tests/fleet-proxy-leak.zsh` on two fleet phones in tunnel mode with hev-socks5-server: 16 PASS, 0 failures (http and https through the proxy; the Mac canary on `*:18777` unreadable at the gateway, `127.0.0.1`, the LAN and Tailscale addresses; nothing loads with the proxy stopped; loads again without a VM restart). The guard log shows each fleet VM held (`holding USB device ... of VM service`).
+  The vphoned "Could not install update" loop: not debugged. A guest gets this bundle's vphoned offline with `sudo vphone-cli cfw update-environment <machine>` (21 s), and `fleet serve` runs it before starting a phone whose recorded bundle differs; no live update happens after it.
+- [x] `--hosted` works without `--api-listen`, headless. Pass with a hosted VM driven only through `vphone.sock`.
+  Evidence: `fleet serve` launches every phone `vm launch <id> --headless --hosted` with no API port; `cph_t1`, `cph_p1`, `cph_p2`, `cph_a`, `cph_b` were unlocked, opened Settings, tapped, installed an IPA and ran guest scripts only through `POST /v1/phones/<id>/sock`. Folder mode `drwx------`.
 - [ ] vphone.sock `settle` returns the frame after the screen stops changing, captured on the host. Pass with tap-to-frame times on Settings and TikTok.
+  Settings done (fork `211bd99f`, frames from `VPhoneGraphicsDisplayCapture`, headless screenshots use it too): through `fleet serve` on a hosted phone, `screen.unlock` 2.05 s (settled 1101 ms), `apps.launch` Settings 1.84 s (1254 ms), tap General 2.00 s (reaction 320 ms, settled 1565 ms: a new list page differs under 20%, so it waits the 1.5 s dialog window like the daemon). Open: TikTok, same IPA problem as Task 2.
 
 ## Task 4: `vphone-cli fleet serve` (sequential, after Tasks 1 and 2)
 
-- [ ] Runs under launchd on mintmacbook behind `cloudflared` with the routes above. Pass when curl through the tunnel starts two phones, installs a catalog IPA by URL, stops one with upload, and a restart on the same Mac skips the download.
+- [x] Runs under launchd on mintmacbook behind `cloudflared` with the routes above. Pass when curl through the tunnel starts two phones, installs a catalog IPA by URL, stops one with upload, and a restart on the same Mac skips the download.
+  Evidence (2026-11-25, fork `d02500e3`): LaunchDaemon `dev.ghosthand.fleet` (user tommy) serves `10.77.0.1:7400` from the root-owned bundle `/opt/ghosthand-host/VPhone.bundle`, library `~/.vphone/fleet` (setup in `docs/cloud-hosts.md`). Every call was curl to a throwaway Worker with the `HOSTS` binding (ghosthand-hosts vnet) and `PHONES` (ghosthand-phones): template manifest to R2 in 2.2 s; `cph_a` and `cph_b` started from the template in 64 s; IPA `apps/canary/1.ipa` R2 to host 0.8 s, push and `apps.install` (bundle `dev.isolation.canarybee385f5`) 2.6 s; stop and hash 10 s; save 291 chunks in 275 s; start of version 1 again 25 s with no restore and no blob request in the host log, app still installed. VMs survived restarts of `fleet serve`. One save attempt failed mid-copy with `ProxyError: destination_not_found` when `cloudflared` was restarted (SIGTERM at 15:31:32, not by this task); the retry passed.
 
 ## Task 5: Cloud module in the website (sequential, after Task 4; scheduler after Task 1)
 
-- [ ] `scheduler.ts` passes tests replaying event logs: eviction after grace, FIFO queue, one Mac per phone, waiting for an offline Mac. Pass with vitest output.
+- [ ] `scheduler.ts` passes table tests: eviction after grace, one Mac per phone, waiting for an offline Mac, every host report per phone state. Pass with vitest output.
+  2026-11-25: the CloudFleet DO was replaced by Postgres + a minute cron (decision in `plans/decisions/cloud-phones-architecture.md`); `scheduler.test.ts` and `cloud.test.ts` pass on the new fleet against fake hosts.
 - [ ] `api.ts` and `mcp.ts` serve list, acquire, release, wait, screenshot, screentext, tap, tap text, swipe, scroll, key, type, app list, launch, catalog install, and task tools on a real phone; others answer `unsupported-in-mode`. Pass with an MCP session and a test that org B cannot reach org A's lease.
 
 ## Task 6: Rent and bill (sequential, after Task 5)

@@ -23,10 +23,8 @@ export const DEFAULT_RESERVE_BYTES = 4 * GIB
 const SWAP_WARNING_BYTES = 1 * GIB
 const LOW_DISK_BYTES = 50 * GB
 const CRITICAL_DISK_BYTES = 15 * GB
-/** A start (restore included) or a stop that takes longer is stuck. */
+/** A start or a stop that takes longer is stuck. */
 const STUCK_MS = 15 * MINUTE_MS
-/** A stopped phone still not in R2 after this long is a backlog. */
-const SAVE_BACKLOG_MS = 30 * MINUTE_MS
 const RECENT_EVENTS = 20
 /** One color per org on every admin page, picked by orgColor(). */
 export const ORG_COLORS = ['#5B7BD5', '#3E9C8F', '#C8924A', '#B86A84', '#8473C9', '#6B9A5A', '#4C93B8', '#B07A5E'] as const
@@ -41,8 +39,8 @@ export type FleetPhoneRow = {
   orgId: string
   state: PhoneState
   hostSlug: string | null
-  version: number
-  savedVersion: number
+  /** first_run_at is set: its VM must be on its host. */
+  ran: boolean
   stateChangedAt: number
   subscriptionStatus: string | null
   /** Running without a live lease: since when (fleet.ts idleSince). */
@@ -86,8 +84,7 @@ export type FleetPhone = {
   color: number
   state: PhoneState
   host: string | null
-  version: number
-  savedVersion: number
+  ran: boolean
   stateChangedAt: number
   lease: { n: number; label: string | null; reason: string; lastUsedAt: number; lastCommand: string | null; expiresAt: number } | null
   idleSince: number | null
@@ -113,8 +110,10 @@ export type FleetHost = {
   report: Omit<HostStatus, 'phones'> | null
   /** Phones taking a slot: starting, running or stopping. */
   placed: FleetPhone[]
-  /** Stopped phones whose newest copy is on this host's disk. */
-  cached: FleetPhone[]
+  /** Stopped phones pinned to this host: their VM is on its disk. */
+  stopped: FleetPhone[]
+  /** Phones that ran here and are missing from this load's report: their VM is lost. */
+  lost: FleetPhone[]
   free: number
   /** Sum of the placed VMs' footprints, when every one reported it. */
   footprintBytes: number | null
@@ -154,7 +153,7 @@ export type FleetView = {
 
 export type FleetProblem = {
   severity: 'critical' | 'warning'
-  code: 'host-offline' | 'host-memory-pressure' | 'host-low-disk' | 'bundle-versions-differ' | 'phone-stuck' | 'save-backlog' | 'fleet-full' | 'no-usable-host'
+  code: 'host-offline' | 'host-memory-pressure' | 'host-low-disk' | 'bundle-versions-differ' | 'phone-lost' | 'phone-stuck' | 'fleet-full' | 'no-usable-host'
   host?: string
   phone?: string
   detail: string
@@ -178,7 +177,7 @@ export function buildFleetView({ rows, probes, now }: { rows: FleetRows; probes:
     const report = row.hostSlug ? probeOf.get(row.hostSlug)?.status?.phones.find((p) => p.id === row.phoneId) ?? null : null
     return {
       phoneId: row.phoneId, name: row.name, orgId: row.orgId, email: emails.get(row.orgId)?.[0] ?? null, color: orgColor(row.orgId),
-      state: row.state, host: row.hostSlug, version: row.version, savedVersion: row.savedVersion, stateChangedAt: row.stateChangedAt,
+      state: row.state, host: row.hostSlug, ran: row.ran, stateChangedAt: row.stateChangedAt,
       lease: lease ? {
         n: lease.n, label: lease.label, reason: lease.reason, lastUsedAt: lease.lastUsedAt, lastCommand: lease.lastCommand,
         expiresAt: lease.lastUsedAt + lease.idleTimeoutS * SECOND_MS,
@@ -193,13 +192,14 @@ export function buildFleetView({ rows, probes, now }: { rows: FleetRows; probes:
     const probe = probeOf.get(row.slug)
     const online = row.lastSeenAt !== null && now - row.lastSeenAt < HOST_ONLINE_MS
     const here = phones.filter((p) => p.host === row.slug)
-    const placed = here.filter((p) => p.state !== 'stored').sort((a, b) => cellOrder(a) - cellOrder(b) || a.phoneId.localeCompare(b.phoneId))
+    const placed = here.filter((p) => p.state !== 'stopped').sort((a, b) => cellOrder(a) - cellOrder(b) || a.phoneId.localeCompare(b.phoneId))
     const footprints = placed.map((p) => p.report?.footprintBytes)
     return {
       slug: row.slug, address: row.address, status: row.status, slots: row.slots, lastSeenAt: row.lastSeenAt, online,
       usable: online && row.status === 'active', ms: probe?.ms ?? 0, error: probe?.error ?? null,
       report: probe?.status ? hostReport(probe.status) : null,
-      placed, cached: here.filter((p) => p.state === 'stored'), free: row.slots - placed.length,
+      placed, stopped: here.filter((p) => p.state === 'stopped'), free: row.slots - placed.length,
+      lost: probe?.status ? here.filter((p) => p.ran && !p.report) : [],
       footprintBytes: placed.length && footprints.every((f) => f !== undefined) ? footprints.reduce((sum, f) => sum + f!, 0) : null,
     }
   })
@@ -210,7 +210,7 @@ export function buildFleetView({ rows, probes, now }: { rows: FleetRows; probes:
     const phone = byPhone.get(row.phoneId)
     const base = { n: row.n, phoneId: row.phoneId, color: phone?.color ?? null, host: phone?.host ?? null, label: row.label, reason: row.reason }
     const events: LeaseEvent[] = [{ ...base, at: row.createdAt, kind: 'acquired', heldMs: null }]
-    // A recover or a crashed VM ends leases that had already expired: the expiry came first.
+    // A crashed VM ends leases that had already expired: the expiry came first.
     const expiry = row.lastUsedAt + row.idleTimeoutS * SECOND_MS
     if (row.endedAt !== null && row.endedAt <= expiry) events.push({ ...base, at: row.endedAt, kind: 'ended', heldMs: row.endedAt - row.createdAt })
     else if (expiry <= now) events.push({ ...base, at: expiry, kind: 'expired', heldMs: expiry - row.createdAt })
@@ -260,13 +260,12 @@ function cellOrder(phone: FleetPhone): number {
 export function fleetProblems(view: FleetView, now: number): FleetProblem[] {
   const problems: FleetProblem[] = []
   for (const host of view.hosts) {
-    const unsaved = host.cached.filter((p) => p.version > p.savedVersion)
-    const holds = host.placed.length + unsaved.length
+    const holds = host.placed.length + host.stopped.length
     const seen = host.lastSeenAt === null ? 'has never answered the cron' : `was last seen by the cron ${formatDuration(now - host.lastSeenAt)} ago`
     if (!host.online || host.error) {
       const why = host.error ? `did not answer now (${host.error})` : 'answered now'
-      const copies = holds ? ` It holds the newest copy of ${holds} ${holds === 1 ? 'phone' : 'phones'}. Wait for the host, or run cloud-host.ts recover <phone>.` : ''
-      problems.push({ severity: !host.online && holds ? 'critical' : 'warning', code: 'host-offline', host: host.slug, detail: `${host.slug} ${why} and ${seen}.${copies}` })
+      const phones = holds ? ` Its disk holds the only copy of ${holds} ${holds === 1 ? 'phone' : 'phones'}: they cannot start until it is back.` : ''
+      problems.push({ severity: !host.online && holds ? 'critical' : 'warning', code: 'host-offline', host: host.slug, detail: `${host.slug} ${why} and ${seen}.${phones}` })
     }
     const report = host.report
     if (!report) continue
@@ -284,12 +283,10 @@ export function fleetProblems(view: FleetView, now: number): FleetProblem[] {
         detail: `${host.slug} has ${formatDisk(report.freeDiskBytes)} of free disk.`,
       })
     }
-    const backlog = unsaved.filter((p) => now - p.stateChangedAt > SAVE_BACKLOG_MS)
-    if (backlog.length) {
-      const oldest = Math.min(...backlog.map((p) => p.stateChangedAt))
+    for (const phone of host.lost) {
       problems.push({
-        severity: 'warning', code: 'save-backlog', host: host.slug,
-        detail: `${host.slug} holds ${backlog.length} stopped ${backlog.length === 1 ? 'phone' : 'phones'} not saved to R2, the oldest for ${formatDuration(now - oldest)}.`,
+        severity: 'critical', code: 'phone-lost', host: host.slug, phone: phone.phoneId,
+        detail: `${host.slug} no longer reports ${phone.phoneId} (${phone.email ?? phone.orgId}), which ran there. Restore the host's disk from its machine backup; until then its user is told the phone is lost.`,
       })
     }
   }
@@ -314,7 +311,7 @@ export function fleetProblems(view: FleetView, now: number): FleetProblem[] {
   } else if (usable.every((h) => h.free <= 0)) {
     problems.push({
       severity: 'warning', code: 'fleet-full',
-      detail: `Every usable host is full (${usable.map((h) => `${h.slug} ${h.placed.length}/${h.slots}`).join(', ')}): a stored phone starts only after an idle one passes its ${formatDuration(GRACE_MS)} grace.`,
+      detail: `Every usable host is full (${usable.map((h) => `${h.slug} ${h.placed.length}/${h.slots}`).join(', ')}): a stopped phone starts only after an idle one passes its ${formatDuration(GRACE_MS)} grace.`,
     })
   }
   return problems.sort((a, b) => Number(a.severity === 'warning') - Number(b.severity === 'warning'))

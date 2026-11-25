@@ -231,7 +231,7 @@ export function listLines(devices: CloudDevice[], now = Date.now()): string {
   const header = `mac ${CLOUD_SLUG} (${CLOUD_NAME}):`
   if (!devices.length) return `${header}\nno iPhone`
   return [header, ...devices.map((d) => {
-    const state = d.allowed ? `  (${d.state === 'stored' ? 'stopped, starts on acquire' : d.state})` : '  [subscription ended: renew on the dashboard]'
+    const state = d.allowed ? `  (${d.state === 'stopped' ? 'stopped, starts on acquire' : d.state})` : '  [subscription ended: renew on the dashboard]'
     return `${d.phoneId}  ${d.name}  ${d.modelName} (${d.model}) iOS ${d.iosVersion}${state}${d.lease ? `  [leased by ${describeLease(d.lease, now)}]` : ''}`
   })].join('\n')
 }

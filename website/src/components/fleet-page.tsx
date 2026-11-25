@@ -134,7 +134,7 @@ function Hosts({ fleet }: { fleet: Fleet }) {
       </div>
       <div className='rounded-lg border border-border'>
         <div className={cn('grid gap-x-5 border-b border-border px-4 py-2', HOST_COLUMNS, LABEL)}>
-          <span>Host</span><span>Slots</span><span>Memory</span><span>Pressure</span><span>CPU</span><span>Disk free</span><span>Cached</span><span className='text-right'>Tunnel</span>
+          <span>Host</span><span>Slots</span><span>Memory</span><span>Pressure</span><span>CPU</span><span>Disk free</span><span>Stopped</span><span className='text-right'>Tunnel</span>
         </div>
         <div className='divide-y divide-border'>
           {fleet.hosts.length
@@ -153,7 +153,7 @@ function HostRow({ host, at, full }: { host: FleetHost; at: number; full: boolea
   const used = machine?.usedBytes
   const dash = <span className='text-muted-foreground'>–</span>
   const seen = host.lastSeenAt === null ? 'never seen' : `seen ${formatDuration(at - host.lastSeenAt)} ago`
-  const holds = host.placed.length + host.cached.filter((p) => p.version > p.savedVersion).length
+  const holds = host.placed.length + host.stopped.length
   return (
     <div className={cn('grid items-center gap-x-5 px-4 py-3', HOST_COLUMNS, full && 'bg-amber-500/5')}>
       <div className='flex flex-col'>
@@ -172,7 +172,7 @@ function HostRow({ host, at, full }: { host: FleetHost; at: number; full: boolea
       {down ? (
         <div className='text-[11.5px] text-muted-foreground'>
           <span className='font-mono text-red-600 dark:text-red-400'>{host.error}</span>
-          {holds ? <> · holds the newest copy of {holds} {holds === 1 ? 'phone' : 'phones'}. Wait for it, or run <code className='rounded bg-muted px-1 font-mono'>cloud-host.ts recover &lt;phone&gt;</code></> : null}
+          {holds ? <> · holds the only copy of {holds} {holds === 1 ? 'phone' : 'phones'}: they start again when it is back</> : null}
         </div>
       ) : <MemoryMap host={host} at={at} />}
       <div className='flex flex-col gap-1'>
@@ -200,14 +200,15 @@ function HostRow({ host, at, full }: { host: FleetHost; at: number; full: boolea
       <div className='font-mono text-[11px]'>{machine?.load1 !== undefined ? `${machine.load1.toFixed(1)}/${machine.cores}` : dash}</div>
       <div className='font-mono text-[11px]'>{host.report ? formatDisk(host.report.freeDiskBytes) : dash}</div>
       <div className='flex flex-wrap items-center gap-1'>
-        {host.cached.length ? host.cached.map((phone) => (
-          <i
+        {host.stopped.length ? host.stopped.map((phone) => {
+          const lost = host.lost.some((p) => p.phoneId === phone.phoneId)
+          return <i
             key={phone.phoneId}
-            title={`${phone.email ?? phone.orgId} · ${phone.name} · v${phone.version}${phone.version > phone.savedVersion ? ', not in R2 yet' : ''}`}
-            className={cn('size-2 rounded-full', phone.version > phone.savedVersion && 'ring-2 ring-red-500/30')}
+            title={`${phone.email ?? phone.orgId} · ${phone.name}${lost ? ' · lost: not on the host' : ''}`}
+            className={cn('size-2 rounded-full', lost && 'ring-2 ring-red-500/30')}
             style={orgStyle(phone.color)}
           />
-        )) : dash}
+        }) : dash}
       </div>
       <div className={cn('text-right font-mono text-[11px]', down ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}>{down ? 'down' : `${host.ms} ms`}</div>
     </div>
@@ -280,7 +281,7 @@ function Contention({ fleet }: { fleet: Fleet }) {
     <div className='divide-y divide-border'>
       {full.map((slug) => (
         <ContentionRow key={slug} title={<>{slug} is full</>} side={<span className='text-amber-700 dark:text-amber-400'>full</span>}>
-          A stored phone starts here only after an idle one passes its grace time.
+          A stopped phone pinned here starts only after an idle one passes its grace time.
         </ContentionRow>
       ))}
       {transitions.map((phone) => (

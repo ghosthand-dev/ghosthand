@@ -1,31 +1,24 @@
 // Typed client of the fleet API that `vphone-cli fleet serve` answers on each host Mac. It is
 // reached through the `HOSTS` Workers VPC binding: a private IP per host, routed by the host's
 // Cloudflare Tunnel, no auth (nothing else can reach it). All host addressing lives here.
-// Hosts hold no keys and never call out: the Worker moves every byte (storage.ts).
+// Hosts hold no keys and never call out: the Worker sends catalog IPAs from R2 (storage.ts).
+// A phone's VM lives only on its host's disk; nothing here moves it.
 //
 //   fleet.ts, api.ts ──HOSTS.fetch http://10.77.0.1:7400/v1/...──> cloudflared ──> fleet serve
 //
-//   GET  /v1/status                           host, slots, free disk, phones and their state
-//   POST /v1/phones/{id}/start                202: clone the template or a local version, launch
-//   POST /v1/phones/{id}/stop                 202: shut down, hash the disk as `version`
-//   GET  /v1/phones/{id}/versions/{v}         that local version's manifest
-//   GET  /v1/phones/{id}/chunks/{sha256}      one chunk of a local version (Content-Length)
-//   GET  /v1/phones/{id}/files/{name}         one small file of the newest local version
-//   POST /v1/phones/{id}/versions/{v}/saved   R2 has it now: the local copy may be evicted
-//   POST /v1/blobs/missing                    which hashes the host has nowhere
-//   PUT  /v1/blobs/{sha256}                   store a chunk, small file or IPA (host checks the hash)
-//   POST /v1/phones/{id}/restore              build a version from the template and blobs
-//   POST /v1/phones/{id}/sock                 one vphone.sock JSON line, its reply
-//   POST /v1/phones/{id}/push                 vphone.sock push of a blob into the guest
+//   GET  /v1/status                  host, slots, free disk, phones and their state
+//   POST /v1/phones/{id}/start       202: launch; `create` clones the template if it is not there
+//   POST /v1/phones/{id}/stop        202: shut the VM down
+//   POST /v1/blobs/missing           which hashes the host lacks
+//   PUT  /v1/blobs/{sha256}          store an IPA (the host checks the hash)
+//   POST /v1/phones/{id}/sock        one vphone.sock JSON line, its reply
+//   POST /v1/phones/{id}/push        vphone.sock push of a blob into the guest
 
 import { env } from 'cloudflare:workers'
 import type { HostPhone } from './scheduler.ts'
-import type { PhoneManifest } from './storage.ts'
 
 const STATUS_TIMEOUT_MS = 5_000
 const CONTROL_TIMEOUT_MS = 15_000
-/** A 4 MiB chunk over the tunnel; restore writes a whole disk. */
-const TRANSFER_TIMEOUT_MS = 120_000
 /** An IPA can be hundreds of MiB. */
 const BLOB_TIMEOUT_MS = 600_000
 /** An input with settle waits up to ~3.5 s on the host; OCR and installs take longer. */
@@ -85,7 +78,7 @@ export class HostError extends Error {
 /** `address`: `10.77.0.1:7400`. Tests bind HOSTS to a scripted fake host (test-runtime.ts). */
 export function hostClient(address: string) {
   type Send = { method: string; path: string; body?: object | ReadableStream; signal: AbortSignal; timeoutMs: number }
-  /** The response with an OK status, its body unread: chunks are piped, never read in JS. */
+  /** The response with an OK status, its body unread. */
   async function send({ method, path, body, signal, timeoutMs }: Send): Promise<Response | HostError> {
     const stream = body instanceof ReadableStream
     const request = new Request(`http://${address}${path}`, {
@@ -116,26 +109,18 @@ export function hostClient(address: string) {
 
   return {
     status: ({ signal }: { signal: AbortSignal }) => call<HostStatus>({ method: 'GET', path: '/v1/status', signal, timeoutMs: STATUS_TIMEOUT_MS }),
-    start: ({ phoneId, version, template, signal }: { phoneId: string; version: number; template: string; signal: AbortSignal }) =>
-      call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/start`, body: { version, template }, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
-    stop: ({ phoneId, version, signal }: { phoneId: string; version: number; signal: AbortSignal }) =>
-      call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/stop`, body: { version }, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
-    manifest: ({ phoneId, version, signal }: { phoneId: string; version: number; signal: AbortSignal }) =>
-      call<PhoneManifest>({ method: 'GET', path: `/v1/phones/${phoneId}/versions/${version}`, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
-    chunk: ({ phoneId, sha256, signal }: { phoneId: string; sha256: string; signal: AbortSignal }) =>
-      send({ method: 'GET', path: `/v1/phones/${phoneId}/chunks/${sha256}`, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
-    file: ({ phoneId, name, signal }: { phoneId: string; name: string; signal: AbortSignal }) =>
-      send({ method: 'GET', path: `/v1/phones/${phoneId}/files/${encodeURIComponent(name)}`, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
-    saved: ({ phoneId, version, signal }: { phoneId: string; version: number; signal: AbortSignal }) =>
-      call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/versions/${version}/saved`, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
+    /** `create`: the VM never ran, so the host clones `template` unless the phone is there. Without
+     *  it the phone must exist; the host answers 409 instead of cloning a fresh one. */
+    start: ({ phoneId, template, create, signal }: { phoneId: string; template: string; create: boolean; signal: AbortSignal }) =>
+      call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/start`, body: { template, create }, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
+    stop: ({ phoneId, signal }: { phoneId: string; signal: AbortSignal }) =>
+      call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/stop`, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
     missing: async ({ hashes, signal }: { hashes: string[]; signal: AbortSignal }): Promise<string[] | HostError> => {
       const result = await call<{ missing: string[] }>({ method: 'POST', path: '/v1/blobs/missing', body: { hashes }, signal, timeoutMs: CONTROL_TIMEOUT_MS })
       return result instanceof Error ? result : result.missing
     },
     putBlob: ({ sha256, body, signal }: { sha256: string; body: ReadableStream; signal: AbortSignal }) =>
       call<void>({ method: 'PUT', path: `/v1/blobs/${sha256}`, body, signal, timeoutMs: BLOB_TIMEOUT_MS }),
-    restore: ({ phoneId, version, manifest, signal }: { phoneId: string; version: number; manifest: PhoneManifest; signal: AbortSignal }) =>
-      call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/restore`, body: { version, manifest }, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
     sock: ({ phoneId, line, signal }: { phoneId: string; line: SockLine; signal: AbortSignal }) =>
       call<SockReply>({ method: 'POST', path: `/v1/phones/${phoneId}/sock`, body: line, signal, timeoutMs: SOCK_TIMEOUT_MS }),
     push: ({ phoneId, sha256, path, signal }: { phoneId: string; sha256: string; path: string; signal: AbortSignal }) =>

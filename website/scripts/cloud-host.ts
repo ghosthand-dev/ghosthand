@@ -3,11 +3,10 @@
 //   source <(ghosthand tunnel url --new-token)   # GHOSTHAND_URL, GHOSTHAND_TOKEN (your API key)
 //   bun scripts/cloud-host.ts list
 //   bun scripts/cloud-host.ts add mint --address 10.77.0.1:7400   # slots come from the host's RAM
-//   bun scripts/cloud-host.ts drain mint      # no new starts there
+//   bun scripts/cloud-host.ts drain mint      # no new phones pinned there; its own phones still start
 //   bun scripts/cloud-host.ts enable mint
-//   bun scripts/cloud-host.ts remove mint     # refused while it runs or holds a phone
-//   bun scripts/cloud-host.ts recover cph_... # its host is gone: restart from R2
-//   bun scripts/cloud-host.ts phones          # every phone's state, host and versions
+//   bun scripts/cloud-host.ts remove mint     # refused while any phone is pinned to it
+//   bun scripts/cloud-host.ts phones          # every phone's state, host and first run
 //
 // GHOSTHAND_TOKEN is the operator's normal API key; the route checks the user is in CLOUD_ADMINS.
 // The origin of GHOSTHAND_URL picks the site (default https://ghosthand.dev; the preview fleet
@@ -15,10 +14,10 @@
 import { parseArgs } from 'node:util'
 
 const REQUEST_TIMEOUT_MS = 30_000
-const USAGE = 'usage: bun scripts/cloud-host.ts list | add <slug> --address <ip:port> | drain <slug> | enable <slug> | remove <slug> | recover <phone> | phones'
+const USAGE = 'usage: bun scripts/cloud-host.ts list | add <slug> --address <ip:port> | drain <slug> | enable <slug> | remove <slug> | phones'
 
 type HostStatus = 'active' | 'draining'
-type HostView = { slug: string; address: string; slots: number; status: HostStatus; online: boolean; lastSeenAt: number | null; running: number; cached: number }
+type HostView = { slug: string; address: string; slots: number; status: HostStatus; online: boolean; lastSeenAt: number | null; running: number; stopped: number }
 
 const { values, positionals } = parseArgs({
   options: { address: { type: 'string' } },
@@ -53,7 +52,7 @@ function printHosts(hosts: HostView[]): void {
   if (!hosts.length) return console.log('no hosts')
   for (const h of hosts) {
     const seen = h.lastSeenAt ? new Date(h.lastSeenAt).toISOString() : 'never'
-    console.log(`${h.slug}  ${h.address}  ${h.running}/${h.slots} running, ${h.cached} cached  ${h.online ? 'online' : 'offline'}${h.status === 'draining' ? '  [draining]' : ''}  last seen ${seen}`)
+    console.log(`${h.slug}  ${h.address}  ${h.running}/${h.slots} running, ${h.stopped} stopped  ${h.online ? 'online' : 'offline'}${h.status === 'draining' ? '  [draining]' : ''}  last seen ${seen}`)
   }
 }
 
@@ -95,15 +94,6 @@ switch (command) {
     await call('DELETE', `/hosts/${target}`)
     console.log(`removed ${target}`)
     break
-  case 'recover': {
-    if (!target) {
-      console.error(USAGE)
-      process.exit(1)
-    }
-    const { version } = await call<{ version: number }>('POST', `/phones/${target}/recover`)
-    console.log(`${target} restarts from its R2 version ${version} on its next acquire`)
-    break
-  }
   case 'phones':
     console.log(JSON.stringify(await call('GET', '/phones'), null, 2))
     break

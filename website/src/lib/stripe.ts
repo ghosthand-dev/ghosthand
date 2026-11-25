@@ -178,7 +178,7 @@ export async function deleteAbandonedCloudPhones(): Promise<number> {
     .where(orm.and(
       orm.isNull(schema.cloudPhone.subscriptionId),
       // Never ran: a paid phone whose subscription row is gone keeps its data.
-      orm.eq(schema.cloudPhone.version, 0),
+      orm.isNull(schema.cloudPhone.firstRunAt),
       orm.lt(schema.cloudPhone.updatedAt, new Date(Date.now() - PENDING_CLOUD_PHONE_TTL_MS)),
     ))
     .returning()

@@ -3,10 +3,9 @@
 // Each Worker manages only the hosts of its own environment (fleet.ts).
 //
 //   GET    /api/cloud-admin/view                the /admin/fleet page as JSON: {ok, problems, ...view}
-//   GET    /api/cloud-admin/hosts               hosts with running and cached phones
+//   GET    /api/cloud-admin/hosts               hosts with running and stopped phones
 //   PUT    /api/cloud-admin/hosts/:slug         add or change {address, status}; slots come from the host
-//   DELETE /api/cloud-admin/hosts/:slug         remove (refused while it runs or holds a phone)
-//   POST   /api/cloud-admin/phones/:id/recover  restart a phone from R2 when its host is gone
+//   DELETE /api/cloud-admin/hosts/:slug         remove (refused while any phone is pinned to it)
 //   GET    /api/cloud-admin/phones              every phone's runtime columns
 
 import { env } from 'cloudflare:workers'
@@ -14,7 +13,7 @@ import { Spiceflow, json } from 'spiceflow'
 import { z } from 'zod'
 import { getCallerUserId } from '../db.ts'
 import { buildFleetView, fleetProblems, type FleetProblem, type FleetView, type HostProbe } from './admin-view.ts'
-import { listFleetPhones, listHosts, readFleet, recover, removeHost, setHost } from './fleet.ts'
+import { listFleetPhones, listHosts, readFleet, removeHost, setHost } from './fleet.ts'
 import { hostClient } from './host.ts'
 
 const HOST_SLUG = /^[a-z0-9-]{1,40}$/
@@ -83,16 +82,6 @@ export const cloudAdminApp = new Spiceflow({ basePath: '/api/cloud-admin' })
       const result = await removeHost({ slug: params.slug })
       if (!result.ok) throw json({ message: result.detail }, { status: 409 })
       return { ok: true }
-    },
-  })
-  .route({
-    method: 'POST',
-    path: '/phones/:id/recover',
-    detail: { hide: true },
-    handler: async ({ params }) => {
-      const result = await recover({ phoneId: params.id })
-      if (!result) throw json({ message: `no phone ${params.id}` }, { status: 404 })
-      return result
     },
   })
   .route({

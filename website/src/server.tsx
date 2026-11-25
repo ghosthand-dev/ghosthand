@@ -402,7 +402,7 @@ export default {
     const route = pathname.startsWith('/macs/') ? '/macs/:mac/*' : pathname
     return startSpan({ name: `${request.method} ${route}` }, () => routeHubRequest(request))
   },
-  // Every minute: the cloud fleet (hosts, starts, stops, saves to R2) and unpaid phones.
+  // Every minute: the cloud fleet (hosts, starts, stops, crashes) and unpaid phones.
   // Daily (production only): mirrors Stripe subscriptions again, then fixes drift between Pro
   // orgs and the daemon repo's read-only collaborators (which reads those subscriptions).
   async scheduled(controller) {
@@ -410,7 +410,7 @@ export default {
       await startSpan({ name: 'cron cloud fleet' }, async () => {
         const fleet = await runFleetCron()
         const deleted = await deleteAbandonedCloudPhones()
-        if (fleet.hosts || deleted) console.log(`cloud fleet: ${fleet.online}/${fleet.hosts} hosts online, ${fleet.phones} phones placed, ${fleet.copied} chunks copied, ${deleted} unpaid phones deleted`)
+        if (fleet.hosts || deleted) console.log(`cloud fleet: ${fleet.online}/${fleet.hosts} hosts online, ${fleet.phones} phones pinned, ${deleted} unpaid phones deleted`)
       })
       return
     }

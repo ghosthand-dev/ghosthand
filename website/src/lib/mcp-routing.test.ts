@@ -10,8 +10,58 @@ const mini: OfflineMac = { slug: 'mini', name: 'Mac mini', lastSeenAt: NOW - 3 *
 const call = (args: Record<string, unknown>, name = 'screenshot') => ({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args } })
 
 describe('routeMcpCall', () => {
+  test('cloud iPhones are the always-online Mac `cloud`', () => {
+    const route = (message: object, online: OnlineMac[], cloud = true) => routeMcpCall({ message, online, offline: [mini], cloud, now: NOW, site: SITE })
+    const kind = (r: McpRoute) => (r.kind === 'reply' ? (r.body as any).result?.content?.[0]?.text ?? (r.body as any).result?.instructions?.slice(0, 80) : r)
+    expect({
+      lease: kind(route(call({ lease: 'cloud:7' }), [air])),
+      macCloud: kind(route(call({ mac: 'cloud' }, 'acquire'), [air])),
+      macLease: kind(route(call({ lease: 'air:3' }), [air])),
+      cloudOnly: kind(route(call({}, 'acquire'), [])),
+      cloudOnlyList: kind(route(call({}, 'list'), [])),
+      listFanout: kind(route(call({}, 'list'), [air])),
+      ambiguous: kind(route(call({}, 'acquire'), [air])),
+      noCloudPhone: kind(route(call({ lease: 'cloud:7' }), [air], false)),
+      initializeCloudOnly: kind(route({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, [])),
+      initializeWithMac: kind(route({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, [air])),
+    }).toMatchInlineSnapshot(`
+      {
+        "ambiguous": "Several Macs are online: pass mac (one of: air (MacBook Air), cloud (Cloud))",
+        "cloudOnly": {
+          "kind": "cloud",
+        },
+        "cloudOnlyList": {
+          "kind": "cloud",
+        },
+        "initializeCloudOnly": "This ghosthand account has cloud iPhones: virtual iPhones on ghosthand's servers",
+        "initializeWithMac": {
+          "kind": "forward",
+          "slug": "air",
+        },
+        "lease": {
+          "kind": "cloud",
+        },
+        "listFanout": {
+          "kind": "fanout",
+          "slugs": [
+            "air",
+            "cloud",
+          ],
+        },
+        "macCloud": {
+          "kind": "cloud",
+        },
+        "macLease": {
+          "kind": "forward",
+          "slug": "air",
+        },
+        "noCloudPhone": "This account has no Mac "cloud". Online: air (MacBook Air). Call \`list\` for the Macs and their iPhones.",
+      }
+    `)
+  })
+
   test('tools/call targets', () => {
-    const route = (args: Record<string, unknown>, online: OnlineMac[], name?: string, offline: OfflineMac[] = []) => routeMcpCall({ message: call(args, name), online, offline, now: NOW, site: SITE })
+    const route = (args: Record<string, unknown>, online: OnlineMac[], name?: string, offline: OfflineMac[] = []) => routeMcpCall({ message: call(args, name), online, offline, cloud: false, now: NOW, site: SITE })
     expect({
       lease: route({ lease: 'studio:42' }, [air, studio]),
       leaseOverMac: route({ lease: 'studio:42', mac: 'air' }, [air, studio]),
@@ -158,7 +208,7 @@ describe('routeMcpCall', () => {
     const toolsList = { jsonrpc: '2.0', id: 'a', method: 'tools/list', params: { _meta: modernMeta } }
     const oldModern = { ...call({}), params: { name: 'list', _meta: { ...modernMeta, 'io.modelcontextprotocol/protocolVersion': '2020-01-01' } } }
     const noCapabilities = { ...toolsList, params: { _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' } } }
-    const route = (message: object, online: OnlineMac[], offline: OfflineMac[] = []) => routeMcpCall({ message, online, offline, now: NOW, site: SITE })
+    const route = (message: object, online: OnlineMac[], offline: OfflineMac[] = []) => routeMcpCall({ message, online, offline, cloud: false, now: NOW, site: SITE })
     const text = (r: McpRoute) => (r.kind === 'reply' ? (r.body as any).result.content[0].text : r)
     const init = route(initialize, [])
     const list = route(toolsList, [])
@@ -260,7 +310,7 @@ describe('routeMcpCall', () => {
           "_meta": undefined,
           "cacheScope": "private",
           "resultType": "complete",
-          "tools": 46,
+          "tools": 47,
           "ttlMs": 300000,
         },
         "unsupported": {

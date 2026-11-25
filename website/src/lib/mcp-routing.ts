@@ -5,6 +5,9 @@
 // With no Mac online the hub answers initialize, server/discover and tools/list itself from
 // mcp-tools.json (generated from the daemon), so a new account can connect before any Mac is
 // set up. Its instructions and every tool call then explain the next step for the user.
+//
+// Cloud iPhones are one more Mac, slug `cloud`, that is always online when the org has one:
+// `cloud:<n>` leases and `mac: "cloud"` route to src/cloud/mcp.ts, and `list` fans out to it.
 
 import manual from '../../mcp-tools.json'
 
@@ -28,12 +31,16 @@ export type OfflineMac = { slug: string; name: string; lastSeenAt: number }
 export type McpRoute =
   /** Stream the daemon's answer through unchanged. */
   | { kind: 'forward'; slug: string }
-  /** Ask every Mac, merge with mergeListReplies. */
+  /** Answer the tool call with the org's cloud iPhones (src/cloud/mcp.ts). */
+  | { kind: 'cloud' }
+  /** Ask every Mac (`cloud` too), merge with mergeListReplies. */
   | { kind: 'fanout'; slugs: string[] }
   /** Answer here. `offline` marks errors that a reconnecting daemon could fix. */
   | { kind: 'reply'; status: number; body: object | null; offline?: boolean }
 
 export const DOWNLOAD_URL = 'https://ghosthand.dev/download'
+export const CLOUD_SLUG = 'cloud'
+const CLOUD_MAC: OnlineMac = { slug: CLOUD_SLUG, name: 'Cloud' }
 
 // Same lists as MCPServer in daemon/Sources/ghosthand/mcp.swift.
 const MODERN_VERSIONS = ['2026-07-28']
@@ -92,13 +99,21 @@ export function parseJsonRpc(text: string): { ok: true; message: JsonRpcMessage 
   return { ok: true, message: value as JsonRpcMessage }
 }
 
-export function routeMcpCall({ message, online, offline, now, site }: {
+/** What a bot reads when the org has cloud iPhones and no Mac online: no setup is needed. */
+export const CLOUD_READY_MESSAGE = [
+  `This ghosthand account has cloud iPhones: virtual iPhones on ghosthand's servers, under the Mac "${CLOUD_SLUG}".`,
+  `They need no setup and no Mac: call \`list\`, then \`acquire\` (pass mac "${CLOUD_SLUG}" when other Macs are online). A stopped cloud iPhone starts on acquire, which can take a minute.`,
+].join(' ')
+
+export function routeMcpCall({ message, online, offline, cloud, now, site }: {
   message: JsonRpcMessage
   /** Website origin (https://ghosthand.dev): the serverInfo logo and websiteUrl. */
   site: string
   online: OnlineMac[]
   /** Signed-in Macs that are not connected, for the onboarding text. */
   offline: OfflineMac[]
+  /** The org has cloud iPhones. */
+  cloud: boolean
   now: number
 }): McpRoute {
   const newest = online[0]
@@ -132,30 +147,33 @@ export function routeMcpCall({ message, online, offline, now, site }: {
     const args = (params.arguments ?? {}) as Record<string, unknown>
     const leaseSlug = typeof args.lease === 'string' ? args.lease.match(LEASE_PATTERN)?.[1] : undefined
     const target = leaseSlug ?? (typeof args.mac === 'string' ? args.mac : undefined)
+    // Every place a call can go, Macs first, newest connection first.
+    const reachable = cloud ? [...online, CLOUD_MAC] : online
+    const to = (slug: string): McpRoute => (slug === CLOUD_SLUG && cloud ? { kind: 'cloud' } : { kind: 'forward', slug })
     const noMac = (): McpRoute => {
       if (params.name !== 'setup-status') return toolError(noMacMessage({ offline, now }), true)
       const value = { content: [{ type: 'text', text: JSON.stringify(noMacSetupStatus({ offline, now })) }], isError: false }
       return { kind: 'reply', status: 200, body: result({ id, modern, info, value }), offline: true }
     }
     if (target !== undefined) {
-      if (online.some((mac) => mac.slug === target)) return { kind: 'forward', slug: target }
-      if (!online.length) return noMac()
+      if (reachable.some((mac) => mac.slug === target)) return to(target)
+      if (!reachable.length) return noMac()
       const known = offline.find((mac) => mac.slug === target)
-      if (!known) return toolError(`This account has no Mac "${target}". Online: ${describe(online)}. Call \`list\` for the Macs and their iPhones.`)
+      if (!known) return toolError(`This account has no Mac "${target}". Online: ${describe(reachable)}. Call \`list\` for the Macs and their iPhones.`)
       return toolError([
-        `${known.name} (${target}) is offline. Online: ${describe(online)}.`,
+        `${known.name} (${target}) is offline. Online: ${describe(reachable)}.`,
         `Ask the user to wake ${known.name} and open the Ghosthand app, then try again; or call \`list\` and acquire an iPhone on an online Mac (a lease works only on the Mac that gave it).`,
       ].join(' '), true)
     }
-    if (params.name === 'list' && online.length > 1) return { kind: 'fanout', slugs: online.map((mac) => mac.slug) }
-    if (online.length === 1) return { kind: 'forward', slug: online[0]!.slug }
-    if (online.length === 0) return noMac()
-    return toolError(`Several Macs are online: pass mac (one of: ${describe(online)})`)
+    if (params.name === 'list' && reachable.length > 1) return { kind: 'fanout', slugs: reachable.map((mac) => mac.slug) }
+    if (reachable.length === 1) return to(reachable[0]!.slug)
+    if (reachable.length === 0) return noMac()
+    return toolError(`Several Macs are online: pass mac (one of: ${describe(reachable)})`)
   }
 
   if (newest) return { kind: 'forward', slug: newest.slug }
-  const ok = (value: object): McpRoute => ({ kind: 'reply', status: 200, body: result({ id, modern, info, value }), offline: true })
-  const instructions = `${noMacMessage({ offline, now })}\n\n${manual.instructions}`
+  const ok = (value: object): McpRoute => ({ kind: 'reply', status: 200, body: result({ id, modern, info, value }), offline: !cloud })
+  const instructions = `${cloud ? CLOUD_READY_MESSAGE : noMacMessage({ offline, now })}\n\n${manual.instructions}`
   switch (message.method) {
     case 'ping':
       return { kind: 'reply', status: 200, body: { jsonrpc: '2.0', id, result: {} } }
@@ -186,6 +204,12 @@ function serverInfo(site: string) {
     websiteUrl: new URL(site).origin,
     icons: [{ src: new URL('/favicon.png', site).href, mimeType: 'image/png', sizes: ['512x512'] }],
   }
+}
+
+/** The JSON-RPC answer to a tool call answered in the Worker (cloud iPhones), shaped like a Mac's. */
+export function toolCallResult({ message, site, value }: { message: JsonRpcMessage; site: string; value: object }): object {
+  const meta = message.params?._meta as Record<string, unknown> | undefined
+  return result({ id: message.id ?? null, modern: meta?.[MODERN_VERSION_KEY] !== undefined, info: serverInfo(site), value })
 }
 
 /** A JSON-RPC result; requests with the modern `_meta` version get its extra fields, like the daemon's. */

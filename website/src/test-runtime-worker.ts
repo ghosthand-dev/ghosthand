@@ -1,5 +1,5 @@
 // This entry is bundled only by security tests, never by the website build.
-import { env } from 'cloudflare:workers'
+import { WorkerEntrypoint, env } from 'cloudflare:workers'
 import { getAuth } from './db.ts'
 import { GhosthandHub, getHub, isHubPath, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
@@ -7,6 +7,23 @@ import { GhosthandTask, getTask } from './task.ts'
 import { uploadsApp } from './uploads.ts'
 import { runAction } from 'spiceflow/testing'
 import { signOutMac } from './actions.tsx'
+
+import { cloudAdminApp } from './cloud/admin.ts'
+import { CloudFleet } from './cloud/fleet.ts'
+
+/** The real fleet; `runAlarm` runs its alarm now (alarm() itself is not callable over RPC). */
+export class TestFleet extends CloudFleet {
+  async runAlarm(): Promise<void> {
+    await this.alarm()
+  }
+}
+
+/** HOSTS in tests: host.ts calls http://127.0.0.1:<port>/v1/..., a scripted host in the test. */
+export class TestHosts extends WorkerEntrypoint {
+  override fetch(request: Request): Promise<Response> {
+    return fetch(request)
+  }
+}
 
 export class TestHub extends GhosthandHub {
   override async fetch(request: Request): Promise<Response> {
@@ -81,6 +98,7 @@ export default {
     if (url.pathname.startsWith('/api/auth/')) return getAuth().handler(request)
     if (isHubPath(url.pathname)) return routeHubRequest(request)
     if (url.pathname.startsWith('/api/cli/')) return cliApp.handle(request)
+    if (url.pathname.startsWith('/api/cloud-admin/')) return cloudAdminApp.handle(request)
     return uploadsApp.handle(request)
   },
 } satisfies ExportedHandler<typeof env>

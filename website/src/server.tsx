@@ -4,6 +4,7 @@
 //   /.well-known/oauth-*, /.well-known/openid-configuration   OAuth discovery (better-auth)
 //   /api/cli/*         the daemon's login and plan checks (cli-api.ts)
 //   /api/stripe/*      Stripe webhook
+//   /api/cloud-admin/* cloud host operator routes (cloud/admin.ts, scripts/cloud-host.ts)
 //   /u/:id, /u/:id/file   `ghosthand upload` share page and file (uploads.ts)
 //   /download          Mac installer page (download.mdx)
 //   /download/ghosthand.pkg, /releases/:file   public installers and release manifest (R2)
@@ -25,6 +26,7 @@ import { getHub, isHubPath, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
 import { uploadsApp } from './uploads.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
+import { cloudAdminApp } from './cloud/admin.ts'
 import { getAuth, getBaseUrl, getDb, getMcpResource, getPersonalOrg, getSession, listMacSessions } from './db.ts'
 import { entitlementFor, isProStatus } from './lib/billing.ts'
 import { DAEMON_INVITATIONS_URL, DAEMON_REPO_URL, reconcileSourceAccess } from './lib/github.ts'
@@ -121,6 +123,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
   .use(cliApp)
   .use(uploadsApp)
   .use(stripeWebhookApp)
+  .use(cloudAdminApp)
   .get('/download/ghosthand.pkg', async () => {
     const manifest = await env.RELEASES.get('latest.json')
     if (!manifest) return releaseNotFound()
@@ -371,6 +374,7 @@ declare module 'spiceflow/react' {
 
 export { GhosthandHub } from './tunnel.ts'
 export { GhosthandTask } from './task.ts'
+export { CloudFleet } from './cloud/fleet.ts'
 
 export default {
   fetch(request: Request): Promise<Response> {

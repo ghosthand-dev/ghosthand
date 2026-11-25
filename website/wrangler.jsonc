@@ -24,20 +24,30 @@
   // wrangler r2 bucket lifecycle add <bucket> abort-multipart-1-day --abort-multipart-days 1
   "r2_buckets": [
     { "binding": "UPLOADS", "bucket_name": "ghosthand-uploads" },
-    { "binding": "RELEASES", "bucket_name": "ghosthand-releases" }
+    { "binding": "RELEASES", "bucket_name": "ghosthand-releases" },
+    // Cloud iPhone storage and catalog IPAs (src/cloud/storage.ts). Hosts write it with their own token.
+    { "binding": "PHONES", "bucket_name": "ghosthand-phones" }
   ],
+  // The Macs that run cloud iPhones (src/cloud/host.ts): each one's private IP is routed by its
+  // Cloudflare Tunnel. Remote only: local dev has no hosts. Never add a production host to the
+  // preview fleet: two fleets would start phones on the same slots.
+  // TODO: the dedicated hosts virtual network (cf1:vnet:<id>) once the Task 1 tunnel spike made it.
+  "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:network" }],
   "durable_objects": {
     "bindings": [
       { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },
-      { "name": "GHOSTHAND_TASK", "class_name": "GhosthandTask" }
+      { "name": "GHOSTHAND_TASK", "class_name": "GhosthandTask" },
+      { "name": "CLOUD_FLEET", "class_name": "CloudFleet" }
     ]
   },
   // hub-v1: per-tunnel-id DOs replaced by one per user (tunnel.ts); old tunnel state is dropped.
   // task-v1: one object per phone task (task.ts), deleted one day after its last activity.
+  // cloud-fleet-v1: the one scheduler of cloud iPhones (src/cloud/fleet.ts).
   "migrations": [
     { "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] },
     { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] },
-    { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] }
+    { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] },
+    { "tag": "cloud-fleet-v1", "new_sqlite_classes": ["CloudFleet"] }
   ],
   // A task turn is one invocation with no incoming messages: tool results and model streams
   // all count against one CPU budget (default 30 s).
@@ -47,7 +57,10 @@
   // Strada project `ghosthand` (src/telemetry.ts). The id is public; STRADA_TOKEN is a secret.
   "vars": {
     "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
-    "STRADA_ENVIRONMENT": "production"
+    "STRADA_ENVIRONMENT": "production",
+    // Presigned catalog IPA URLs (src/cloud/storage.ts): the R2 S3 endpoint of PHONES.
+    "R2_ACCOUNT_ID": "103e73569e2f6d4aea0fb679ceb8709b",
+    "PHONES_BUCKET": "ghosthand-phones"
   },
   "secrets": {
     "required": [
@@ -60,7 +73,12 @@
       "STRIPE_WEBHOOK_SECRET",
       "AI_GATEWAY_API_KEY",
       "STRADA_TOKEN",
-      "GITHUB_TOKEN"
+      "GITHUB_TOKEN",
+      // R2 S3 token for ghosthand-phones: presigned catalog IPA downloads for hosts (apps.ts).
+      "R2_PHONES_ACCESS_KEY_ID",
+      "R2_PHONES_SECRET_ACCESS_KEY",
+      // scripts/cloud-host.ts: the admin route that adds, drains and removes hosts.
+      "CLOUD_ADMIN_TOKEN"
     ]
   },
   "env": {
@@ -74,24 +92,30 @@
       "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "8a9f08518c124088bf4570b21900dd55", "localConnectionString": "postgres://ghosthand:local@localhost:5432/ghosthand" }],
       "r2_buckets": [
         { "binding": "UPLOADS", "bucket_name": "ghosthand-uploads-preview" },
-        { "binding": "RELEASES", "bucket_name": "ghosthand-releases" }
+        { "binding": "RELEASES", "bucket_name": "ghosthand-releases" },
+        { "binding": "PHONES", "bucket_name": "ghosthand-phones-preview" }
       ],
+      "vpc_networks": [{ "binding": "HOSTS", "network_id": "cf1:network" }],
       "durable_objects": {
         "bindings": [
           { "name": "GHOSTHAND_HUB", "class_name": "GhosthandHub" },
-          { "name": "GHOSTHAND_TASK", "class_name": "GhosthandTask" }
+          { "name": "GHOSTHAND_TASK", "class_name": "GhosthandTask" },
+          { "name": "CLOUD_FLEET", "class_name": "CloudFleet" }
         ]
       },
       "migrations": [
         { "tag": "tunnel-v1", "new_sqlite_classes": ["GhosthandTunnel"] },
         { "tag": "hub-v1", "deleted_classes": ["GhosthandTunnel"], "new_sqlite_classes": ["GhosthandHub"] },
-        { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] }
+        { "tag": "task-v1", "new_sqlite_classes": ["GhosthandTask"] },
+        { "tag": "cloud-fleet-v1", "new_sqlite_classes": ["CloudFleet"] }
       ],
       "limits": { "cpu_ms": 300000 },
       "triggers": { "crons": [] },
       "vars": {
         "STRADA_PROJECT_ID": "01M5N4Q0XZ7DS0WXCFEMHHY1PJ",
-        "STRADA_ENVIRONMENT": "preview"
+        "STRADA_ENVIRONMENT": "preview",
+        "R2_ACCOUNT_ID": "103e73569e2f6d4aea0fb679ceb8709b",
+        "PHONES_BUCKET": "ghosthand-phones-preview"
       },
       "secrets": {
         "required": [
@@ -104,7 +128,10 @@
           "STRIPE_WEBHOOK_SECRET",
           "AI_GATEWAY_API_KEY",
           "STRADA_TOKEN",
-          "GITHUB_TOKEN"
+          "GITHUB_TOKEN",
+          "R2_PHONES_ACCESS_KEY_ID",
+          "R2_PHONES_SECRET_ACCESS_KEY",
+          "CLOUD_ADMIN_TOKEN"
         ]
       }
     }

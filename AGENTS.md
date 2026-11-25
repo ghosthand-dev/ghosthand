@@ -209,7 +209,7 @@ Where to change what:
 | Scheduling rules | `website/src/cloud/scheduler.ts` plus a row in the tables of `scheduler.test.ts` |
 | Fleet state, acquire, cron | `website/src/cloud/fleet.ts`, schema in `db/src/schema.ts` |
 | Admin fleet page, its problems | `website/src/cloud/admin-view.ts` (pure, `admin-view.test.ts`), page `components/fleet-page.tsx` |
-| Host operations (start, stop, IPA blobs, status) | `vphone/VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/` and its client `website/src/cloud/host.ts`, in the same change |
+| Host operations (start, stop, IPA blobs, status) | Edit `vphone/VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/openapi.yaml`. Regenerate Swift (`vphone/scripts/generate-fleet-openapi.zsh`) and `fleet-api.ts` (`cd website && bun scripts/generate-fleet-api.ts`) in the same change |
 | Supported apps | `website/src/cloud/apps.ts`, IPA uploaded to R2 `apps/`. USB iPhones install the same id from the App Store |
 | Templates (phone model, iOS) | `TEMPLATES` in `website/src/cloud/storage.ts`, template folder copied into each host's fleet library |
 | Billing | `website/src/lib/billing.ts` (`isCloudPhoneAllowed`, `linksCloudPhone`), `lib/stripe.ts`, `stripe-webhook.ts` |

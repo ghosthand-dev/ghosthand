@@ -303,18 +303,23 @@ curl -s -H "authorization: Bearer $GHOSTHAND_TOKEN" https://ghosthand.dev/api/cl
 
 ## Host: `vphone-cli fleet serve` (VPhone fork)
 
-New folder `VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/`. The VPhoneCommand group is a
-synchronized folder, so new files need no pbxproj edit. The swift-nio products (`NIOCore`,
-`NIOPosix`, `NIOHTTP1`, already pinned at 2.83.0 for `vphone-vm`) are added to the `vphone-cli`
-target; that is the only pbxproj change.
+Host code lives in `VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/` in the VPhone fork.
 
 | File | Holds |
 |---|---|
 | `VPhoneFleetCommand.swift` | `fleet` group (`serve`, `status`), registered in `VPhoneCommand.swift` |
-| `VPhoneFleetServer.swift` | NIO HTTP/1.1 on `--listen 10.77.0.1:7400`, JSON routes below |
+| `openapi.yaml` | Source for the Hummingbird API and the Worker's `website/src/generated/fleet-api.ts` types |
+| `VPhoneFleetServer.swift` | Hummingbird on `--listen 10.77.0.1:7400`, with generated route handlers |
 | `VPhoneFleetPhones.swift` | Phone lifecycle: clone from template (only with `create`), launch `vphone-cli vm launch <id> --headless --hosted` in its own session, ready when `vphone.sock` answers `ping`, stop with `vm stop`. State in `<vm>/fleet.json`. The IPA blob store, eviction of old IPAs below `--min-free-gb` (never phones), host metrics |
 
-Fleet API, all JSON, no auth (reachable only through the tunnel):
+The fleet API has no auth. Only the tunnel reaches it. Bodies use JSON except for the streamed blob upload.
+
+After you edit `openapi.yaml`, regenerate both sides from the root:
+
+```sh
+vphone/scripts/generate-fleet-openapi.zsh
+(cd website && bun scripts/generate-fleet-api.ts)
+```
 
 | Route | Does |
 |---|---|
@@ -323,7 +328,7 @@ Fleet API, all JSON, no auth (reachable only through the tunnel):
 | `POST /v1/phones/{id}/stop` | `202`, then `vm stop` |
 | `POST /v1/blobs/missing {hashes}` | Which of these IPA hashes the host lacks |
 | `PUT /v1/blobs/{sha256}` | Store an IPA; the host checks the hash |
-| `POST /v1/phones/{id}/sock` | Relay one vphone.sock JSON line, return its reply. Any new vphone.sock command works without a fleet change |
+| `POST /v1/phones/{id}/sock` | Relay one vphone.sock JSON line and return its reply. `VPhoneFleetSocketGate` controls which commands pass |
 | `POST /v1/phones/{id}/push {sha256, path}` | vphone.sock `push` of a blob into the guest |
 
 **R2** (bucket `ghosthand-phones`, read only by the Worker's `PHONES` binding) holds only

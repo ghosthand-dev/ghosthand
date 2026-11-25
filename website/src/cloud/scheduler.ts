@@ -22,6 +22,8 @@
 //   6. Only a host report moves a phone out of a transition. A failed or timed-out call proves
 //      nothing (the host may have done it): the next reconcile sends it again.
 
+import type { components } from '../generated/fleet-api.ts'
+
 export const GRACE_MS = 10 * 60_000
 export const DEFAULT_IDLE_TIMEOUT_S = 600
 /** A plain acquire waits this long for the phone to start (or a slot to free). */
@@ -32,14 +34,7 @@ export const HOST_ONLINE_MS = 3 * 60_000
 export type PhoneState = 'stopped' | 'starting' | 'running' | 'stopping'
 
 /** One phone in a host's `GET /v1/status` (vphone-cli fleet serve). */
-export type HostPhone = {
-  id: string
-  state: 'starting' | 'stopping' | 'running' | 'stopped'
-  /** Why the last start or stop failed. */
-  error?: string
-  /** Host memory the VM uses now (`footprint`); absent on older hosts. */
-  footprintBytes?: number
-}
+export type HostPhone = components['schemas']['HostPhone']
 
 export type HostSlot = {
   slug: string

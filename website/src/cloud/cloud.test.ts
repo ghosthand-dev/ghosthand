@@ -21,7 +21,6 @@ beforeAll(async () => {
   if (!process.env.AI_GATEWAY_API_KEY) throw new Error('AI_GATEWAY_API_KEY is missing: run `sigillo run -- pnpm test`')
   runtime = await startTestRuntime()
   host = await fakeHost('fake', { slots: 2 })
-  await runtime.env.PHONES.put(`templates/${DEFAULT_TEMPLATE}/manifest.json`, JSON.stringify(TEMPLATE_MANIFEST))
   // The operator route scripts/cloud-host.ts calls, with an API key of a user in CLOUD_ADMINS.
   const admin = (token?: string) => runtime.worker.fetch('/api/cloud-admin/hosts/fake', {
     method: 'PUT', headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
@@ -65,35 +64,31 @@ const SCREENS: Record<string, string[]> = {
 const TAPS: Record<string, Record<string, string>> = { home: { Settings: 'settings' }, settings: { General: 'general' }, general: { About: 'about' } }
 const ROW_HEIGHT = 44
 
-type Manifest = { template: string; size: number; chunks: string[]; files: Record<string, { sha256: string; size: number }> }
+/** The part of a manifest the Worker reads; the host's real one also lists extents and files. */
+type Manifest = { format: 2; template: string; version: number; packs: Record<string, number> }
 const sha = (bytes: string | Buffer) => createHash('sha256').update(bytes).digest('hex')
-/** Every host has the template's bytes; R2 has its manifest. Tiny chunks stand in for 4 MiB. */
-const TEMPLATE_BLOBS = ['template chunk 0', 'template chunk 1', 'template config.plist']
-const TEMPLATE_MANIFEST: Manifest = {
-  template: DEFAULT_TEMPLATE, size: 3 * 4 * 1024 * 1024, chunks: [sha(TEMPLATE_BLOBS[0]!), sha(TEMPLATE_BLOBS[1]!), '0'],
-  files: { 'config.plist': { sha256: sha(TEMPLATE_BLOBS[2]!), size: TEMPLATE_BLOBS[2]!.length } },
-}
+/** Bytes of the pack a stop of `version` writes. Tiny packs stand in for ~32 MiB. */
+const packText = (id: string, version: number) => `pack ${id} v${version}`
 
 /** One host Mac speaking the fleet API, a Settings app on every phone. `slots` is what its
- *  status reports (a test may change it). Starts, stops and
- *  restores finish at once. A stop hashes the disk as the new version with one changed chunk
- *  and a new nvram.bin. `lines` records each
- *  vphone.sock line, `calls` the storage calls, `puts` each blob the Worker sent. */
+ *  status reports (a test may change it). Starts, stops and restores finish at once. A stop
+ *  writes one new pack and keeps pointing into the packs of the version before. `lines` records
+ *  each vphone.sock line, `calls` the storage calls, `puts` each blob or pack range the Worker sent. */
 async function fakeHost(name: string, { slots }: { slots: number }) {
   type FakePhone = { state: 'running' | 'stopped'; version: number; savedVersion: number; screen: string; error?: string }
   const phones = new Map<string, FakePhone>()
-  const blobs = new Map(TEMPLATE_BLOBS.map((text) => [sha(text), Buffer.from(text)]))
+  const blobs = new Map<string, Buffer>()
   const manifests = new Map<string, Manifest>()
+  /** Packs written on stop that R2 does not have yet, by `<id>:<pack>`. */
+  const local = new Map<string, Buffer>()
+  /** Pack bytes sent for a restore, by `<id>:<pack>`. */
+  const incoming = new Map<string, Buffer>()
   const lines: Record<string, unknown>[] = []
   const calls: string[] = []
-  const puts: { sha256: string; matches: boolean; bytes: number }[] = []
+  const puts: ({ sha256: string; matches: boolean; bytes: number } | { pack: string; offset: number; text: string })[] = []
   // A block per row, centers in points: src/fixtures/task-<screen>.jpg draws them there.
   const blocks = (screen: string) => SCREENS[screen]!.map((text, i) => ({ text, confidence: 0.99, x: 80, y: 110 + i * ROW_HEIGHT, width: 120, height: 20 }))
   const image = (screen: string) => readFileSync(new URL(`../fixtures/task-${screen}.jpg`, import.meta.url)).toString('base64')
-  const store = (text: string) => {
-    blobs.set(sha(text), Buffer.from(text))
-    return { sha256: sha(text), size: text.length }
-  }
 
   const sock = (id: string, line: Record<string, unknown>) => {
     lines.push(line)
@@ -125,8 +120,9 @@ async function fakeHost(name: string, { slots }: { slots: number }) {
     const raw = Buffer.concat(chunks)
     const body = request.headers['content-type'] === 'application/json' && raw.length ? JSON.parse(raw.toString()) : {}
     const send = (status: number, value?: object) => {
-      response.writeHead(status, { 'content-type': 'application/json' })
-      response.end(value ? JSON.stringify(value) : '')
+      const text = value ? JSON.stringify(value) : ''
+      response.writeHead(status, { 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(text)) })
+      response.end(text)
     }
     const bytes = (data: Buffer | undefined) => {
       if (!data) return send(404, { error: 'no such blob' })
@@ -159,33 +155,55 @@ async function fakeHost(name: string, { slots }: { slots: number }) {
     }
     if (op === 'stop' && phone) {
       calls.push(`stop ${id} v${body.version}`)
-      const before = phone.version === 0 ? TEMPLATE_MANIFEST : manifests.get(`${id}:${phone.version}`)!
+      const before = manifests.get(`${id}:${phone.version}`)
+      const pack = `${body.version}/pack-0`
+      local.set(`${id}:${pack}`, Buffer.from(packText(id!, body.version)))
       manifests.set(`${id}:${body.version}`, {
-        ...before, chunks: [before.chunks[0]!, store(`disk ${id} v${body.version}`).sha256, before.chunks[2]!],
-        files: { ...before.files, 'nvram.bin': store(`nvram ${id} v${body.version}`) },
+        format: 2, template: DEFAULT_TEMPLATE, version: body.version, packs: { ...before?.packs, [pack]: packText(id!, body.version).length },
       })
       Object.assign(phone, { state: 'stopped', version: body.version })
       return send(202)
     }
+    const version = Number(arg?.split('/')[0])
     if (op === 'versions' && arg?.endsWith('/saved')) {
-      calls.push(`saved ${id} v${arg.split('/')[0]}`)
-      phone!.savedVersion = Number(arg.split('/')[0])
+      calls.push(`saved ${id} v${version}`)
+      phone!.savedVersion = version
+      if (version === phone!.version) for (const key of [...local.keys()]) if (key.startsWith(`${id}:`)) local.delete(key)
       return send(204)
+    }
+    if (op === 'versions' && arg?.endsWith('/uploads')) {
+      const manifest = manifests.get(`${id}:${version}`)!
+      const packs = Object.keys(manifest.packs).sort()
+      return send(200, { uploads: packs.filter((p) => local.has(`${id}:${p}`)).map((p) => ({ pack: p, size: manifest.packs[p] })), packs })
+    }
+    if (op === 'versions' && arg?.endsWith('/restore')) {
+      const manifest = JSON.parse(raw.toString()) as Manifest
+      const missing = Object.entries(manifest.packs)
+        .filter(([pack, size]) => incoming.get(`${id}:${pack}`)?.length !== size)
+        .map(([pack, size]) => ({ pack, offset: 0, length: size }))
+      if (missing.length) return send(200, { state: 'stopped', missing })
+      calls.push(`restore ${id} v${version}`)
+      manifests.set(`${id}:${version}`, manifest)
+      phones.set(id!, { state: 'stopped', version, savedVersion: version, screen: 'home' })
+      return send(202, { state: 'restoring', missing: [] })
     }
     if (op === 'versions') {
       const manifest = manifests.get(`${id}:${arg}`)
-      return manifest ? send(200, manifest) : send(404, { error: 'no such version' })
+      return manifest ? bytes(Buffer.from(JSON.stringify(manifest))) : send(404, { error: 'no such version' })
     }
-    if (op === 'chunks') return bytes(blobs.get(arg!))
-    if (op === 'files') return bytes(blobs.get(manifests.get(`${id}:${phone!.version}`)!.files[decodeURIComponent(arg!)]!.sha256))
-    if (op === 'restore') {
-      const manifest = body.manifest as Manifest
-      const lacking = [...manifest.chunks.filter((c) => c !== '0'), ...Object.values(manifest.files).map((f) => f.sha256)].filter((h) => !blobs.has(h))
-      if (lacking.length) return send(409, { error: `missing blobs ${lacking.join(', ')}` })
-      calls.push(`restore ${id} v${body.version}`)
-      manifests.set(`${id}:${body.version}`, manifest)
-      phones.set(id!, { state: 'stopped', version: body.version, savedVersion: body.version, screen: 'home' })
-      return send(202)
+    const [, pack, offset] = arg?.match(/^(\d+\/pack-\d+)(?:\/(\d+))?$/) ?? []
+    if (op === 'packs' && request.method === 'GET') {
+      calls.push(`upload ${id} ${pack}`)
+      return bytes(local.get(`${id}:${pack}`))
+    }
+    if (op === 'packs' && request.method === 'PUT') {
+      puts.push({ pack: pack!, offset: Number(offset), text: raw.toString() })
+      const before = incoming.get(`${id}:${pack}`) ?? Buffer.alloc(0)
+      const after = Buffer.alloc(Math.max(before.length, Number(offset) + raw.length))
+      before.copy(after)
+      raw.copy(after, Number(offset))
+      incoming.set(`${id}:${pack}`, after)
+      return send(200, { stored: pack })
     }
     if (op === 'push') {
       if (!blobs.has(body.sha256)) return send(404, { error: 'no such blob' })
@@ -448,7 +466,7 @@ test('a phone task drives a cloud iPhone through the hub', async () => {
   expect(result.text).toContain('Morse iPhone')
 }, 90_000)
 
-test('the Worker saves a stopped phone to R2, loads it on another host, and sends catalog IPAs', async () => {
+test('the Worker saves a stopped phone to R2, loads it on another host, saves only new packs, and sends catalog IPAs', async () => {
   const phoneState = async (phoneId: string) => (await runtime.sql('SELECT state, host_slug, version, saved_version FROM cloud_phone WHERE cloud_phone_id = $1', [phoneId]))[0]
   const mint = await fakeHost('mint', { slots: 1 })
   // Only mint takes new phones, one at a time.
@@ -467,25 +485,20 @@ test('the Worker saves a stopped phone to R2, loads it on another host, and send
   expect(fLease.status).toBe(201)
   expect(mint.calls).toEqual([`start ${e.phoneId} v0`, `stop ${e.phoneId} v1`, `start ${f.phoneId} v0`])
   expect(await phoneState(e.phoneId)).toEqual({ state: 'stored', host_slug: 'mint', version: 1, saved_version: 0 })
-  // The cron copies E to R2: only what the template lacks, the small files, the manifest last.
+  // The cron copies E's pack to R2, then the manifest last.
   await cron()
-  expect(mint.calls.at(-1)).toBe(`saved ${e.phoneId} v1`)
+  expect(mint.calls.slice(-2)).toEqual([`upload ${e.phoneId} 1/pack-0`, `saved ${e.phoneId} v1`])
   expect(await phoneState(e.phoneId)).toEqual({ state: 'stored', host_slug: 'mint', version: 1, saved_version: 1 })
-  const listed = await runtime.env.PHONES.list()
-  expect(listed.objects.map((o) => o.key).filter((k) => !k.startsWith('templates/')).sort()).toEqual([
-    `chunks/${sha(`disk ${e.phoneId} v1`)}`, `phones/${e.phoneId}/1/config.plist`, `phones/${e.phoneId}/1/manifest.json`, `phones/${e.phoneId}/1/nvram.bin`,
-  ].sort())
-  expect(await (await runtime.env.PHONES.get(`chunks/${sha(`disk ${e.phoneId} v1`)}`))!.text()).toBe(`disk ${e.phoneId} v1`)
+  const keys = async () => (await runtime.env.PHONES.list({ prefix: `phones/${e.phoneId}/` })).objects.map((o) => o.key).sort()
+  expect(await keys()).toEqual([`phones/${e.phoneId}/1/manifest.json`, `phones/${e.phoneId}/1/pack-0`])
+  expect(await (await runtime.env.PHONES.get(`phones/${e.phoneId}/1/pack-0`))!.text()).toBe(packText(e.phoneId, 1))
 
-  // mint is full: E starts on studio, which first gets the blobs it lacks from R2.
+  // mint is full: E starts on studio, which first gets the pack ranges it lacks from R2.
   const studio = await fakeHost('studio', { slots: 1 })
   await setHost(studio, 'active')
   const second = await e.acquire({ reason: 'second run' })
   expect(second.status).toBe(201)
-  expect(studio.puts).toEqual([
-    { sha256: sha(`disk ${e.phoneId} v1`), matches: true, bytes: `disk ${e.phoneId} v1`.length },
-    { sha256: sha(`nvram ${e.phoneId} v1`), matches: true, bytes: `nvram ${e.phoneId} v1`.length },
-  ])
+  expect(studio.puts).toEqual([{ pack: '1/pack-0', offset: 0, text: packText(e.phoneId, 1) }])
   expect(studio.calls).toEqual([`restore ${e.phoneId} v1`, `start ${e.phoneId} v1`])
   const lease = second.body.id as string
   expect(await phoneState(e.phoneId)).toEqual({ state: 'running', host_slug: 'studio', version: 1, saved_version: 1 })
@@ -507,7 +520,23 @@ test('the Worker saves a stopped phone to R2, loads it on another host, and send
   // The catalog's sha256 is a placeholder until Task 4 uploads the real IPAs: only the bytes are checked here.
   expect(studio.puts).toEqual([{ sha256: '0'.repeat(64), matches: false, bytes: ipa.length }])
   expect(studio.calls.filter((c) => c.startsWith('push'))).toEqual(['push 00000000 /var/mobile/Media/Downloads/reddit.ipa', 'push 00000000 /var/mobile/Media/Downloads/reddit.ipa'])
-}, 90_000)
+
+  // G needs studio's slot: E is stopped as v2, which points into v1's pack and one new pack.
+  expect((await e.api(`/leases/${lease}`, { method: 'DELETE' })).status).toBe(200)
+  const g = await renter('Third iPhone')
+  await runtime.sql(`UPDATE cloud_lease SET ended_at = now() - interval '11 minutes' WHERE cloud_phone_id = $1`, [e.phoneId])
+  await runtime.sql(`UPDATE cloud_phone SET state_changed_at = now() - interval '11 minutes' WHERE cloud_phone_id = $1`, [e.phoneId])
+  expect((await g.acquire({ reason: 'needs studio', waitSeconds: 600 })).status).toBe(201)
+  await runtime.env.PHONES.put(`phones/${e.phoneId}/9/pack-0`, 'left by a save that never finished')
+  studio.puts.length = 0
+  await cron()
+  expect(studio.calls.slice(-2)).toEqual([`upload ${e.phoneId} 2/pack-0`, `saved ${e.phoneId} v2`])
+  // Only the new pack travels; v1 stays loadable (Postgres had it as saved); the stray pack is gone.
+  expect(await keys()).toEqual([
+    `phones/${e.phoneId}/1/manifest.json`, `phones/${e.phoneId}/1/pack-0`, `phones/${e.phoneId}/2/manifest.json`, `phones/${e.phoneId}/2/pack-0`,
+  ])
+  expect(await (await runtime.env.PHONES.get(`phones/${e.phoneId}/2/manifest.json`))!.json()).toMatchObject({ packs: { '1/pack-0': packText(e.phoneId, 1).length, '2/pack-0': packText(e.phoneId, 2).length } })
+}, 120_000)
 
 test('a host runs as many phones as the slots it reports, and the admin view shows it full', async () => {
   const trio = await fakeHost('trio', { slots: 3 })

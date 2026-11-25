@@ -5,26 +5,26 @@
 //
 //   fleet.ts, api.ts ──HOSTS.fetch http://10.77.0.1:7400/v1/...──> cloudflared ──> fleet serve
 //
-//   GET  /v1/status                           host, slots, free disk, phones and their state
-//   POST /v1/phones/{id}/start                202: clone the template or a local version, launch
-//   POST /v1/phones/{id}/stop                 202: shut down, hash the disk as `version`
-//   GET  /v1/phones/{id}/versions/{v}         that local version's manifest
-//   GET  /v1/phones/{id}/chunks/{sha256}      one chunk of a local version (Content-Length)
-//   GET  /v1/phones/{id}/files/{name}         one small file of the newest local version
-//   POST /v1/phones/{id}/versions/{v}/saved   R2 has it now: the local copy may be evicted
-//   POST /v1/blobs/missing                    which hashes the host has nowhere
-//   PUT  /v1/blobs/{sha256}                   store a chunk, small file or IPA (host checks the hash)
-//   POST /v1/phones/{id}/restore              build a version from the template and blobs
-//   POST /v1/phones/{id}/sock                 one vphone.sock JSON line, its reply
-//   POST /v1/phones/{id}/push                 vphone.sock push of a blob into the guest
+//   GET  /v1/status                                host, slots, free disk, phones and their state
+//   POST /v1/phones/{id}/start                     202: clone the template or a local version, launch
+//   POST /v1/phones/{id}/stop                      202: shut down, write the packs of `version`
+//   GET  /v1/phones/{id}/versions/{v}              that local version's manifest (Content-Length)
+//   GET  /v1/phones/{id}/versions/{v}/uploads      packs R2 lacks, and every pack the version uses
+//   GET  /v1/phones/{id}/packs/{v}/pack-{n}        one pack (Content-Length)
+//   POST /v1/phones/{id}/versions/{v}/saved        R2 has it now: the local copy may be evicted
+//   POST /v1/phones/{id}/versions/{v}/restore      body: the manifest. {missing} ranges, or it starts
+//   PUT  /v1/phones/{id}/packs/{v}/pack-{n}/{off}  one range of a pack for a restore
+//   POST /v1/blobs/missing                         which IPA hashes the host lacks
+//   PUT  /v1/blobs/{sha256}                        store an IPA (host checks the hash)
+//   POST /v1/phones/{id}/sock                      one vphone.sock JSON line, its reply
+//   POST /v1/phones/{id}/push                      vphone.sock push of a blob into the guest
 
 import { env } from 'cloudflare:workers'
 import type { HostPhone } from './scheduler.ts'
-import type { PhoneManifest } from './storage.ts'
 
 const STATUS_TIMEOUT_MS = 5_000
 const CONTROL_TIMEOUT_MS = 15_000
-/** A 4 MiB chunk over the tunnel; restore writes a whole disk. */
+/** A ~32 MiB pack, or a restore range up to 64 MiB, over the tunnel. */
 const TRANSFER_TIMEOUT_MS = 120_000
 /** An IPA can be hundreds of MiB. */
 const BLOB_TIMEOUT_MS = 600_000
@@ -59,6 +59,12 @@ export type HostStatus = {
   reserveBytes?: number
 }
 
+/** A byte range of a pack a restore still needs. */
+export type PackRange = { pack: string; offset: number; length: number }
+
+/** What a save copies: the packs R2 lacks, and every pack the version points into. */
+export type SavePlan = { uploads: { pack: string; size: number }[]; packs: string[] }
+
 export type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
 
 /** One vphone.sock JSON line: `t` is the command (`rpc`, `screenshot`, `tap`, ...). */
@@ -85,7 +91,7 @@ export class HostError extends Error {
 /** `address`: `10.77.0.1:7400`. Tests bind HOSTS to a scripted fake host (test-runtime.ts). */
 export function hostClient(address: string) {
   type Send = { method: string; path: string; body?: object | ReadableStream; signal: AbortSignal; timeoutMs: number }
-  /** The response with an OK status, its body unread: chunks are piped, never read in JS. */
+  /** The response with an OK status, its body unread: packs are piped, never read in JS. */
   async function send({ method, path, body, signal, timeoutMs }: Send): Promise<Response | HostError> {
     const stream = body instanceof ReadableStream
     const request = new Request(`http://${address}${path}`, {
@@ -121,11 +127,11 @@ export function hostClient(address: string) {
     stop: ({ phoneId, version, signal }: { phoneId: string; version: number; signal: AbortSignal }) =>
       call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/stop`, body: { version }, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
     manifest: ({ phoneId, version, signal }: { phoneId: string; version: number; signal: AbortSignal }) =>
-      call<PhoneManifest>({ method: 'GET', path: `/v1/phones/${phoneId}/versions/${version}`, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
-    chunk: ({ phoneId, sha256, signal }: { phoneId: string; sha256: string; signal: AbortSignal }) =>
-      send({ method: 'GET', path: `/v1/phones/${phoneId}/chunks/${sha256}`, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
-    file: ({ phoneId, name, signal }: { phoneId: string; name: string; signal: AbortSignal }) =>
-      send({ method: 'GET', path: `/v1/phones/${phoneId}/files/${encodeURIComponent(name)}`, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
+      send({ method: 'GET', path: `/v1/phones/${phoneId}/versions/${version}`, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
+    uploads: ({ phoneId, version, signal }: { phoneId: string; version: number; signal: AbortSignal }) =>
+      call<SavePlan>({ method: 'GET', path: `/v1/phones/${phoneId}/versions/${version}/uploads`, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
+    pack: ({ phoneId, pack, signal }: { phoneId: string; pack: string; signal: AbortSignal }) =>
+      send({ method: 'GET', path: `/v1/phones/${phoneId}/packs/${pack}`, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
     saved: ({ phoneId, version, signal }: { phoneId: string; version: number; signal: AbortSignal }) =>
       call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/versions/${version}/saved`, signal, timeoutMs: CONTROL_TIMEOUT_MS }),
     missing: async ({ hashes, signal }: { hashes: string[]; signal: AbortSignal }): Promise<string[] | HostError> => {
@@ -134,8 +140,11 @@ export function hostClient(address: string) {
     },
     putBlob: ({ sha256, body, signal }: { sha256: string; body: ReadableStream; signal: AbortSignal }) =>
       call<void>({ method: 'PUT', path: `/v1/blobs/${sha256}`, body, signal, timeoutMs: BLOB_TIMEOUT_MS }),
-    restore: ({ phoneId, version, manifest, signal }: { phoneId: string; version: number; manifest: PhoneManifest; signal: AbortSignal }) =>
-      call<void>({ method: 'POST', path: `/v1/phones/${phoneId}/restore`, body: { version, manifest }, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
+    /** `body`: the manifest as R2 holds it. Empty `missing`: the restore started, or the version is there. */
+    restore: ({ phoneId, version, body, signal }: { phoneId: string; version: number; body: ReadableStream; signal: AbortSignal }) =>
+      call<{ state: string; missing: PackRange[] }>({ method: 'POST', path: `/v1/phones/${phoneId}/versions/${version}/restore`, body, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
+    putRange: ({ phoneId, pack, offset, body, signal }: { phoneId: string; pack: string; offset: number; body: ReadableStream; signal: AbortSignal }) =>
+      call<void>({ method: 'PUT', path: `/v1/phones/${phoneId}/packs/${pack}/${offset}`, body, signal, timeoutMs: TRANSFER_TIMEOUT_MS }),
     sock: ({ phoneId, line, signal }: { phoneId: string; line: SockLine; signal: AbortSignal }) =>
       call<SockReply>({ method: 'POST', path: `/v1/phones/${phoneId}/sock`, body: line, signal, timeoutMs: SOCK_TIMEOUT_MS }),
     push: ({ phoneId, sha256, path, signal }: { phoneId: string; sha256: string; path: string; signal: AbortSignal }) =>

@@ -16,6 +16,7 @@
 //      d. else it waits. A phone whose newest copy is only on an offline host waits for that
 //         host; only the operator's recover moves it to its R2 copy.
 //   3. A running phone without a lease keeps running until a stored one needs its slot.
+//      TODO: so a phone that runs for weeks is never saved; stop idle phones with no save in 24 h.
 //   4. A stop hashes the disk on the host as version + 1; the cron then copies it to R2.
 //      A VM that stopped by itself (crash, host restart) is hashed the same way.
 //   5. Only a host report moves a phone out of a transition. A failed or timed-out call proves
@@ -120,6 +121,8 @@ export function reconcile({ phone, report }: {
     case 'starting':
       if (report?.state === 'running') return { state: 'running' }
       if (busy) return {}
+      // TODO: after recover() a returning host can report a stale copy with this same version
+      // number; start a local copy only when the host's own savedVersion proves it (Fable review).
       if (report?.state === 'stopped' && report.version === phone.version) return { call: 'start' }
       // Version 0 of a phone the host has never seen is a new clone of its template.
       if (!report && phone.version === 0) return { call: 'start' }

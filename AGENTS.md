@@ -178,7 +178,7 @@ host Mac: cloudflared ──> vphone-cli fleet serve (no keys, never calls out) 
   phone's subscription allows it. Tenants never see hosts, R2 or any key.
 - **Hosts hold no keys and never call out.** Reaching a host through its tunnel is the only
   authority, and only the Worker's `HOSTS` binding can. The Worker moves every byte between R2 and
-  the host (disk chunks after a stop and before a start on a new host, catalog IPAs). Pipe bodies,
+  the host (disk packs after a stop, pack ranges before a start on a new host, catalog IPAs). Pipe bodies,
   never read them in JS (a 1 GiB body read in a Worker failed with error 1102).
 - **One store, Postgres, one fact per column.** Access is the linked subscription's status
   (pending = none yet), a host is online while `last_seen_at` is recent, a lease is live until

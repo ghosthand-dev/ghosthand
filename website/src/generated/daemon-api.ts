@@ -935,6 +935,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/leases/{lease}/apps/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List catalog apps
+         * @description Apps that `POST apps/catalog/{app}` installs by id. The list comes from ghosthand.dev,
+         *     so new apps need no daemon update. `installed` says if the iPhone has the app now.
+         */
+        get: operations["listCatalogApps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/leases/{lease}/apps/catalog/{app}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install catalog app
+         * @description Installs a catalog app and answers when it is installed. A USB iPhone gets it from the
+         *     App Store app: the daemon opens the app's page with Spotlight, taps Get (or the
+         *     download icon) and waits until `GET apps` shows it without `installing`. It needs an
+         *     Apple Account signed in to the App Store, and free downloads without a password
+         *     prompt. A cloud iPhone gets the app from ghosthand.dev. Stream with
+         *     `Accept: text/event-stream` to see the steps; closing the stream stops the wait.
+         */
+        post: operations["installCatalogApp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/leases/{lease}/apps/{bundle}": {
         parameters: {
             query?: never;
@@ -2097,6 +2143,20 @@ export interface components {
         };
         AppList: {
             apps: components["schemas"]["App"][];
+        };
+        CatalogApp: {
+            /** @description Catalog id for `POST apps/catalog/{app}`, e.g. tiktok */
+            id: string;
+            name: string;
+            bundleId: string;
+            /** @description The number in apps.apple.com/app/id<appStoreId> */
+            appStoreId: number;
+            /** @description The iPhone has the app now. `installing` while an App Store download runs */
+            installed?: boolean;
+            installing?: boolean;
+        };
+        CatalogAppList: {
+            apps: components["schemas"]["CatalogApp"][];
         };
         DeviceInfo: {
             udid: string;
@@ -4074,6 +4134,54 @@ export interface operations {
                     "application/json": components["schemas"]["Message"];
                 };
             };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listCatalogApps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Lease id from `POST /v1/leases`. Unknown, expired, released or taken with `force` gives `lease-invalid`.
+                 * @example 42
+                 */
+                lease: components["parameters"]["Lease"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Catalog apps */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogAppList"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    installCatalogApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description Lease id from `POST /v1/leases`. Unknown, expired, released or taken with `force` gives `lease-invalid`.
+                 * @example 42
+                 */
+                lease: components["parameters"]["Lease"];
+                /** @description Catalog app id from `GET apps/catalog`, e.g. tiktok */
+                app: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["Action"];
             default: components["responses"]["Problem"];
         };
     };

@@ -176,6 +176,7 @@
               "docs/cli/photo-delete",
               "docs/cli/upload",
               "docs/cli/app-list",
+              "docs/cli/app-catalog",
               "docs/cli/app-install",
               "docs/cli/app-uninstall"
             ]

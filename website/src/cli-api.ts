@@ -15,6 +15,7 @@
 //          ── GET  /api/cli/tasks/:id/stream ▶ the running turn again, or 204
 //          ── GET  /api/cli/tasks/:id ───────▶ the task's messages
 //          ── POST /api/cli/tasks/:id/abort ─▶ stops the running turn
+//          ── GET  /api/cli/apps/catalog ────▶ apps `app install --app <id>` installs (public, cloud/apps.ts)
 
 import { Spiceflow, json } from 'spiceflow'
 import { APIError } from 'better-auth/api'
@@ -29,6 +30,7 @@ import { abortMultipartUpload, completeMultipartUpload, createUpload, parseUploa
 import { getTask, TASK_LEASE_PATTERN } from './task.ts'
 import { TaskPhone } from './task-agent.ts'
 import { trackEvent } from './telemetry.ts'
+import { publicCatalog } from './cloud/apps.ts'
 
 const CLIENT_ID = 'ghosthand'
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code'
@@ -354,6 +356,15 @@ export const cliApp = new Spiceflow({ basePath: '/api/cli' })
     async handler({ request, params, query }) {
       const { org: { orgId } } = await requireCaller(request)
       return { aborted: await getTask({ orgId, taskId: parseTaskId(params.id) }).abort({ prompt: query.prompt }) }
+    },
+  })
+  // Public data: the daemon caches it for its run, so new apps need no daemon release.
+  .route({
+    method: 'GET',
+    path: '/apps/catalog',
+    detail: { hide: true },
+    handler() {
+      return json(publicCatalog(), { headers: { 'cache-control': 'public, max-age=300' } })
     },
   })
   .route({

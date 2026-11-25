@@ -45,12 +45,11 @@ enough for LLM vision, and the same coordinates `tap` and `swipe` take.
 - --native is a last resort: only when a second normal screenshot still misses a
   dialog you expect (often the screen is dimmed, but not always). A few system dialogs
   are hidden from USB capture (seen: App Store Install sheet, cellular data and
-  location prompts); a real iOS
-  screenshot shows them, at the same coordinates `tap` takes. It costs 2-7 s instead
-  of 0.1 s and needs Bluetooth and an unlocked phone. The file is deleted from Photos
-  after reading, except with iCloud Photos on: then it stays in the user's library.
-  iOS shows a screenshot thumbnail at the bottom left for a few seconds; it does not
-  block taps elsewhere.
+  location prompts); a real iOS screenshot shows them, at the same coordinates `tap`
+  takes. It costs 2-7 s instead of 0.1 s and needs Bluetooth and an unlocked phone.
+  The file is deleted from Photos after reading, except with iCloud Photos on: then it
+  stays in the user's library. iOS shows a screenshot thumbnail at the bottom left for
+  a few seconds; it does not block taps elsewhere.
 - XCTest mode: the image comes from XCTest; hidden-dialog support is not verified.
   --native is not needed.
 

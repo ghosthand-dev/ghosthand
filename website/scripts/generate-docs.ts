@@ -61,7 +61,7 @@ const groups: { group: string; icon: string; commands: string[] }[] = [
   {
     group: 'Files, photos and apps',
     icon: 'lucide:folder-open',
-    commands: ['file list', 'file pull', 'file push', 'file remove', 'photo list', 'photo pull', 'photo delete', 'upload', 'app list', 'app install', 'app uninstall'],
+    commands: ['file list', 'file pull', 'file push', 'file remove', 'photo list', 'photo pull', 'photo delete', 'upload', 'app list', 'app catalog', 'app install', 'app uninstall'],
   },
   { group: 'Setup and account', icon: 'lucide:user-round', commands: ['setup', 'setup status', 'account', 'account login', 'account logout', 'dashboard'] },
   { group: 'Tunnel and scripts', icon: 'lucide:cable', commands: ['tunnel url', 'tunnel revoke'] },

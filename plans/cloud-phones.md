@@ -79,6 +79,9 @@ One pure function over the DO state. Same events in, same actions out.
 
 - [ ] `ghosthand app catalog` and `app install --app tiktok -l cloud:<n>` work from this Mac's CLI and MCP; docs regenerated with `pnpm generate-docs`. Pass with the install visible in `app list`, and `swift test`.
 - [ ] `app install --app <id>` on a USB iPhone installs from the App Store. Pass on a test iPhone with an app that is not installed yet, signed in to a test Apple ID.
+  Done so far (daemon db2a30a): CLI, REST (`listCatalogApps`, `installCatalogApp`, SSE) and MCP (`app-catalog`, `app` on `app-install`); catalog in `website/src/cloud/apps.ts` at `GET /api/cli/apps/catalog`; docs regenerated; `swift test` 62/62 with an `appStoreGetButton` test on two real App Store screenshots.
+  Manual run of the same steps (2026-11-25, SE2 iOS 18.6.2, identity `iphoneseblack`, test Apple ID): Spotlight `itms-apps://apps.apple.com/app/id1064216828` + enter opened Reddit's page; one tap on the download icon; `app list` showed `[installing]`, then missing for one read, then installed after about 55 s. Reddit was uninstalled after.
+  Open: a live run of the daemon code needs the website route deployed and a dev daemon on the phone's Mac (both on hold: no deploy and no daemon restart without the user). Cloud leases need Task 5 (`app-catalog` tool and the SSE install route in `api.ts`/`mcp.ts`).
 
 ## Done
 

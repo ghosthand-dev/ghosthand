@@ -134,7 +134,7 @@ tags:
   - name: Files
     description: Files, photos and app documents on the iPhone over USB (AFC). No Developer Mode.
   - name: Apps
-    description: Installed apps, install and uninstall over USB.
+    description: Installed apps, install and uninstall over USB, and catalog apps from the App Store.
   - name: Device
     description: Device info, system log, restart and shutdown over USB.
   - name: Random
@@ -1952,6 +1952,68 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Message'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/leases/{lease}/apps/catalog:
+    get:
+      operationId: listCatalogApps
+      tags: [Apps]
+      summary: List catalog apps
+      description: |
+        Apps that `POST apps/catalog/{app}` installs by id. The list comes from ghosthand.dev,
+        so new apps need no daemon update. `installed` says if the iPhone has the app now.
+      x-holocron:
+        href: /api/list-catalog-apps
+        metadata:
+          sidebarTitle: List catalog apps
+          title: List the apps the catalog installs
+      x-codeSamples:
+        - lang: bash
+          label: CLI
+          source: ghosthand app catalog -l 42
+      parameters:
+        - $ref: '#/components/parameters/Lease'
+      responses:
+        '200':
+          description: Catalog apps
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogAppList'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/leases/{lease}/apps/catalog/{app}:
+    post:
+      operationId: installCatalogApp
+      tags: [Apps]
+      summary: Install catalog app
+      description: |
+        Installs a catalog app and answers when it is installed. A USB iPhone gets it from the
+        App Store app: the daemon opens the app's page with Spotlight, taps Get (or the
+        download icon) and waits until `GET apps` shows it without `installing`. It needs an
+        Apple Account signed in to the App Store, and free downloads without a password
+        prompt. A cloud iPhone gets the app from ghosthand.dev. Stream with
+        `Accept: text/event-stream` to see the steps; closing the stream stops the wait.
+      x-holocron:
+        href: /api/install-catalog-app
+        metadata:
+          sidebarTitle: Install catalog app
+          title: Install an app from the catalog
+      x-codeSamples:
+        - lang: bash
+          label: CLI
+          source: ghosthand app install -l 42 --app tiktok
+      parameters:
+        - $ref: '#/components/parameters/Lease'
+        - name: app
+          in: path
+          required: true
+          description: Catalog app id from `GET apps/catalog`, e.g. tiktok
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Action'
         default:
           $ref: '#/components/responses/Problem'
   /v1/leases/{lease}/apps/{bundle}:
@@ -3805,6 +3867,35 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/App'
+    CatalogApp:
+      type: object
+      additionalProperties: false
+      required: [id, name, bundleId, appStoreId]
+      properties:
+        id:
+          type: string
+          description: Catalog id for `POST apps/catalog/{app}`, e.g. tiktok
+        name:
+          type: string
+        bundleId:
+          type: string
+        appStoreId:
+          type: integer
+          description: The number in apps.apple.com/app/id<appStoreId>
+        installed:
+          type: boolean
+          description: The iPhone has the app now. `installing` while an App Store download runs
+        installing:
+          type: boolean
+    CatalogAppList:
+      type: object
+      additionalProperties: false
+      required: [apps]
+      properties:
+        apps:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogApp'
     DeviceInfo:
       type: object
       additionalProperties: false

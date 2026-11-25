@@ -115,7 +115,8 @@ Grouped commands take a subcommand: `ghosthand file push`. MCP tool names join t
 | [`photo delete`](/docs/cli/photo-delete) | Delete photos from the iPhone's Photos library by file name (from photo list), over USB |
 | [`upload`](/docs/cli/upload) | Upload a file to a 1-day link for Safari on the iPhone: Save puts a photo or video in Photos, Copy puts the text of a .txt on the clipboard |
 | [`app list`](/docs/cli/app-list) | List installed apps over USB, with where each icon is on the Home Screen |
-| [`app install`](/docs/cli/app-install) | Install an .ipa signed for this iPhone over USB (ad hoc, enterprise or development signing) |
+| [`app catalog`](/docs/cli/app-catalog) | List the apps `app install --app <id>` installs, and which the iPhone has |
+| [`app install`](/docs/cli/app-install) | Install a catalog app (--app tiktok) from the App Store, or an .ipa signed for this iPhone over USB |
 | [`app uninstall`](/docs/cli/app-uninstall) | Uninstall an app and its data over USB, like Remove App &gt; Delete App |
 
 ### Setup and account
@@ -202,8 +203,8 @@ The rules every agent gets with `ghosthand --help`, and as the MCP server instru
   empty top area (`tap 207 100`) to restore it. Check this before anything else.
 - Expected dialog missing from the screenshot: take another normal `screenshot`. Permission
   alerts can appear 1-2 s after the tap. Only if that one still misses it (often dimmed,
-  not always), the dialog is hidden from USB capture: `screenshot --native` (slow, 2-7 s, may stay
-  in Photos) shows it at the same coordinates tap takes. Never use --native by default.
+  not always), the dialog is hidden from USB capture: `screenshot --native` (slow, 2-7 s,
+  may stay in Photos) shows it at the same coordinates tap takes. Never use it by default.
 - A button that ignores `tap`: press it once more (tap or `hold x y --duration 400`);
   a just-opened alert can ignore the first press.
 - Long press (context menus, Home Screen icon menu, previews): `hold x y`. Move an

@@ -16,7 +16,7 @@ website Worker / CloudFleet DO
 vnet ghosthand-hosts ──10.77.0.1/32──> tunnel ghosthand-host-mint ──QUIC, outbound only──┐
                      ──10.77.0.2/32──> tunnel ghosthand-host-<next>                      │
                                                                                          v
-mint  dev.ghosthand.host-tunnel: cloudflared as _ghosthand-tunnel ──lo0──> 10.77.0.1:7400
+mint  dev.ghosthand.host-tunnel: cloudflared as nobody ──lo0──> 10.77.0.1:7400
       dev.ghosthand.host-ip: lo0 alias + pf (10.77.0.1 only on lo0)         fleet serve
 ```
 
@@ -75,8 +75,8 @@ Two LaunchDaemons, so both come back after a reboot with nobody signed in:
 
 - `dev.ghosthand.host-ip` adds the `lo0` alias, loads the pf anchor and enables pf, once at
   boot. `fleet serve` listens on the alias.
-- `dev.ghosthand.host-tunnel` runs `cloudflared` as the system user `_ghosthand-tunnel` (no
-  shell, no home), restarted by launchd if it exits. Only that user can read the token file.
+- `dev.ghosthand.host-tunnel` runs `cloudflared` as `nobody`, restarted by launchd if it exits.
+  The token file is readable only by `nobody`.
 
 **Why the pf rule:** macOS accepts packets for a `lo0` alias on every interface, and hosts run
 with `net.inet.ip.forwarding=1` (vmnet NAT). Without the rule, the LAN and NAT guests (the
@@ -92,33 +92,15 @@ Save this block as the host script. It needs `IP` set:
 ```bash
 set -euo pipefail
 : "${IP:?set IP}"
-USER_NAME=_ghosthand-tunnel
-
-# system user for cloudflared: first free id in 400-499, no shell, no home, hidden
-if ! id -u $USER_NAME >/dev/null 2>&1; then
-  for uid in $(seq 400 499); do
-    dscl . -search /Users UniqueID $uid | grep -q . || dscl . -search /Groups PrimaryGroupID $uid | grep -q . || break
-  done
-  dscl . -create /Groups/$USER_NAME PrimaryGroupID $uid
-  dscl . -create /Groups/$USER_NAME Password '*'
-  dscl . -create /Users/$USER_NAME UniqueID $uid
-  dscl . -create /Users/$USER_NAME PrimaryGroupID $uid
-  dscl . -create /Users/$USER_NAME UserShell /usr/bin/false
-  dscl . -create /Users/$USER_NAME NFSHomeDirectory /var/empty
-  dscl . -create /Users/$USER_NAME RealName 'ghosthand host tunnel'
-  dscl . -create /Users/$USER_NAME Password '*'
-  dscl . -create /Users/$USER_NAME IsHidden 1
-fi
-
 install -d -m 755 /etc/ghosthand-host
 if [ -f /tmp/ghosthand-host.token ]; then
-  install -m 400 -o $USER_NAME -g $USER_NAME /tmp/ghosthand-host.token /etc/ghosthand-host/tunnel.token
+  install -m 400 -o nobody -g nobody /tmp/ghosthand-host.token /etc/ghosthand-host/tunnel.token
   rm -f /tmp/ghosthand-host.token
 fi
-chown $USER_NAME:$USER_NAME /etc/ghosthand-host/tunnel.token
+chown nobody:nobody /etc/ghosthand-host/tunnel.token
 chmod 400 /etc/ghosthand-host/tunnel.token
 touch /var/log/ghosthand-host-tunnel.log
-chown $USER_NAME:$USER_NAME /var/log/ghosthand-host-tunnel.log
+chown nobody:nobody /var/log/ghosthand-host-tunnel.log
 
 # the host IP answers only on lo0, where cloudflared on this Mac connects from
 cat > /etc/pf.anchors/ghosthand-host <<PF
@@ -153,7 +135,7 @@ cat > /Library/LaunchDaemons/dev.ghosthand.host-tunnel.plist <<PLIST
     <string>--protocol</string><string>quic</string>
     <string>run</string><string>--token-file</string><string>/etc/ghosthand-host/tunnel.token</string>
   </array>
-  <key>UserName</key><string>_ghosthand-tunnel</string>
+  <key>UserName</key><string>nobody</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>ThrottleInterval</key><integer>10</integer>
@@ -184,7 +166,7 @@ Or in a terminal on the host: `sudo env IP=10.77.0.1 bash host-script.sh`.
 ### 3. Check
 
 ```bash
-ssh $HOST "ifconfig lo0 | grep $IP; ps -o user,command -ax | grep [c]loudflared"   # user _ghosthand-tunnel
+ssh $HOST "ifconfig lo0 | grep $IP; ps -o user,command -ax | grep [c]loudflared"   # user nobody
 ssh $HOST "sudo pfctl -a com.apple/ghosthand-host -vsr"   # the block rule, Packets count up on blocked tries
 ssh $HOST 'tail -5 /var/log/ghosthand-host-tunnel.log'   # 4x "Registered tunnel connection"
 cf tunnels get $TUNNEL | jq -r .status                    # healthy
@@ -195,17 +177,6 @@ route to `$IP` via the host) must time out on `http://$IP:7400`, while the host 
 Worker still get an answer. On mint a guest read a canary page there in 45 ms before the rule and
 timed out after it (9 packets dropped); the Worker still got it in 114 ms.
 
-`bun scripts/release-check.ts` (in `website/`) fails if a `ghosthand-host-*` tunnel has more than
-one connector client: a second `cloudflared` with the same token means the token leaked. Delete
-and recreate that host's tunnel (same route, new token).
-
-From the website, `env.HOSTS.fetch("http://$IP:7400/...")` answers `connection_refused` until
-`fleet serve` runs, which already proves the route and the tunnel work.
-
-Then add the host to the fleet: `scripts/cloud-host.ts add $SLUG --address $IP:7400 --slots <n>`
-(Task 5). The rest of the host setup (VPhone bundle, `vphone-usb-guard`, `fleet serve` launchd
-job, template download) is added here with Task 4.
-
 ## Remove a host
 
 Drain it first (`scripts/cloud-host.ts drain`), wait until its phones are uploaded, then:
@@ -213,8 +184,7 @@ Drain it first (`scripts/cloud-host.ts drain`), wait until its phones are upload
 ```bash
 ssh $HOST "sudo launchctl bootout system/dev.ghosthand.host-tunnel; sudo launchctl bootout system/dev.ghosthand.host-ip; \
   sudo rm -rf /Library/LaunchDaemons/dev.ghosthand.host-*.plist /etc/ghosthand-host /etc/pf.anchors/ghosthand-host; \
-  sudo pfctl -a com.apple/ghosthand-host -F rules; sudo ifconfig lo0 -alias $IP; \
-  sudo dscl . -delete /Users/_ghosthand-tunnel; sudo dscl . -delete /Groups/_ghosthand-tunnel"
+  sudo pfctl -a com.apple/ghosthand-host -F rules; sudo ifconfig lo0 -alias $IP"
 cf network routes cidr delete <route id> --force
 cf tunnels delete $TUNNEL --force
 ```

@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
-import { entitlementFor, leaseDecision, taskDecision, taskMonthStart, type BoundDevice } from './billing.ts'
+import { cloudPhoneUpdate, entitlementFor, leaseDecision, taskDecision, taskMonthStart, type BoundDevice, type SubscriptionKind } from './billing.ts'
 
 const now = new Date('2026-10-27T10:00:00Z')
 const periodEnd = new Date('2026-11-08T00:00:00Z')
-const sub = (status: string, { paidMacs = 1, cancelAtPeriodEnd = false } = {}) => ({ status, cancelAtPeriodEnd, currentPeriodEnd: periodEnd, paidMacs })
+const sub = (status: string, { paidMacs = 1, cancelAtPeriodEnd = false, kind = 'pro' as SubscriptionKind } = {}) => ({ kind, status, cancelAtPeriodEnd, currentPeriodEnd: periodEnd, paidMacs })
 
 test('entitlement: free without a live subscription, Pro counts paid Macs', () => {
   const show = (subscriptions: ReturnType<typeof sub>[]) => {
@@ -22,6 +22,56 @@ test('entitlement: free without a live subscription, Pro counts paid Macs', () =
     pro macs=3 source=true until=2026-11-11 | null
     pro macs=1 source=true until=2026-11-11 | Your ghosthand plan ends on Nov 8, 2026.
     pro macs=1 source=true until=2026-11-11 | Your last ghosthand payment failed. Update the card before Stripe cancels the plan."
+  `)
+})
+
+test('cloud phone subscriptions never make an org Pro; an allowed one lifts the task limit', () => {
+  const cloud = (status: string) => sub(status, { kind: 'cloud_phone', paidMacs: 1 })
+  const show = (label: string, subscriptions: ReturnType<typeof sub>[]) => {
+    const e = entitlementFor({ subscriptions, now })
+    const task = taskDecision({ entitlement: e, used: 10, now, subscribeUrl: 'https://ghosthand.dev/subscribe' })
+    return `${label}: ${e.plan} macs=${e.paidMacs} cloud=${e.cloudPhones} source=${e.sourceAccess} tasks=${task.allowed ? 'unlimited' : 'limit'}`
+  }
+  expect('\n' + [
+    show('one active cloud phone', [cloud('active')]),
+    show('two cloud phones, one past_due', [cloud('active'), cloud('past_due')]),
+    show('canceled cloud phone', [cloud('canceled')]),
+    show('cloud phone and Pro for 2 Macs', [cloud('active'), sub('active', { paidMacs: 2 })]),
+  ].join('\n')).toMatchInlineSnapshot(`
+    "
+    one active cloud phone: free macs=0 cloud=1 source=false tasks=unlimited
+    two cloud phones, one past_due: free macs=0 cloud=2 source=false tasks=unlimited
+    canceled cloud phone: free macs=0 cloud=0 source=false tasks=limit
+    cloud phone and Pro for 2 Macs: pro macs=2 cloud=1 source=true tasks=unlimited"
+  `)
+})
+
+test('cloud phone row: its own subscription updates it, a renewal takes over a canceled phone', () => {
+  const show = (label: string, phone: Parameters<typeof cloudPhoneUpdate>[0]['phone'], subscriptionId: string, status: string) => {
+    const update = cloudPhoneUpdate({ phone, subscription: { subscriptionId, status } })
+    return `${label}: ${update ? `${update.subscriptionId} ${update.status}` : 'unchanged'}`
+  }
+  expect('\n' + [
+    show('checkout done, row missing (cron deleted it)', null, 'sub_1', 'active'),
+    show('pending row, first event incomplete', { subscriptionId: null, status: 'pending' }, 'sub_1', 'incomplete'),
+    show('pending row, active', { subscriptionId: null, status: 'pending' }, 'sub_1', 'active'),
+    show('own sub cancels', { subscriptionId: 'sub_1', status: 'active' }, 'sub_1', 'canceled'),
+    show('own sub unpaid', { subscriptionId: 'sub_1', status: 'past_due' }, 'sub_1', 'unpaid'),
+    show('renewal active on canceled phone', { subscriptionId: 'sub_1', status: 'canceled' }, 'sub_2', 'active'),
+    show('renewal still incomplete', { subscriptionId: 'sub_1', status: 'canceled' }, 'sub_2', 'incomplete'),
+    show('late event of old sub after renewal', { subscriptionId: 'sub_2', status: 'active' }, 'sub_1', 'canceled'),
+    show('second active sub on an active phone', { subscriptionId: 'sub_1', status: 'active' }, 'sub_2', 'active'),
+  ].join('\n')).toMatchInlineSnapshot(`
+    "
+    checkout done, row missing (cron deleted it): sub_1 active
+    pending row, first event incomplete: sub_1 pending
+    pending row, active: sub_1 active
+    own sub cancels: sub_1 canceled
+    own sub unpaid: sub_1 canceled
+    renewal active on canceled phone: sub_2 active
+    renewal still incomplete: unchanged
+    late event of old sub after renewal: unchanged
+    second active sub on an active phone: unchanged"
   `)
 })
 

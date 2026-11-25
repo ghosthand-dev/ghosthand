@@ -59,8 +59,16 @@ export type WebsiteEvents = {
   api_token_created: {}
   /** /subscribe: Checkout or the billing portal. */
   subscribe_opened: { org_id: string }
-  /** The Stripe webhook mirrored a subscription change. */
-  subscription_updated: { org_id: string; status: string; cancel_at_period_end: boolean }
+  /** The Stripe webhook mirrored a subscription change. `kind`: pro or cloud_phone. */
+  subscription_updated: { org_id: string; kind: string; status: string; cancel_at_period_end: boolean }
+  /** /cloud-phones/new opened Checkout or the portal. `existing`: renew or manage a phone, not rent a new one. */
+  cloud_phone_checkout_opened: { org_id: string; cloud_phone_id: string; existing: boolean }
+  /** A cloud phone's subscription started allowing leases (first payment or renewal). */
+  cloud_phone_activated: { org_id: string; cloud_phone_id: string }
+  /** A cloud phone's subscription ended: no new leases, storage kept. */
+  cloud_phone_canceled: { org_id: string; cloud_phone_id: string }
+  /** CloudFleet started a stopped cloud phone on a host. */
+  cloud_phone_started: { org_id: string; cloud_phone_id: string }
   mcp_consent: { accepted: boolean }
   mac_signed_out: {}
   /** lease-check bound the free iPhone (kind phone) or a paid Mac (kind mac). */

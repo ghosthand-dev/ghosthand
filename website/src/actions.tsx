@@ -1,5 +1,6 @@
 // Server actions: approve or deny a daemon's login (/device), an MCP client's access
-// (/consent), and on /dashboard: sign a Mac out, remove a bound device, request source access.
+// (/consent), and on /dashboard: sign a Mac out, remove a bound device, request source access,
+// rename a cloud phone.
 'use server'
 
 import { getActionRequest, parseFormData, redirect } from 'spiceflow'
@@ -92,6 +93,26 @@ export async function removeDevice(formData: FormData) {
       .where(orm.and(orm.eq(schema.orgDevice.orgDeviceId, orgDeviceId), orm.eq(schema.orgDevice.orgId, org.orgId)))
       .returning()
     for (const device of removed) trackEvent('device_removed', { org_id: org.orgId, kind: device.kind }, { userId: session.userId })
+    throw redirect('/dashboard')
+  })
+}
+
+const renameCloudPhoneForm = z.object({
+  cloudPhoneId: z.string().min(1),
+  name: z.string().trim().min(1, 'Name the phone').max(40, 'At most 40 characters'),
+})
+
+/** Renames a cloud phone of the owner's org: the dashboard and `list` show the name. */
+export async function renameCloudPhone(formData: FormData) {
+  return reportErrors('renameCloudPhone', async () => {
+    const session = await requireSession(getActionRequest())
+    const { cloudPhoneId, name } = parseFormData(renameCloudPhoneForm, formData)
+    const org = await getPersonalOrg(session.userId)
+    const renamed = await getDb().update(schema.cloudPhone)
+      .set({ name, updatedAt: new Date() })
+      .where(orm.and(orm.eq(schema.cloudPhone.cloudPhoneId, cloudPhoneId), orm.eq(schema.cloudPhone.orgId, org.orgId)))
+      .returning()
+    if (!renamed.length) throw new FormError('This cloud phone is not in your account.')
     throw redirect('/dashboard')
   })
 }

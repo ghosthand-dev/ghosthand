@@ -3,7 +3,7 @@
 
 import type { ReactNode } from 'react'
 import { Head, Link } from 'spiceflow/react'
-import { formatDay, PRO_PRICE_PER_MAC, type Entitlement } from '../lib/billing.ts'
+import { CLOUD_PHONE_PRICE, formatDay, PRO_PRICE_PER_MAC, type CloudPhoneStatus, type Entitlement } from '../lib/billing.ts'
 import { cn } from '../lib/utils.ts'
 import { CopyField, QuickStart, RowAction, SignOutButton, SourceAccessForm, SubscribeLink } from './account-client.tsx'
 import { PRIMARY, SECONDARY } from './button-styles.ts'
@@ -161,6 +161,80 @@ function BoundDevices({ devices, paidMacs, removeDevice }: {
   )
 }
 
+/** A rented cloud iPhone with the subscription paying for it. */
+export type DashboardCloudPhone = {
+  cloudPhoneId: string
+  name: string
+  status: CloudPhoneStatus
+  currentPeriodEnd: Date | null
+  cancelAtPeriodEnd: boolean
+}
+
+function cloudPhoneRow(phone: DashboardCloudPhone): { badge: string; tone?: 'good' | 'bad'; detail: string; action: string } {
+  const end = phone.currentPeriodEnd ? formatDay(phone.currentPeriodEnd) : null
+  switch (phone.status) {
+    case 'pending':
+      return { badge: 'Not paid', detail: 'Checkout was not finished.', action: 'Continue checkout' }
+    case 'past_due':
+      return { badge: 'Payment failed', tone: 'bad', detail: 'Update your card in Stripe, or Stripe cancels the phone.', action: 'Manage' }
+    case 'canceled':
+      return { badge: 'Ended', tone: 'bad', detail: 'No new leases. Its apps and data are kept: renew to get the same phone back.', action: 'Renew' }
+    case 'active':
+      if (phone.cancelAtPeriodEnd) return { badge: 'Canceled', tone: 'bad', detail: end ? `Works until ${end}, then its data is kept.` : 'Works until the end of the period.', action: 'Manage' }
+      return { badge: 'Active', tone: 'good', detail: end ? `Renews on ${end} for $${CLOUD_PHONE_PRICE}.` : `$${CLOUD_PHONE_PRICE} per month.`, action: 'Manage' }
+  }
+}
+
+/** Rented cloud iPhones: status, Manage or Renew (both through /cloud-phones/new), Rename. */
+function CloudPhones({ phones, rename }: { phones: DashboardCloudPhone[]; rename: (formData: FormData) => Promise<void> }) {
+  if (!phones.length) {
+    return (
+      <div className='rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-balance text-muted-foreground'>
+        No cloud iPhone yet. It runs on our Macs: your agents use it through MCP, the CLI or the API, without a Mac or iPhone of yours.
+      </div>
+    )
+  }
+  return (
+    <ul className='flex flex-col divide-y divide-border rounded-xl border border-border'>
+      {phones.map((phone) => {
+        const row = cloudPhoneRow(phone)
+        return (
+          <li key={phone.cloudPhoneId} className='flex flex-col gap-3 px-4 py-3.5'>
+            <div className='flex items-center gap-4'>
+              <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
+                <span className='truncate text-sm font-medium text-foreground'>{phone.name}</span>
+                <span className='text-xs text-pretty text-muted-foreground'>{row.detail}</span>
+              </div>
+              <Badge tone={row.tone}>{row.badge}</Badge>
+              <a
+                href={`/cloud-phones/new?phone=${phone.cloudPhoneId}`}
+                className='flex h-8 items-center whitespace-nowrap rounded-md border border-border px-3 text-xs font-medium text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring'
+              >
+                {row.action}
+              </a>
+            </div>
+            <details className='group text-xs'>
+              <summary className='w-fit cursor-pointer list-none text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden'>Rename</summary>
+              <form action={rename} className='mt-2 flex max-w-sm items-center gap-2'>
+                <input type='hidden' name='cloudPhoneId' value={phone.cloudPhoneId} />
+                <input
+                  name='name'
+                  required
+                  maxLength={40}
+                  defaultValue={phone.name}
+                  autoComplete='off'
+                  className='h-8 min-w-0 flex-1 rounded-md border border-border bg-transparent px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring'
+                />
+                <button type='submit' className='h-8 cursor-pointer rounded-md border border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground'>Save</button>
+              </form>
+            </details>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 function SourceAccess({ isPro, access, request, remove }: {
   isPro: boolean
   access: DashboardSourceAccess | null
@@ -202,6 +276,8 @@ export function DashboardPage({
   name,
   entitlement,
   subscription,
+  cloudPhones,
+  renameCloudPhone,
   macs,
   devices,
   sourceAccess,
@@ -215,6 +291,8 @@ export function DashboardPage({
   name: string
   entitlement: Entitlement
   subscription: Subscription | null
+  cloudPhones: DashboardCloudPhone[]
+  renameCloudPhone: (formData: FormData) => Promise<void>
   macs: DashboardMac[]
   devices: DashboardDevice[]
   sourceAccess: DashboardSourceAccess | null
@@ -256,6 +334,16 @@ export function DashboardPage({
           <span className='text-xs text-muted-foreground'>
             {isPro ? 'Add Macs, change card, get invoices or cancel in Stripe.' : 'Secure checkout with Stripe. Cancel anytime.'}
           </span>
+        </div>
+      </Section>
+
+      <Section title='Cloud iPhones' description={`Virtual iPhones on our Macs, $${CLOUD_PHONE_PRICE} per month each. Billed apart from the plan.`}>
+        <CloudPhones phones={cloudPhones} rename={renameCloudPhone} />
+        <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
+          <a href='/cloud-phones/new' className={cn(cloudPhones.length ? SECONDARY : PRIMARY, 'w-auto px-5')}>
+            Rent a cloud iPhone for ${CLOUD_PHONE_PRICE}/month
+          </a>
+          <span className='text-xs text-muted-foreground'>Cancel anytime. A canceled phone keeps its apps and data.</span>
         </div>
       </Section>
 

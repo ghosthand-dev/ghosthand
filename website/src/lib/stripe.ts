@@ -7,9 +7,13 @@
 
 import { env } from 'cloudflare:workers'
 import Stripe from 'stripe'
+import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import { getDb, type Org } from '../db.ts'
-import { EXISTING_STATUSES, isExistingStatus, MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP } from './billing.ts'
+import {
+  CLOUD_PHONE_PRICE_LOOKUP_KEY, CLOUD_PHONE_TEMPLATE, cloudPhoneAccess, cloudPhoneUpdate, EXISTING_STATUSES, isExistingStatus,
+  MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP, subscriptionKind, type CloudPhoneStatus, type SubscriptionKind,
+} from './billing.ts'
 import { captureException } from '../telemetry.ts'
 
 /** Secret key per Stripe account id. */
@@ -49,11 +53,12 @@ export async function getOrCreateStripeCustomer({ org, email, accountId }: { org
 }
 
 /**
- * Where /subscribe sends the browser: the billing portal when the org already has a
- * subscription (any account, any live status), otherwise a new Checkout.
+ * Where /subscribe sends the browser: the billing portal when the org already has a Pro
+ * subscription (any account, any live status), otherwise a new Checkout. Cloud phone
+ * subscriptions are ignored: they never stand for Pro.
  */
 export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org; email: string; returnUrl: string }): Promise<string> {
-  const live = org.subscriptions.find((s) => isExistingStatus(s.status))
+  const live = org.subscriptions.find((s) => s.kind === 'pro' && isExistingStatus(s.status))
   if (live) return portalUrl({ accountId: live.stripeAccountId, customerId: live.stripeCustomerId, returnUrl })
 
   const accountId = checkoutAccountId()
@@ -61,12 +66,12 @@ export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org
   const customerId = await getOrCreateStripeCustomer({ org, email, accountId })
   // The webhook can lag behind a finished Checkout: ask Stripe too.
   const remote = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 20 })
-  if (remote.data.some((s) => isExistingStatus(s.status))) {
+  if (remote.data.some((s) => subscriptionKind(s.metadata) === 'pro' && isExistingStatus(s.status))) {
     return portalUrl({ accountId, customerId, returnUrl })
   }
   // Two /subscribe tabs must not become two subscriptions: reuse the open Checkout.
   const open = await stripe.checkout.sessions.list({ customer: customerId, status: 'open', limit: 10 })
-  const reusable = open.data.find((c) => c.mode === 'subscription' && c.metadata?.app === STRIPE_PRODUCT_APP && c.url)
+  const reusable = open.data.find((c) => c.mode === 'subscription' && c.metadata?.app === STRIPE_PRODUCT_APP && subscriptionKind(c.metadata) === 'pro' && c.url)
   if (reusable?.url) return reusable.url
   const prices = await stripe.prices.list({ lookup_keys: [PRO_PRICE_LOOKUP_KEY], active: true })
   const price = prices.data[0]
@@ -80,8 +85,8 @@ export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org
     cancel_url: returnUrl,
     allow_promotion_codes: true,
     client_reference_id: org.orgId,
-    metadata: { orgId: org.orgId, app: STRIPE_PRODUCT_APP },
-    subscription_data: { metadata: { orgId: org.orgId, app: STRIPE_PRODUCT_APP } },
+    metadata: { orgId: org.orgId, app: STRIPE_PRODUCT_APP, kind: 'pro' },
+    subscription_data: { metadata: { orgId: org.orgId, app: STRIPE_PRODUCT_APP, kind: 'pro' } },
   }, {
     // Concurrent requests (double click) get the same session instead of a second one. Per
     // minute, not per day: a key reused after a cancel returns the completed session's URL.
@@ -89,6 +94,93 @@ export async function subscribeRedirectUrl({ org, email, returnUrl }: { org: Org
   })
   if (!checkout.url) throw new Error('Stripe Checkout session has no URL')
   return checkout.url
+}
+
+/**
+ * Where /cloud-phones/new sends the browser. Without `cloudPhoneId`: Checkout for a new
+ * phone. The org's unpaid pending phone is reused, so double clicks and abandoned Checkouts
+ * never pile up rows. With `cloudPhoneId`: renew that canceled phone (same id, same
+ * storage), or the portal when it is still paid.
+ */
+export async function cloudPhoneCheckoutUrl({ org, email, returnUrl, cloudPhoneId }: {
+  org: Org
+  email: string
+  returnUrl: string
+  cloudPhoneId?: string
+}): Promise<{ url: string; cloudPhoneId: string }> {
+  const db = getDb()
+  const accountId = checkoutAccountId()
+  const stripe = stripeFor(accountId)
+  const customerId = await getOrCreateStripeCustomer({ org, email, accountId })
+
+  const phone = await (async () => {
+    if (cloudPhoneId) {
+      const existing = org.cloudPhones.find((p) => p.cloudPhoneId === cloudPhoneId)
+      if (!existing) throw new Error(`cloud phone ${cloudPhoneId} not found in org ${org.orgId}`)
+      return existing
+    }
+    // The unique index on the org's unpaid phone makes concurrent clicks share one row. The
+    // daily cron deletes pending rows by updatedAt: a reused one starts its day again.
+    const [unpaid] = await db.insert(schema.cloudPhone)
+      .values({ orgId: org.orgId, name: `Cloud iPhone ${org.cloudPhones.length + 1}`, template: CLOUD_PHONE_TEMPLATE })
+      .onConflictDoUpdate({
+        target: schema.cloudPhone.orgId,
+        targetWhere: orm.sql`${schema.cloudPhone.status} = 'pending' and ${schema.cloudPhone.subscriptionId} is null`,
+        set: { updatedAt: new Date() },
+      })
+      .returning()
+    return unpaid!
+  })()
+  if (cloudPhoneAccess(phone.status)) {
+    return { url: await portalUrl({ accountId, customerId, returnUrl }), cloudPhoneId: phone.cloudPhoneId }
+  }
+  // The webhook can lag behind a finished Checkout: a live subscription for this phone goes
+  // to the portal, never to a second Checkout that would bill the phone twice.
+  const remote = await stripe.subscriptions.list({ customer: customerId, status: 'all', limit: 100 })
+  const live = remote.data.find((s) => s.metadata.cloudPhoneId === phone.cloudPhoneId && isExistingStatus(s.status))
+  if (live) {
+    await syncSubscription({ accountId, subscriptionId: live.id })
+    return { url: await portalUrl({ accountId, customerId, returnUrl }), cloudPhoneId: phone.cloudPhoneId }
+  }
+
+  const open = await stripe.checkout.sessions.list({ customer: customerId, status: 'open', limit: 10 })
+  const reusable = open.data.find((c) => c.metadata?.cloudPhoneId === phone.cloudPhoneId && c.url)
+  if (reusable?.url) return { url: reusable.url, cloudPhoneId: phone.cloudPhoneId }
+
+  const prices = await stripe.prices.list({ lookup_keys: [CLOUD_PHONE_PRICE_LOOKUP_KEY], active: true })
+  const price = prices.data[0]
+  if (!price) throw new Error(`no active Stripe price with lookup key ${CLOUD_PHONE_PRICE_LOOKUP_KEY}`)
+  const metadata = { orgId: org.orgId, app: STRIPE_PRODUCT_APP, kind: 'cloud_phone', cloudPhoneId: phone.cloudPhoneId }
+  const checkout = await stripe.checkout.sessions.create({
+    mode: 'subscription',
+    customer: customerId,
+    // One subscription per phone, so each phone cancels and renews on its own.
+    line_items: [{ price: price.id, quantity: 1 }],
+    success_url: returnUrl,
+    cancel_url: returnUrl,
+    allow_promotion_codes: true,
+    client_reference_id: org.orgId,
+    metadata,
+    subscription_data: { metadata },
+  }, {
+    idempotencyKey: `ghosthand-cloud-checkout:${phone.cloudPhoneId}:${price.id}:${new Date().toISOString().slice(0, 16)}`,
+  })
+  if (!checkout.url) throw new Error('Stripe Checkout session has no URL')
+  return { url: checkout.url, cloudPhoneId: phone.cloudPhoneId }
+}
+
+const PENDING_CLOUD_PHONE_TTL_MS = 24 * 60 * 60 * 1000
+
+/** Daily: drops pending phones nobody paid for within a day. A late payment recreates the row (syncSubscription). */
+export async function deleteAbandonedCloudPhones(): Promise<number> {
+  const deleted = await getDb().delete(schema.cloudPhone)
+    .where(orm.and(
+      orm.eq(schema.cloudPhone.status, 'pending'),
+      orm.isNull(schema.cloudPhone.subscriptionId),
+      orm.lt(schema.cloudPhone.updatedAt, new Date(Date.now() - PENDING_CLOUD_PHONE_TTL_MS)),
+    ))
+    .returning()
+  return deleted.length
 }
 
 /**
@@ -106,12 +198,22 @@ export async function portalUrl({ accountId, customerId, returnUrl }: { accountI
   return portal.url
 }
 
+export type SyncedSubscription = {
+  orgId: string
+  status: string
+  cancelAtPeriodEnd: boolean
+  kind: SubscriptionKind
+  /** Cloud phone subscriptions only: the phone's status before and after this sync. */
+  cloudPhone: { cloudPhoneId: string; template: string; before: CloudPhoneStatus | null; after: CloudPhoneStatus } | null
+}
+
 /**
  * Mirrors one subscription into Postgres. Re-fetches it, because events can arrive out of
- * order. Ignores subscriptions of other apps on the same Stripe account. Returns what it
+ * order. Ignores subscriptions of other apps on the same Stripe account. A cloud phone
+ * subscription also updates its `cloud_phone` row (see `cloudPhoneUpdate`). Returns what it
  * wrote, so the webhook can track the change (the daily reconcile must not).
  */
-export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<{ orgId: string; status: string; cancelAtPeriodEnd: boolean } | null> {
+export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<SyncedSubscription | null> {
   const stripe = stripeFor(accountId)
   const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['items.data.price.product'] })
   const item = sub.items.data[0]
@@ -137,12 +239,43 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
     currentPeriodEnd: item.current_period_end ? new Date(item.current_period_end * 1000) : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
     paidMacs: item.quantity ?? 1,
+    kind: subscriptionKind(product.metadata),
     updatedAt: new Date(),
   }
   await db.insert(schema.subscription)
     .values({ subscriptionId: sub.id, ...record })
     .onConflictDoUpdate({ target: schema.subscription.subscriptionId, set: record })
-  return { orgId, status: sub.status, cancelAtPeriodEnd: sub.cancel_at_period_end }
+  const synced = { orgId, status: sub.status, cancelAtPeriodEnd: sub.cancel_at_period_end, kind: record.kind }
+  if (record.kind !== 'cloud_phone') return { ...synced, cloudPhone: null }
+
+  const cloudPhoneId = sub.metadata.cloudPhoneId
+  if (!cloudPhoneId) {
+    console.warn(`cloud phone subscription ${sub.id} has no metadata.cloudPhoneId`)
+    return { ...synced, cloudPhone: null }
+  }
+  const phone = await db.query.cloudPhone.findFirst({ where: { cloudPhoneId } })
+  if (phone && phone.orgId !== orgId) {
+    console.warn(`cloud phone ${cloudPhoneId} belongs to org ${phone.orgId}, subscription ${sub.id} to ${orgId}`)
+    return { ...synced, cloudPhone: null }
+  }
+  const update = cloudPhoneUpdate({ phone: phone ?? null, subscription: { subscriptionId: sub.id, status: sub.status } })
+  const before = phone?.status ?? null
+  if (!update) return { ...synced, cloudPhone: { cloudPhoneId, template: phone?.template ?? CLOUD_PHONE_TEMPLATE, before, after: before ?? 'pending' } }
+  const t = schema.cloudPhone
+  const [written] = await db.insert(t)
+    // No row: the cron deleted the pending phone before a late payment.
+    .values({ cloudPhoneId, orgId, name: 'Cloud iPhone', template: CLOUD_PHONE_TEMPLATE, ...update })
+    .onConflictDoUpdate({
+      target: t.cloudPhoneId,
+      set: { ...update, updatedAt: new Date() },
+      // cloudPhoneUpdate again, on the row as it is now: two webhooks that read the same
+      // canceled row must not let the old subscription overwrite the renewal.
+      setWhere: orm.sql`${t.orgId} = ${orgId} and (${t.subscriptionId} is null or ${t.subscriptionId} = ${sub.id}
+        or (${cloudPhoneAccess(update.status)} and ${t.status} not in ('active', 'past_due')))`,
+    })
+    .returning()
+  const current = written ?? await db.query.cloudPhone.findFirst({ where: { cloudPhoneId } })
+  return { ...synced, cloudPhone: { cloudPhoneId, template: current?.template ?? CLOUD_PHONE_TEMPLATE, before, after: current?.status ?? update.status } }
 }
 
 /**

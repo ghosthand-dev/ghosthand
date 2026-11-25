@@ -3,11 +3,14 @@
 // async Web Crypto provider, the only one that works in Workers.
 // The endpoint belongs to the account in STRIPE_ACCOUNT_ID. A second Stripe account
 // gets its own endpoint and secret.
+// Pro subscriptions sync the daemon repo access; cloud phone subscriptions update their
+// cloud_phone row (syncSubscription).
 
 import { env } from 'cloudflare:workers'
 import { Spiceflow } from 'spiceflow'
 import Stripe from 'stripe'
-import { stripeFor, syncSubscription } from './lib/stripe.ts'
+import { stripeFor, syncSubscription, type SyncedSubscription } from './lib/stripe.ts'
+import { cloudPhoneAccess } from './lib/billing.ts'
 import { syncSourceAccess } from './lib/github.ts'
 import { captureException, trackEvent } from './telemetry.ts'
 
@@ -44,7 +47,7 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
     })()
     if (!subscriptionId) return new Response('ignored')
 
-    let synced: Awaited<ReturnType<typeof syncSubscription>>
+    let synced: SyncedSubscription | null
     try {
       synced = await syncSubscription({ accountId, subscriptionId })
     } catch (cause) {
@@ -52,14 +55,24 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
       captureException(cause, { tags: { route: '/api/stripe/webhook', stripe_event: event.type } })
       return new Response('sync failed', { status: 500 })
     }
-    // Pro gives read access to the daemon repo; cancel takes it away at period end. A GitHub
-    // failure still answers 200: Stripe retrying cannot fix GitHub, the daily cron does, and
-    // failing webhooks for days would make Stripe disable the endpoint.
-    if (synced) {
-      trackEvent('subscription_updated', { org_id: synced.orgId, status: synced.status, cancel_at_period_end: synced.cancelAtPeriodEnd })
+    if (!synced) return new Response('ok')
+    trackEvent('subscription_updated', { org_id: synced.orgId, kind: synced.kind, status: synced.status, cancel_at_period_end: synced.cancelAtPeriodEnd })
+    if (synced.kind === 'pro') {
+      // Pro gives read access to the daemon repo; cancel takes it away at period end. A GitHub
+      // failure still answers 200: Stripe retrying cannot fix GitHub, the daily cron does, and
+      // failing webhooks for days would make Stripe disable the endpoint.
       await syncSourceAccess(synced.orgId, request.signal).catch((cause) => {
         captureException(cause, { tags: { route: '/api/stripe/webhook', handler: 'syncSourceAccess' } })
       })
+      return new Response('ok')
     }
+    const phone = synced.cloudPhone
+    if (!phone) return new Response('ok')
+    const allowed = cloudPhoneAccess(phone.after)
+    const wasAllowed = phone.before !== null && cloudPhoneAccess(phone.before)
+    const props = { org_id: synced.orgId, cloud_phone_id: phone.cloudPhoneId }
+    if (allowed && !wasAllowed) trackEvent('cloud_phone_activated', props)
+    if (phone.after === 'canceled' && phone.before !== 'canceled') trackEvent('cloud_phone_canceled', props)
+    console.log(`cloud phone ${phone.cloudPhoneId}: ${phone.before ?? 'new'} -> ${phone.after} (${event.type}, ${subscriptionId} ${synced.status})`)
     return new Response('ok')
   })

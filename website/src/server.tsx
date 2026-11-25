@@ -8,6 +8,7 @@
 //   /download          Mac installer page (download.mdx)
 //   /download/ghosthand.pkg, /releases/:file   public installers and release manifest (R2)
 //   /login /device /consent /dashboard /subscribe     account pages
+//   /cloud-phones/new  Checkout for a cloud iPhone, renew (?phone=) or its portal
 //   /pricing /privacy /terms /support   301 to their /docs/* pages
 //   /mcp               remote MCP, OAuth; routed to the user's Macs (tunnel.ts, before spiceflow)
 //   /tunnel/upstream   each signed-in daemon's WebSocket to its user's hub (tunnel.ts)
@@ -27,8 +28,8 @@ import { stripeWebhookApp } from './stripe-webhook.ts'
 import { getAuth, getBaseUrl, getDb, getMcpResource, getPersonalOrg, getSession, listMacSessions } from './db.ts'
 import { entitlementFor, isProStatus } from './lib/billing.ts'
 import { DAEMON_INVITATIONS_URL, DAEMON_REPO_URL, reconcileSourceAccess } from './lib/github.ts'
-import { reconcileSubscriptions, subscribeRedirectUrl } from './lib/stripe.ts'
-import { approveDevice, consentMcp, denyDevice, removeDevice, removeSourceAccessAction, requestSourceAccessAction, signOutMac } from './actions.tsx'
+import { cloudPhoneCheckoutUrl, deleteAbandonedCloudPhones, reconcileSubscriptions, subscribeRedirectUrl } from './lib/stripe.ts'
+import { approveDevice, consentMcp, denyDevice, removeDevice, removeSourceAccessAction, renameCloudPhone, requestSourceAccessAction, signOutMac } from './actions.tsx'
 // wrangler main is this file, so holocron's auto-import of a root style.css never runs.
 import './globals.css'
 
@@ -65,6 +66,7 @@ async function accountLayout({ children }: { children?: React.ReactNode }) {
 
 const loginQuery = z.object({ callbackURL: z.string().optional(), response_type: z.string().optional() })
 const deviceQuery = z.object({ user_code: z.string().optional(), status: z.enum(['approved', 'denied']).optional() })
+const cloudPhoneQuery = z.object({ phone: z.string().regex(/^cph_[0-9A-Z]{26}$/).optional() })
 
 const RELEASE_FILE = /^Ghosthand-\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\.(?:pkg|zip)$/
 const RELEASE_CACHE = 'public, max-age=300'
@@ -274,8 +276,17 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
     const hubBySession = new Map(hubMacs.map((mac) => [mac.sessionId, mac]))
     const macs = sessions.map((mac) => ({ ...mac, slug: hubBySession.get(mac.sessionId)?.slug ?? null, online: hubBySession.get(mac.sessionId)?.online ?? false }))
     const entitlement = entitlementFor({ subscriptions, now: new Date() })
-    // The Pro one, else the newest, so a canceled or failed plan still shows.
-    const subscription = subscriptions.find((s) => isProStatus(s.status)) ?? subscriptions[0] ?? null
+    // The Pro one, else the newest Pro, so a canceled or failed plan still shows. Cloud phone
+    // subscriptions are listed with their phones.
+    const proSubscriptions = subscriptions.filter((s) => s.kind === 'pro')
+    const subscription = proSubscriptions.find((s) => isProStatus(s.status)) ?? proSubscriptions[0] ?? null
+    const cloudPhones = org.cloudPhones.map((phone) => ({
+      cloudPhoneId: phone.cloudPhoneId,
+      name: phone.name,
+      status: phone.status,
+      currentPeriodEnd: phone.subscription?.currentPeriodEnd ?? null,
+      cancelAtPeriodEnd: phone.subscription?.cancelAtPeriodEnd ?? false,
+    }))
     const { DashboardPage } = await import('./components/account-pages.tsx')
     return (
       <DashboardPage
@@ -283,6 +294,8 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
         name={session.user.name}
         entitlement={entitlement}
         subscription={subscription}
+        cloudPhones={cloudPhones}
+        renameCloudPhone={renameCloudPhone}
         macs={macs}
         devices={org.devices}
         sourceAccess={org.sourceAccess ? { login: org.sourceAccess.githubLogin, repoUrl: DAEMON_REPO_URL, invitationsUrl: DAEMON_INVITATIONS_URL } : null}
@@ -303,6 +316,24 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
     const url = await subscribeRedirectUrl({ org, email: session.user.email, returnUrl: new URL('/dashboard', getBaseUrl()).toString() })
     trackEvent('subscribe_opened', { org_id: org.orgId }, { userId: session.userId })
     throw redirect(url)
+  })
+
+  // Rent a cloud iPhone: Checkout. With ?phone=<id>: renew that canceled phone, or the portal while paid.
+  .route({
+    method: 'GET',
+    path: '/cloud-phones/new',
+    query: cloudPhoneQuery,
+    detail: { hide: true },
+    handler: async ({ request, query }) => {
+      const session = await getSession(request)
+      if (!session) throw redirect(router.href('/login', { callbackURL: `/cloud-phones/new${request.parsedUrl.search}` }))
+      const org = await getPersonalOrg(session.userId)
+      const { url, cloudPhoneId } = await cloudPhoneCheckoutUrl({
+        org, email: session.user.email, returnUrl: new URL('/dashboard', getBaseUrl()).toString(), cloudPhoneId: query.phone,
+      })
+      trackEvent('cloud_phone_checkout_opened', { org_id: org.orgId, cloud_phone_id: cloudPhoneId, existing: Boolean(query.phone) }, { userId: session.userId })
+      throw redirect(url)
+    },
   })
 
   .route({
@@ -355,6 +386,9 @@ export default {
     await startSpan({ name: 'cron reconcileSubscriptions' }, async () => {
       const { synced, failed } = await reconcileSubscriptions()
       console.log(`subscriptions: ${synced} synced, ${failed} failed`)
+    })
+    await startSpan({ name: 'cron deleteAbandonedCloudPhones' }, async () => {
+      console.log(`cloud phones: ${await deleteAbandonedCloudPhones()} abandoned pending rows deleted`)
     })
     await startSpan({ name: 'cron reconcileSourceAccess' }, async () => {
       const { granted, revoked } = await reconcileSourceAccess()

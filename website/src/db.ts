@@ -210,14 +210,19 @@ async function createPersonalOrg(user: { id: string; name: string; email: string
 }
 
 /**
- * The user's personal org with its subscriptions (every Stripe account, newest first), bound
- * devices and source access request.
+ * The user's personal org with its subscriptions (every Stripe account, newest first), cloud
+ * phones (with the subscription paying for each), bound devices and source access request.
  * Looked up through org_member, not by assuming org_id = user.id.
  */
 export async function getPersonalOrg(userId: string) {
   const member = await getDb().query.orgMember.findFirst({
     where: { userId, org: { kind: 'personal' } },
-    with: { org: { with: { subscriptions: { orderBy: { createdAt: 'desc' } }, devices: { orderBy: { boundAt: 'asc' } }, sourceAccess: true } } },
+    with: { org: { with: {
+      subscriptions: { orderBy: { createdAt: 'desc' } },
+      cloudPhones: { orderBy: { createdAt: 'asc' }, with: { subscription: true } },
+      devices: { orderBy: { boundAt: 'asc' } },
+      sourceAccess: true,
+    } } },
   })
   if (!member?.org) throw new Error(`user ${userId} has no personal org`)
   return member.org

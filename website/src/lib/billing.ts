@@ -7,8 +7,17 @@
 // The daemon asks /api/cli/lease-check at every acquire and does what `leaseDecision`
 // says, so a running lease is never stopped. Devices bind on their first lease; the
 // dashboard removes them to switch.
+//
+// Cloud phones are separate subscriptions (kind cloud_phone, $49/month each). They never
+// make an org Pro; an allowed one only lifts the Free task limit.
 
 export const PRO_PRICE_LOOKUP_KEY = 'ghosthand_pro_monthly'
+export const CLOUD_PHONE_PRICE_LOOKUP_KEY = 'ghosthand_cloud_phone_monthly'
+/** USD per cloud phone per month (the Stripe price; only for page text). */
+export const CLOUD_PHONE_PRICE = 49
+/** VPhone template new cloud phones are cloned from. */
+// TODO: read it from the cloud catalog (src/cloud/) once hosts serve a real template key.
+export const CLOUD_PHONE_TEMPLATE = 'default'
 /** Products of other apps share the Stripe account; ours have metadata.app = ghosthand. */
 export const STRIPE_PRODUCT_APP = 'ghosthand'
 /** USD per paid Mac per month (the Stripe price; only for page text). */
@@ -36,11 +45,19 @@ export function isExistingStatus(status: string): boolean {
 }
 
 export type Plan = 'free' | 'pro'
+export type SubscriptionKind = 'pro' | 'cloud_phone'
+
+/** Products and Checkouts of cloud phones carry metadata.kind = cloud_phone; Pro has none. */
+export function subscriptionKind(metadata: Record<string, string> | null | undefined): SubscriptionKind {
+  return metadata?.kind === 'cloud_phone' ? 'cloud_phone' : 'pro'
+}
 
 export type Entitlement = {
   plan: Plan
   /** Subscription quantity: Macs with unlimited iPhones. 0 on free. */
   paidMacs: number
+  /** Cloud phone subscriptions that allow leases. Never part of the plan. */
+  cloudPhones: number
   /** Read access to ghosthand-dev/ghosthand-daemon. */
   sourceAccess: boolean
   /** One line for the user, without links: the daemon adds them. */
@@ -49,12 +66,13 @@ export type Entitlement = {
   validUntil: Date
 }
 
-type SubscriptionRow = { status: string; cancelAtPeriodEnd: boolean; currentPeriodEnd: Date | null; paidMacs: number }
+type SubscriptionRow = { kind: SubscriptionKind; status: string; cancelAtPeriodEnd: boolean; currentPeriodEnd: Date | null; paidMacs: number }
 
 export function entitlementFor({ subscriptions, now }: { subscriptions: SubscriptionRow[]; now: Date }): Entitlement {
-  const pro = subscriptions.filter((s) => isProStatus(s.status))
+  const pro = subscriptions.filter((s) => s.kind === 'pro' && isProStatus(s.status))
+  const cloudPhones = subscriptions.filter((s) => s.kind === 'cloud_phone' && isCloudPhoneAllowed(s.status)).length
   if (!pro.length) {
-    return { plan: 'free', paidMacs: 0, sourceAccess: false, notice: null, validUntil: new Date(now.getTime() + FREE_OFFLINE_DAYS * DAY_MS) }
+    return { plan: 'free', paidMacs: 0, cloudPhones, sourceAccess: false, notice: null, validUntil: new Date(now.getTime() + FREE_OFFLINE_DAYS * DAY_MS) }
   }
   const first = pro[0]!
   const notice = first.status === 'past_due'
@@ -66,6 +84,7 @@ export function entitlementFor({ subscriptions, now }: { subscriptions: Subscrip
   return {
     plan: 'pro',
     paidMacs: pro.reduce((sum, s) => sum + s.paidMacs, 0),
+    cloudPhones,
     sourceAccess: true,
     notice,
     validUntil: new Date(Math.max(periodEnd.getTime(), now.getTime()) + PRO_GRACE_DAYS * DAY_MS),
@@ -137,7 +156,7 @@ export function taskDecision({ entitlement, used, now, subscribeUrl }: {
   now: Date
   subscribeUrl: string
 }): TaskDecision {
-  if (entitlement.plan === 'pro' || used < FREE_TASKS_PER_MONTH) return { allowed: true }
+  if (entitlement.plan === 'pro' || entitlement.cloudPhones > 0 || used < FREE_TASKS_PER_MONTH) return { allowed: true }
   const start = taskMonthStart(now)
   const reset = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1))
   return {
@@ -145,6 +164,44 @@ export function taskDecision({ entitlement, used, now, subscribeUrl }: {
     message: `The free plan includes ${FREE_TASKS_PER_MONTH} phone tasks per month, and this month's are used up (they reset on ${formatDay(reset)}). `
       + `Subscribe to Pro ($${PRO_PRICE_PER_MAC}/month per Mac) for unlimited tasks: ${subscribeUrl}`,
   }
+}
+
+/** Stripe statuses that allow leases of a cloud phone. past_due: Stripe is still retrying. */
+export const CLOUD_PHONE_ALLOWED_STATUSES = ['active', 'trialing', 'past_due'] as const
+
+export function isCloudPhoneAllowed(stripeStatus: string): boolean {
+  return CLOUD_PHONE_ALLOWED_STATUSES.some((s) => s === stripeStatus)
+}
+
+export type CloudPhoneStatus = 'pending' | 'active' | 'past_due' | 'canceled'
+
+/** `cloud_phone.status` for a Stripe subscription status. canceled keeps the storage. */
+export function cloudPhoneStatus(stripeStatus: string): CloudPhoneStatus {
+  if (stripeStatus === 'active' || stripeStatus === 'trialing') return 'active'
+  if (stripeStatus === 'past_due') return 'past_due'
+  if (stripeStatus === 'incomplete') return 'pending'
+  return 'canceled'
+}
+
+/** CloudFleet.setAccess for a phone in this status. */
+export function cloudPhoneAccess(status: CloudPhoneStatus): boolean {
+  return status === 'active' || status === 'past_due'
+}
+
+/**
+ * What the webhook writes on a cloud phone row for one of its subscriptions, or null to
+ * leave it. The phone's own subscription always updates it. Another one (a renewal after
+ * cancel) takes over only when it allows leases and the phone does not, so late events of
+ * the old canceled subscription never block the renewed phone.
+ */
+export function cloudPhoneUpdate({ phone, subscription }: {
+  phone: { subscriptionId: string | null; status: CloudPhoneStatus } | null
+  subscription: { subscriptionId: string; status: string }
+}): { subscriptionId: string; status: CloudPhoneStatus } | null {
+  const next = { subscriptionId: subscription.subscriptionId, status: cloudPhoneStatus(subscription.status) }
+  if (!phone || phone.subscriptionId === null || phone.subscriptionId === subscription.subscriptionId) return next
+  if (cloudPhoneAccess(next.status) && !cloudPhoneAccess(phone.status)) return next
+  return null
 }
 
 function firstFreeSlot(rows: BoundDevice[], limit: number): number | null {

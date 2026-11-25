@@ -5,7 +5,8 @@
 //   user ──< oauth_consent, oauth_*_token >── oauth_client   (remote MCP OAuth; jwks signs tokens)
 //   user ──< org_member >── org ──< stripe_customer  one per (org, Stripe account)
 //                               ──< subscription     mirrored from Stripe webhooks (kind pro | cloud_phone)
-//                               ──< cloud_phone      rented virtual iPhones, one subscription each
+//                               ──< cloud_phone      rented virtual iPhones, one subscription each, and their
+//                                                    cloud_lease rows; they run on cloud_host Macs
 //                               ──< org_device       the free iPhone and the paid Macs
 //                               ──< task_run         one row per phone task prompt (Free monthly limit)
 //                               ──  source_access    GitHub account with read access to the daemon repo
@@ -357,28 +358,80 @@ export const subscription = p.pgTable('subscription', {
 ])
 
 // ── cloud phones ────────────────────────────────────────────────────
+//
+// What was bought and where it runs, one row each (website/src/cloud/fleet.ts):
+//
+//   cloud_host ──< cloud_phone ──< cloud_lease
+//   a Mac of ours   a rented iPhone  `cloud:<n>`, ends by release or idle timeout
+//
+// Facts that follow from others are derived, never stored: access is the linked
+// subscription's status, a host is online while last_seen_at is recent, a lease is live
+// until last_used_at + idle_timeout_s, a phone is idle since its last lease ended.
+
+/** A Mac that runs cloud iPhones, added by scripts/cloud-host.ts. */
+export const cloudHost = p.pgTable('cloud_host', {
+  slug: p.text('slug').primaryKey(),
+  /** The ENVIRONMENT of the Worker whose HOSTS binding reaches it: preview and production share this database. */
+  environment: p.text('environment').notNull(),
+  /** `10.77.0.1:7400`: the private IP its Cloudflare Tunnel routes. */
+  address: p.text('address').notNull(),
+  /** Most phones running at once. */
+  slots: p.integer('slots').notNull(),
+  /** draining: no new starts. */
+  status: p.text('status', { enum: ['active', 'draining'] }).notNull().default('active'),
+  /** Its last answer to GET /v1/status. */
+  lastSeenAt: timestamp('last_seen_at'),
+  createdAt: createdAt(),
+})
 
 /**
- * A rented virtual iPhone ($49/month). Postgres keeps what was bought; the CloudFleet
- * Durable Object keeps where it runs. Storage is never deleted: renewing a canceled phone
- * runs a new Checkout with the same id, and its new subscription takes over the row.
+ * A rented virtual iPhone ($49/month). Pending until its first subscription; access is that
+ * subscription's status. Storage is never deleted: renewing a canceled phone runs a new
+ * Checkout with the same id, and its new subscription takes over the row.
  */
 export const cloudPhone = p.pgTable('cloud_phone', {
   /** "cph_" + ulid; also the VM folder name on a host. */
   cloudPhoneId: p.text('cloud_phone_id').primaryKey().$defaultFn(() => `cph_${ulid()}`),
   orgId: p.text('org_id').notNull().references(() => org.orgId, { onDelete: 'cascade' }),
   name: p.text('name').notNull(),
-  /** The subscription paying for it now, set by the webhook. */
+  /** The subscription paying for it now, set by the webhook. Null: not paid yet. */
   subscriptionId: p.text('subscription_id').unique().references(() => subscription.subscriptionId, { onDelete: 'set null' }),
-  status: p.text('status', { enum: ['pending', 'active', 'past_due', 'canceled'] }).notNull().default('pending'),
   /** VPhone template key the phone was cloned from. */
   template: p.text('template').notNull(),
+  state: p.text('state', { enum: ['stored', 'starting', 'running', 'stopping'] }).notNull().default('stored'),
+  /** Where it runs, or the host whose disk has its newest copy. Removing a host is refused while it holds one. */
+  hostSlug: p.text('host_slug').references(() => cloudHost.slug, { onDelete: 'set null' }),
+  /** Newest hashed version. +1 on every stop. */
+  version: p.integer('version').notNull().default(0),
+  /** Newest version in R2. 0: never saved, the template is its copy. */
+  savedVersion: p.integer('saved_version').notNull().default(0),
+  /** Chunks of `version` already copied to R2, while version > saved_version. */
+  saveCursor: p.integer('save_cursor').notNull().default(0),
+  stateChangedAt: timestamp('state_changed_at').notNull().defaultNow(),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (table) => [
   p.index('cloud_phone_org_id_idx').on(table.orgId),
-  // One unpaid pending phone per org: concurrent Rent clicks reuse it instead of adding rows.
-  p.uniqueIndex('cloud_phone_org_unpaid_unique').on(table.orgId).where(sql`${table.status} = 'pending' and ${table.subscriptionId} is null`),
+  p.index('cloud_phone_host_slug_idx').on(table.hostSlug),
+  // One unpaid phone per org: concurrent Rent clicks reuse it instead of adding rows.
+  p.uniqueIndex('cloud_phone_org_unpaid_unique').on(table.orgId).where(sql`${table.subscriptionId} is null`),
+])
+
+/** A lease `cloud:<n>`. Live while ended_at is null and last_used_at + idle_timeout_s is ahead. */
+export const cloudLease = p.pgTable('cloud_lease', {
+  /** The `<n>` of `cloud:<n>`. */
+  cloudLeaseId: p.integer('cloud_lease_id').primaryKey().generatedAlwaysAsIdentity(),
+  cloudPhoneId: p.text('cloud_phone_id').notNull().references(() => cloudPhone.cloudPhoneId, { onDelete: 'cascade' }),
+  label: p.text('label'),
+  reason: p.text('reason').notNull(),
+  idleTimeoutS: p.integer('idle_timeout_s').notNull(),
+  lastUsedAt: timestamp('last_used_at').notNull().defaultNow(),
+  lastCommand: p.text('last_command'),
+  /** Release, a forced takeover, or the VM stopped under it. */
+  endedAt: timestamp('ended_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+  p.index('cloud_lease_cloud_phone_id_idx').on(table.cloudPhoneId),
 ])
 
 // ── plan limits ─────────────────────────────────────────────────────
@@ -431,7 +484,7 @@ export const relations = defineRelations(
   {
     user, session, account, verification, deviceCode, apikey,
     jwks, oauthClient, oauthResource, oauthClientResource, oauthRefreshToken, oauthAccessToken, oauthConsent, oauthClientAssertion,
-    org, orgMember, stripeCustomer, subscription, cloudPhone, orgDevice, taskRun, sourceAccess,
+    org, orgMember, stripeCustomer, subscription, cloudHost, cloudPhone, cloudLease, orgDevice, taskRun, sourceAccess,
   },
   (r) => ({
     user: {
@@ -515,9 +568,17 @@ export const relations = defineRelations(
       org: r.one.org({ from: r.subscription.orgId, to: r.org.orgId }),
       cloudPhone: r.one.cloudPhone(),
     },
+    cloudHost: {
+      phones: r.many.cloudPhone(),
+    },
     cloudPhone: {
       org: r.one.org({ from: r.cloudPhone.orgId, to: r.org.orgId }),
       subscription: r.one.subscription({ from: r.cloudPhone.subscriptionId, to: r.subscription.subscriptionId }),
+      host: r.one.cloudHost({ from: r.cloudPhone.hostSlug, to: r.cloudHost.slug }),
+      leases: r.many.cloudLease(),
+    },
+    cloudLease: {
+      phone: r.one.cloudPhone({ from: r.cloudLease.cloudPhoneId, to: r.cloudPhone.cloudPhoneId }),
     },
     orgDevice: {
       org: r.one.org({ from: r.orgDevice.orgId, to: r.org.orgId }),

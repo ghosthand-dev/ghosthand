@@ -250,6 +250,11 @@ default scale and vphoned gestures), so no conversion is needed at scale 1.
 | `POST .../task` | the existing task DO, whose `daemonFetch` calls this file |
 | everything else | `unsupported-in-mode` with a one-line reason |
 
+`ROUTES` is keyed by every daemon route (`METHOD /path` from `daemon-api.ts`), each a handler or an
+`unsupported` reason, so a new daemon route fails tsc until it gets one. The daemon logic cloud
+iPhones redo (tap-by-text matching, waitText checks, scroll strokes like XCTest mode, OCR shaping)
+lives in the pure `core.ts`, checked with the daemon against the same cases (`daemon-parity.json`).
+
 Every input with `?screenshot=jpeg` sends `"settle": true` and returns the frame in
 `ActionResult.screenshot`. Problems use the daemon's codes (`lease-invalid`, `device-leased`,
 `subscription-required`, `unsupported-in-mode`).
@@ -257,9 +262,11 @@ Every input with `?screenshot=jpeg` sends `"settle": true` and returns the frame
 ### `mcp.ts`
 
 Answers `tools/call` for `cloud:` leases by calling `api.ts`, and formats text like the daemon's
-MCP tools (same formatters ported: app lines, info lines, lease lines). Tool names and argument
-names come from `mcp-tools.json`; a test fails if a tool there has no handler or `unsupported`
-entry.
+MCP tools (same formatters ported: app lines, info lines, lease lines). Tools and argument types
+come from `src/generated/mcp-tools.ts` (written with `mcp-tools.json` by `pnpm generate-docs`):
+every tool is in `HANDLERS` or `UNSUPPORTED_TOOLS`, and each handler lists every argument it reads
+or why it ignores it, so tsc fails on a new tool or argument. Arguments are checked against the
+tool's inputSchema with the daemon's messages before a handler runs.
 
 ### `admin.ts`, `admin-view.ts`: the operator's view
 

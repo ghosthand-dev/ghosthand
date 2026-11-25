@@ -1,5 +1,9 @@
 # Daemon submodule
 
+Active plan: `plans/virtual-iphone.md`. Read it before starting work on virtual iPhone support.
+Active plan: `plans/cloud-phones.md`. Read it before starting work on rented cloud phones.
+Decisions: `plans/decisions/`. Search them before designing or refactoring.
+
 The Swift daemon and the private skills live in `daemon/`, the private submodule
 [ghosthand-dev/ghosthand-daemon](https://github.com/ghosthand-dev/ghosthand-daemon) (Pro
 subscribers get read access). Everything else in this repo is public.

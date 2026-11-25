@@ -8,14 +8,15 @@
 //
 // Coordinates are screen points on both sides (vphoned gestures and the daemon's default
 // scale). The website is the only tenant gate: only the routes below exist, never a raw RPC.
-// Types come from the daemon's OpenAPI (src/generated/daemon-api.ts).
+// Types come from the daemon's OpenAPI (src/generated/daemon-api.ts): ROUTES must name every
+// daemon route, as a handler or an unsupported reason. Pure logic shared with the daemon is in core.ts.
 
 import { generateId, type UIMessage, type UIMessageChunk } from 'ai'
 import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import { z } from 'zod'
 import { getDb } from '../db.ts'
-import type { components } from '../generated/daemon-api.ts'
+import type { components, paths } from '../generated/daemon-api.ts'
 import { getTask } from '../task.ts'
 import type { TaskPhone } from '../task-agent.ts'
 import { catalogApp, publicCatalog } from './apps.ts'
@@ -23,68 +24,28 @@ import { acquire as acquireLease, listPhones, release as releaseLease, useLease,
 import { hostClient, type Json, type SockLine, type SockReply } from './host.ts'
 import { DEFAULT_IDLE_TIMEOUT_S } from './scheduler.ts'
 import { sendBlob, templateInfo } from './storage.ts'
+import { CloudProblem, checkWaitText, hasText, ocrScreen, pickText, scrollStrokes, type Direction, type Point, type WaitText } from './core.ts'
 
 type Schemas = components['schemas']
 export type Device = Schemas['Device']
 export type ScreenText = Schemas['ScreenText']
 export type ActionResult = Schemas['ActionResult']
-export type ProblemCode = Schemas['Problem']['code']
 
 export const CLOUD_SLUG = 'cloud'
 export const CLOUD_NAME = 'Cloud'
 const OCR_POLL_MS = 150
-const DEFAULT_WAIT_TEXT_MS = 5_000
-const MAX_WAIT_TEXT_MS = 60_000
 const DEFAULT_HOLD_MS = 1_000
 const DEFAULT_DRAG_MS = 1_000
 const DEFAULT_SWIPE_MS = 150
-/** Screen points one wheel tick scrolls on a USB iPhone (`ghosthand scroll --help`). */
-const POINTS_PER_TICK = 100
-/** A scroll drag covers at most this much of the screen height; longer scrolls repeat it. */
-const SCROLL_STROKE_FRACTION = 0.6
-const SCROLL_STROKE_MS = 400
+const MAX_SCROLL_TICKS = 1_000
+const MIN_HOLD_MS = 100
+const MIN_SWIPE_MS = 16
+const MAX_GESTURE_MS = 10_000
 const TAP_GAP_MS = 120
 const TAP_PRESS_MS = 80
 const KEEPALIVE_MS = 15_000
 const MAX_NAME_LENGTH = 100
 const MS_PER_S = 1_000
-
-const PROBLEMS: Partial<Record<ProblemCode, [status: number, title: string]>> = {
-  'invalid-request': [400, 'Invalid request'],
-  'not-found': [404, 'Not found'],
-  'device-not-found': [404, 'Device not found'],
-  'no-device': [404, 'No iPhone connected'],
-  'multiple-devices': [409, 'Several iPhones connected'],
-  'text-not-found': [404, 'Text not on screen'],
-  'wait-text-timeout': [504, 'Expected text did not appear'],
-  'lease-invalid': [403, 'Lease not valid'],
-  'device-leased': [409, 'iPhone leased by another client'],
-  'subscription-required': [402, 'Subscription required'],
-  'unsupported-in-mode': [409, 'Not available in this control mode'],
-  'tunnel-offline': [503, 'Tunnel offline'],
-  'task-failed': [502, 'Task failed'],
-  'cancelled': [499, 'Client closed request'],
-  'internal-error': [500, 'Internal error'],
-}
-
-/** A daemon problem (`application/problem+json`), returned as a value by every op. */
-export class CloudProblem extends Error {
-  readonly code: ProblemCode
-  readonly status: number
-  readonly title: string
-  constructor(code: ProblemCode, detail: string) {
-    super(detail)
-    this.name = 'CloudProblem'
-    const [status, title] = PROBLEMS[code] ?? [500, 'Internal error']
-    this.code = code
-    this.status = status
-    this.title = title
-  }
-
-  get body(): Schemas['Problem'] {
-    return { code: this.code, title: this.title, status: this.status, detail: this.message }
-  }
-}
 
 export type Ctx = { orgId: string; signal: AbortSignal }
 
@@ -196,10 +157,12 @@ export async function screenshot(ctx: Ctx, { lease, settle, screentext, language
 }
 
 export async function screenText(ctx: Ctx, { lease, settle, language, waitText, timeoutMs }: { lease: string; settle?: boolean; language?: string; waitText?: string; timeoutMs?: number }): Promise<ScreenText | CloudProblem> {
+  const wait = checkWaitText({ waitText, timeoutMs })
+  if (wait instanceof Error) return wait
   const phone = await openLease(ctx, { lease, command: 'screentext' })
   if (phone instanceof Error) return phone
-  if (waitText) {
-    const found = await waitForText(ctx, phone, { text: waitText, timeoutMs, language })
+  if (wait) {
+    const found = await waitForText(ctx, phone, { wait, language })
     if (found instanceof Error || !settle) return found
   }
   if (settle) {
@@ -227,68 +190,42 @@ async function readScreen(phone: Phone, { language }: { language?: string }): Pr
   return ocrScreen({ result, screen: templateInfo(phone.template).screen })
 }
 
-const ocrBlocks = z.array(z.object({ text: z.string(), confidence: z.number(), x: z.number(), y: z.number(), width: z.number(), height: z.number() }).loose())
 const appRows = z.array(z.object({ bundle_id: z.string(), name: z.string().optional(), version: z.string().optional(), type: z.string().optional() }).loose())
 
-/** vphoned OCR blocks (box centers in points) as daemon lines (top-left corners), top to bottom. */
-export function ocrScreen({ result, screen }: { result: Record<string, unknown>; screen: { width: number; height: number } }): ScreenText | CloudProblem {
-  const parsed = ocrBlocks.safeParse(result.blocks)
-  if (!parsed.success) return new CloudProblem('internal-error', `the cloud iPhone sent OCR blocks of an unknown shape: ${parsed.error.message}`)
-  const lines = parsed.data.map((b) => ({
-    text: b.text, x: Math.round(b.x - b.width / 2), y: Math.round(b.y - b.height / 2),
-    width: Math.round(b.width), height: Math.round(b.height), confidence: Math.round(b.confidence * 100) / 100,
-  })).sort((a, b) => a.y - b.y || a.x - b.x)
-  return { width: screen.width, height: screen.height, lines }
-}
-
-async function waitForText(ctx: Ctx, phone: Phone, { text, timeoutMs, language }: { text: string; timeoutMs?: number; language?: string }): Promise<ScreenText | CloudProblem> {
-  const timeout = Math.min(timeoutMs ?? DEFAULT_WAIT_TEXT_MS, MAX_WAIT_TEXT_MS)
-  const deadline = Date.now() + timeout
-  const needle = text.toLowerCase()
+async function waitForText(ctx: Ctx, phone: Phone, { wait, language }: { wait: WaitText; language?: string }): Promise<ScreenText | CloudProblem> {
+  const deadline = Date.now() + wait.timeoutMs
   let reads = 0
   for (;;) {
     if (ctx.signal.aborted) return new CloudProblem('cancelled', 'the client went away')
     const screen = await readScreen(phone, { language })
     if (screen instanceof Error) return screen
     reads++
-    if (screen.lines.some((line) => line.text.toLowerCase().includes(needle))) return screen
+    if (hasText({ lines: screen.lines, text: wait.text })) return screen
     if (Date.now() + OCR_POLL_MS > deadline) {
-      return new CloudProblem('wait-text-timeout', `"${text}" did not appear in ${timeout} ms (${reads} OCR reads). The input was sent: never repeat it blindly; read the screen first.`)
+      return new CloudProblem('wait-text-timeout', `"${wait.text}" did not appear in ${wait.timeoutMs} ms (${reads} OCR reads). The input was sent: never repeat it blindly; read the screen first.`)
     }
     await sleep({ ms: OCR_POLL_MS, signal: ctx.signal })
   }
-}
-
-/** The daemon's rule: lines equal to the text win over lines that contain it; several need `index`. */
-export function pickText({ lines, text, index }: { lines: ScreenText['lines']; text: string; index?: number }): ScreenText['lines'][number] | CloudProblem {
-  const query = text.toLowerCase()
-  const exact = lines.filter((line) => line.text.toLowerCase() === query)
-  const matches = (exact.length ? exact : lines.filter((line) => line.text.toLowerCase().includes(query))).sort((a, b) => a.y - b.y || a.x - b.x)
-  if (!matches.length) return new CloudProblem('text-not-found', `no text "${text}" on screen (${lines.length} OCR lines; run \`ghosthand screentext\` to see them)`)
-  if (index !== undefined) {
-    return matches[index - 1] ?? new CloudProblem('invalid-request', `index must be 1...${matches.length}`)
-  }
-  if (matches.length === 1) return matches[0]!
-  const list = matches.map((line, i) => `  ${i + 1}. ${line.x},${line.y} ${line.text}`).join('\n')
-  return new CloudProblem('invalid-request', `${matches.length} lines match "${text}"; pick one with index (CLI: --index):\n${list}`)
 }
 
 // ── input ──
 
 /** Runs an input, then the steps after it (waitText, then the settled screen and its text). */
 async function input(ctx: Ctx, { lease, command, after, prepare }: { lease: string; command: string; after: After; prepare: (phone: Phone) => Promise<FinalInput | CloudProblem> }): Promise<ActionResult | CloudProblem> {
+  const wait = checkWaitText(after)
+  if (wait instanceof Error) return wait
   const phone = await openLease(ctx, { lease, command })
   if (phone instanceof Error) return phone
   const final = await prepare(phone)
   if (final instanceof Error) return final
   // The host settles best on the input line itself: it saw the screen before the input.
-  const settleOnInput = !!after.screenshot && !after.waitText
+  const settleOnInput = !!after.screenshot && !wait
   const reply = await phone.sock({ ...final.line, ...(settleOnInput ? { screen: true, settle: true } : { screen: false }) })
   if (reply instanceof Error) return reply
   const result: ActionResult = { message: final.message, logs: final.logs ?? [] }
   const sent = (problem: CloudProblem) => new CloudProblem(problem.code, `${final.message}, then: ${problem.message}`)
-  if (after.waitText) {
-    const found = await waitForText(ctx, phone, { text: after.waitText, timeoutMs: after.timeoutMs, language: after.language })
+  if (wait) {
+    const found = await waitForText(ctx, phone, { wait, language: after.language })
     if (found instanceof Error) return sent(found)
   }
   if (after.screenshot) {
@@ -307,7 +244,14 @@ async function input(ctx: Ctx, { lease, command, after, prepare }: { lease: stri
 
 export type TapInput = ({ x: number; y: number } | { text: string; index?: number }) & { clicks?: 1 | 2 | 3; holdMs?: number }
 
-export function tap(ctx: Ctx, { lease, command, request, after }: { lease: string; command: 'tap' | 'double-tap' | 'triple-tap' | 'hold'; request: TapInput; after: After }) {
+/** Points in messages, as the daemon prints them (`Int()`). */
+const pointLabel = ({ x, y }: Point) => `${Math.trunc(x)},${Math.trunc(y)}`
+
+export async function tap(ctx: Ctx, { lease, command, request, after }: { lease: string; command: 'tap' | 'double-tap' | 'triple-tap' | 'hold'; request: TapInput; after: After }) {
+  const holdMs = command === 'hold' ? request.holdMs ?? DEFAULT_HOLD_MS : undefined
+  if (holdMs !== undefined && !(holdMs >= MIN_HOLD_MS && holdMs <= MAX_GESTURE_MS)) {
+    return new CloudProblem('invalid-request', `durationMs must be between ${MIN_HOLD_MS} and ${MAX_GESTURE_MS}`)
+  }
   return input(ctx, {
     lease, command, after,
     prepare: async (phone) => {
@@ -318,50 +262,51 @@ export function tap(ctx: Ctx, { lease, command, request, after }: { lease: strin
         if (screen instanceof Error) return screen
         const line = pickText({ lines: screen.lines, text: request.text, index: request.index })
         if (line instanceof Error) return line
-        point = { x: Math.round(line.x + line.width / 2), y: Math.round(line.y + line.height / 2) }
-        logs.push(`found "${line.text}" at ${point.x},${point.y}`)
+        point = { x: line.x + line.width / 2, y: line.y + line.height / 2 }
+        logs.push(`found "${line.text}" at ${pointLabel(point)}`)
       }
       const { x, y } = point!
-      if (command === 'hold') {
-        const ms = request.holdMs ?? DEFAULT_HOLD_MS
-        return { line: rpcLine('input.long_press', { x, y, seconds: ms / MS_PER_S }), message: `held ${x},${y} for ${ms} ms`, logs }
+      if (holdMs !== undefined) {
+        return { line: rpcLine('input.long_press', { x, y, seconds: holdMs / MS_PER_S }), message: `held ${pointLabel(point!)} for ${Math.trunc(holdMs)} ms`, logs }
       }
-      if (command === 'double-tap') return { line: rpcLine('input.double_tap', { x, y }), message: `double-tapped ${x},${y}`, logs }
+      if (command === 'double-tap') return { line: rpcLine('input.double_tap', { x, y }), message: `double-tapped ${pointLabel(point!)}`, logs }
       if (command === 'triple-tap') {
         const events = [0, 1, 2].flatMap((i) => [
           { phase: 'down', x, y, delay_ms: i === 0 ? 0 : TAP_GAP_MS },
           { phase: 'up', x, y, delay_ms: TAP_PRESS_MS },
         ])
-        return { line: rpcLine('input.touch_sequence', { events, normalized: false }), message: `triple-tapped ${x},${y}`, logs }
+        return { line: rpcLine('input.touch_sequence', { events, normalized: false }), message: `triple-tapped ${pointLabel(point!)}`, logs }
       }
-      return { line: rpcLine('input.tap', { x, y }), message: `tapped ${x},${y}`, logs }
+      return { line: rpcLine('input.tap', { x, y }), message: `tapped ${pointLabel(point!)}`, logs }
     },
   })
 }
 
-type Point = { x: number; y: number }
-
-export function swipe(ctx: Ctx, { lease, from, to, durationMs, holdMs, after }: { lease: string; from: Point; to: Point; durationMs?: number; holdMs?: number; after: After }) {
+export async function swipe(ctx: Ctx, { lease, from, to, durationMs, holdMs, after }: { lease: string; from: Point; to: Point; durationMs?: number; holdMs?: number; after: After }) {
   const drag = holdMs !== undefined
+  const ms = durationMs ?? (drag ? DEFAULT_DRAG_MS : DEFAULT_SWIPE_MS)
+  if (!(ms >= MIN_SWIPE_MS && ms <= MAX_GESTURE_MS)) return new CloudProblem('invalid-request', `durationMs must be between ${MIN_SWIPE_MS} and ${MAX_GESTURE_MS}`)
+  if (drag && !(holdMs >= MIN_HOLD_MS && holdMs <= MAX_GESTURE_MS)) return new CloudProblem('invalid-request', `holdMs must be between ${MIN_HOLD_MS} and ${MAX_GESTURE_MS}`)
   return input(ctx, {
     lease, command: drag ? 'hold-drag' : 'swipe', after,
     prepare: async () => {
-      const route = `${from.x},${from.y} to ${to.x},${to.y}`
+      const path = `${pointLabel(from)} -> ${pointLabel(to)}`
       if (drag) {
-        const ms = durationMs ?? DEFAULT_DRAG_MS
-        return { line: rpcLine('input.drag', { points: [[from.x, from.y], [to.x, to.y]], hold: holdMs / MS_PER_S, seconds: ms / MS_PER_S }), message: `held ${holdMs} ms, dragged ${route}` }
+        return { line: rpcLine('input.drag', { points: [[from.x, from.y], [to.x, to.y]], hold: holdMs / MS_PER_S, seconds: ms / MS_PER_S }), message: `held ${Math.trunc(holdMs)} ms, then dragged ${path}` }
       }
-      const ms = durationMs ?? DEFAULT_SWIPE_MS
-      return { line: rpcLine('input.swipe', { from: [from.x, from.y], to: [to.x, to.y], seconds: ms / MS_PER_S }), message: `swiped ${route}` }
+      return { line: rpcLine('input.swipe', { from: [from.x, from.y], to: [to.x, to.y], seconds: ms / MS_PER_S }), message: `swiped ${path} in ${Math.trunc(ms)} ms` }
     },
   })
 }
 
-export function scroll(ctx: Ctx, { lease, direction, ticks, at, after }: { lease: string; direction: 'up' | 'down' | 'left' | 'right'; ticks: number; at?: Point; after: After }) {
+export async function scroll(ctx: Ctx, { lease, direction, ticks, at: point, after }: { lease: string; direction: Direction; ticks: number; at?: Point; after: After }) {
+  if (!(Number.isInteger(ticks) && ticks >= 1 && ticks <= MAX_SCROLL_TICKS)) return new CloudProblem('invalid-request', `ticks must be between 1 and ${MAX_SCROLL_TICKS}`)
   return input(ctx, {
     lease, command: 'scroll', after,
     prepare: async (phone) => {
-      const lines = scrollStrokes({ direction, ticks, at, screen: templateInfo(phone.template).screen })
+      const screen = templateInfo(phone.template).screen
+      const lines = scrollStrokes({ direction, ticks, center: point ?? { x: screen.width / 2, y: screen.height / 2 }, screen })
+        .map((s) => rpcLine('input.swipe', { from: [s.from.x, s.from.y], to: [s.to.x, s.to.y], seconds: s.durationMs / MS_PER_S }))
       for (const line of lines.slice(0, -1)) {
         const done = await phone.sock({ ...line, screen: false })
         if (done instanceof Error) return done
@@ -369,23 +314,6 @@ export function scroll(ctx: Ctx, { lease, direction, ticks, at, after }: { lease
       return { line: lines.at(-1)!, message: `scrolled ${direction} ${ticks} ticks` }
     },
   })
-}
-
-/** Wheel ticks as slow drags (no fling): `down` shows content further down, so the finger moves up. */
-export function scrollStrokes({ direction, ticks, at, screen }: { direction: 'up' | 'down' | 'left' | 'right'; ticks: number; at?: Point; screen: { width: number; height: number } }): SockLine[] {
-  const center = at ?? { x: Math.round(screen.width / 2), y: Math.round(screen.height / 2) }
-  const vertical = direction === 'up' || direction === 'down'
-  const stroke = Math.round((vertical ? screen.height : screen.width) * SCROLL_STROKE_FRACTION)
-  const sign = direction === 'down' || direction === 'right' ? -1 : 1
-  const lines: SockLine[] = []
-  for (let left = ticks * POINTS_PER_TICK; left > 0; left -= stroke) {
-    const half = Math.min(left, stroke) / 2
-    const [from, to] = vertical
-      ? [[center.x, center.y - sign * half], [center.x, center.y + sign * half]]
-      : [[center.x - sign * half, center.y], [center.x + sign * half, center.y]]
-    lines.push(rpcLine('input.swipe', { from: from!.map(Math.round), to: to!.map(Math.round), seconds: SCROLL_STROKE_MS / MS_PER_S }))
-  }
-  return lines
 }
 
 const BUTTON_KEYS: Record<string, string> = { home: 'home', volumeup: 'volume-up', volumedown: 'volume-down' }
@@ -469,14 +397,6 @@ export async function uninstallApp(ctx: Ctx, { lease, bundleId }: { lease: strin
   const result = await rpc(phone, 'apps.uninstall', { bundle_id: bundleId, force: true })
   if (result instanceof Error) return result
   return `uninstalled ${bundleId}`
-}
-
-export async function launchApp(ctx: Ctx, { lease, bundleId }: { lease: string; bundleId: string }): Promise<string | CloudProblem> {
-  const phone = await openLease(ctx, { lease, command: 'app launch' })
-  if (phone instanceof Error) return phone
-  const result = await rpc(phone, 'apps.launch', { bundle_id: bundleId })
-  if (result instanceof Error) return result
-  return `launched ${bundleId}${typeof result.warning === 'string' ? ` (${result.warning})` : ''}`
 }
 
 /** The catalog, with what the phone has installed. */
@@ -611,24 +531,30 @@ const BODIES = {
   task: z.object({ prompt: z.string().min(1).optional(), task: z.string().optional() }).strict(),
 }
 
-/** One daemon API request for the org's cloud iPhones. `path` is `/v1/...` with its query. */
-export async function cloudApi({ orgId, request, path }: { orgId: string; request: Request; path: string }): Promise<Response> {
-  const url = new URL(path, 'https://cloud')
-  const ctx: Ctx = { orgId, signal: request.signal }
-  const answer = await route({ ctx, request, method: request.method, url })
-  if (answer instanceof Response) return answer
-  if (answer instanceof CloudProblem) return problemResponse(answer)
-  return Response.json(answer)
-}
+/** Methods openapi.yaml may give a path. */
+type Method = 'get' | 'put' | 'post' | 'delete' | 'patch'
+/** Every daemon route as `METHOD /path`, from the daemon's openapi.yaml (src/generated/daemon-api.ts). */
+type DaemonRoute = {
+  [P in keyof paths]: { [M in Method]: [NonNullable<paths[P][M]>] extends [never] ? never : `${Uppercase<M>} ${P}` }[Method]
+}[keyof paths]
+/** `{lease}` and the other path parameters of a route. */
+type PathParams<R> = R extends `${string}{${infer K}}${infer Rest}` ? Record<K, string> & PathParams<Rest> : unknown
+type RouteInput<R> = { ctx: Ctx; request: Request; query: URLSearchParams; params: PathParams<R>; after: After }
+/** A cloud handler, or why cloud iPhones cannot do the route. */
+type Route<R> = ((input: RouteInput<R>) => Promise<Response | CloudProblem | object>) | { unsupported: string }
 
-async function route({ ctx, request, method, url }: { ctx: Ctx; request: Request; method: string; url: URL }): Promise<Response | CloudProblem | object> {
-  const query = url.searchParams
-  const { pathname } = url
-  if (pathname === '/v1/devices' && method === 'GET') {
+const NO_MAC = 'cloud iPhones have no Mac: this route belongs to a Mac\'s daemon'
+const NO_FILES = 'files are not available on cloud iPhones yet'
+const NO_PHOTOS = 'photos are not available on cloud iPhones yet'
+export const NO_NATIVE_SCREENSHOT = 'cloud iPhones have no native screenshot: their screen capture already shows system dialogs'
+
+/** Every daemon route: a missing or unknown one fails tsc, so a new daemon route needs a decision here. */
+const ROUTES: { [R in DaemonRoute]: Route<R> } = {
+  'GET /v1/devices': async ({ ctx }) => {
     const devices = await listDevices(ctx)
     return { devices: devices.map(deviceSchema) } satisfies Schemas['DeviceList']
-  }
-  if (pathname === '/v1/leases' && method === 'POST') {
+  },
+  'POST /v1/leases': async ({ ctx, request }) => {
     const body = await parseBody(request, BODIES.acquire)
     if (body instanceof Error) return body
     if (body.mac && body.mac !== CLOUD_SLUG) return new CloudProblem('invalid-request', `mac must be ${CLOUD_SLUG} or omitted here`)
@@ -636,116 +562,180 @@ async function route({ ctx, request, method, url }: { ctx: Ctx; request: Request
     if (wantsStream(request)) return eventStream(run)
     const lease = await run
     return lease instanceof Error ? lease : Response.json(lease, { status: 201 })
+  },
+  'DELETE /v1/leases/{lease}': async ({ ctx, params }) => messageBody(await release(ctx, params.lease)),
+  'GET /v1/leases/{lease}/screenshot': async ({ ctx, query, params, after }) => {
+    if (boolParam(query.get('native'))) return new CloudProblem('unsupported-in-mode', NO_NATIVE_SCREENSHOT)
+    const shot = await screenshot(ctx, { lease: params.lease, settle: boolParam(query.get('settle')), screentext: boolParam(query.get('screentext')), language: after.language })
+    if (shot instanceof Error) return shot
+    if (shot.screen) return { screenshot: { format: 'jpeg', width: shot.width, height: shot.height, data: shot.data }, screen: shot.screen } satisfies Schemas['ScreenshotText']
+    const headers: Record<string, string> = { 'content-type': 'image/jpeg', 'x-image-width': String(shot.width), 'x-image-height': String(shot.height) }
+    if (query.get('format') === 'png') headers['x-note'] = 'cloud iPhones send JPEG screenshots'
+    return new Response(base64Bytes(shot.data), { headers })
+  },
+  'GET /v1/leases/{lease}/text': ({ ctx, query, params, after }) =>
+    screenText(ctx, { lease: params.lease, settle: boolParam(query.get('settle')), language: after.language, waitText: after.waitText, timeoutMs: after.timeoutMs }),
+  'POST /v1/leases/{lease}/tap': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: tapSchema, run: (body) => tap(ctx, { lease: params.lease, command: 'tap', request: body, after }) }),
+  'POST /v1/leases/{lease}/double-tap': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: tapSchema, run: (body) => tap(ctx, { lease: params.lease, command: 'double-tap', request: body, after }) }),
+  'POST /v1/leases/{lease}/triple-tap': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: tapSchema, run: (body) => tap(ctx, { lease: params.lease, command: 'triple-tap', request: body, after }) }),
+  'POST /v1/leases/{lease}/hold': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: holdSchema, run: ({ durationMs, ...body }) => tap(ctx, { lease: params.lease, command: 'hold', request: { ...body, holdMs: durationMs }, after }) }),
+  'POST /v1/leases/{lease}/swipe': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: BODIES.swipe, run: (body) => swipe(ctx, { lease: params.lease, ...body, after }) }),
+  'POST /v1/leases/{lease}/hold-drag': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: BODIES.holdDrag, run: (body) => swipe(ctx, { lease: params.lease, ...body, holdMs: body.holdMs ?? DEFAULT_HOLD_MS, after }) }),
+  'POST /v1/leases/{lease}/scroll': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: BODIES.scroll, run: (body) => scroll(ctx, { lease: params.lease, ...body, after }) }),
+  'POST /v1/leases/{lease}/key': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: BODIES.key, run: (body) => key(ctx, { lease: params.lease, key: body.key, after }) }),
+  'POST /v1/leases/{lease}/type': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: BODIES.type, run: (body) => type(ctx, { lease: params.lease, ...body, after }) }),
+  'POST /v1/leases/{lease}/wake': async ({ ctx, request, params, after }) => {
+    const run = wake(ctx, { lease: params.lease, after })
+    return wantsStream(request) ? eventStream(run) : run
+  },
+  'POST /v1/leases/{lease}/lock': ({ ctx, params }) => lock(ctx, { lease: params.lease }),
+  'POST /v1/leases/{lease}/unlock': ({ ctx, request, params, after }) =>
+    inputRoute({ request, schema: BODIES.unlock, run: (body) => unlock(ctx, { lease: params.lease, passcode: body.passcode, after }) }),
+  'POST /v1/leases/{lease}/mute': ({ ctx, request, params }) =>
+    inputRoute({ request, schema: BODIES.mute, run: (body) => mute(ctx, { lease: params.lease, muted: body.muted }) }),
+  'GET /v1/leases/{lease}/apps': ({ ctx, query, params }) => listApps(ctx, { lease: params.lease, system: boolParam(query.get('system')) }),
+  'POST /v1/leases/{lease}/apps': { unsupported: 'cloud iPhones install apps from the catalog only: `ghosthand app catalog`, then `ghosthand app install --app <id>`' },
+  'GET /v1/leases/{lease}/apps/catalog': ({ ctx, params }) => catalog(ctx, { lease: params.lease }),
+  'POST /v1/leases/{lease}/apps/catalog/{app}': async ({ ctx, request, params }) => {
+    const install = installCatalogApp(ctx, { lease: params.lease, app: params.app })
+    return wantsStream(request) ? eventStream(install) : install
+  },
+  'DELETE /v1/leases/{lease}/apps/{bundle}': async ({ ctx, params }) => messageBody(await uninstallApp(ctx, { lease: params.lease, bundleId: params.bundle })),
+  'GET /v1/leases/{lease}/info': ({ ctx, params }) => deviceInfo(ctx, { lease: params.lease }),
+  'PUT /v1/leases/{lease}/name': async ({ ctx, request, params }) => {
+    const body = await parseBody(request, BODIES.name)
+    if (body instanceof Error) return body
+    return messageBody(await rename(ctx, { lease: params.lease, name: body.name }))
+  },
+  'POST /v1/leases/{lease}/task': async ({ ctx, request, params }) => {
+    const body = await parseBody(request, BODIES.task)
+    if (body instanceof Error) return body
+    const turn = await startTask(ctx, { lease: params.lease, prompt: body.prompt, task: body.task })
+    if (turn instanceof Error) return turn
+    if (!wantsStream(request)) {
+      const result = await finishTask(turn)
+      return result instanceof Error ? result : Response.json(result, { headers: { 'ghosthand-task': turn.taskId } })
+    }
+    // Closing the stream stops the turn, like the daemon.
+    const reader = turn.stream.getReader()
+    const stream = new ReadableStream<Uint8Array>({
+      pull: async (controller) => {
+        const { value, done } = await reader.read()
+        if (done) controller.close()
+        else controller.enqueue(value)
+      },
+      cancel: () => {
+        turn.stop()
+        void reader.cancel()
+      },
+    })
+    return new Response(stream, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'ghosthand-task': turn.taskId } })
+  },
+  'POST /v1/leases/{lease}/recording/start': { unsupported: 'cloud iPhones cannot record video yet; take screenshots instead' },
+  'POST /v1/leases/{lease}/recording/stop': { unsupported: 'cloud iPhones cannot record video yet' },
+  'GET /v1/leases/{lease}/assistive-touch': { unsupported: 'cloud iPhones take touches directly; there is no AssistiveTouch pointer' },
+  'PUT /v1/leases/{lease}/assistive-touch': { unsupported: 'cloud iPhones take touches directly; there is no AssistiveTouch pointer' },
+  'GET /v1/leases/{lease}/control': { unsupported: 'cloud iPhones have one control mode' },
+  'PUT /v1/leases/{lease}/control': { unsupported: 'cloud iPhones have one control mode' },
+  'DELETE /v1/leases/{lease}/bluetooth': { unsupported: 'cloud iPhones have no Bluetooth bond' },
+  'GET /v1/leases/{lease}/files': { unsupported: NO_FILES },
+  'DELETE /v1/leases/{lease}/files': { unsupported: NO_FILES },
+  'GET /v1/leases/{lease}/files/content': { unsupported: NO_FILES },
+  'PUT /v1/leases/{lease}/files/content': { unsupported: NO_FILES },
+  'GET /v1/leases/{lease}/photos': { unsupported: NO_PHOTOS },
+  'POST /v1/leases/{lease}/photos/delete': { unsupported: NO_PHOTOS },
+  'GET /v1/leases/{lease}/logs': { unsupported: 'the system log is not available on cloud iPhones' },
+  'POST /v1/leases/{lease}/power': { unsupported: 'cloud iPhones restart and stop by themselves; release the lease instead' },
+  'POST /v1/leases/{lease}/random': { unsupported: 'random values are saved on a Mac; cloud iPhones have none' },
+  'GET /v1/random': { unsupported: 'random values are saved on a Mac; cloud iPhones have none' },
+  'POST /v1/uploads': { unsupported: 'upload runs on a Mac; cloud iPhones have none' },
+  'GET /v1/phones': { unsupported: NO_MAC },
+  'GET /v1/phones/{phone}/preview': { unsupported: NO_MAC },
+  'PUT /v1/phones/{phone}/control': { unsupported: NO_MAC },
+  'POST /v1/phones/{phone}/key': { unsupported: NO_MAC },
+  'POST /v1/phones/{phone}/type': { unsupported: NO_MAC },
+  'POST /v1/phones/{phone}/tap': { unsupported: NO_MAC },
+  'POST /v1/phones/{phone}/swipe': { unsupported: NO_MAC },
+  'POST /v1/phones/{phone}/release': { unsupported: NO_MAC },
+  'GET /v1/setup/status': { unsupported: 'cloud iPhones need no setup: list them, then acquire one' },
+  'POST /v1/setup/pairing': { unsupported: 'cloud iPhones need no setup: list them, then acquire one' },
+  'POST /v1/setup/permissions': { unsupported: 'cloud iPhones need no setup: list them, then acquire one' },
+  'GET /v1/account': { unsupported: NO_MAC },
+  'DELETE /v1/account': { unsupported: NO_MAC },
+  'POST /v1/account/login': { unsupported: NO_MAC },
+  'POST /v1/tunnel/tokens': { unsupported: NO_MAC },
+  'DELETE /v1/tunnel/tokens/{id}': { unsupported: NO_MAC },
+  'GET /v1/daemon': { unsupported: NO_MAC },
+  'POST /v1/daemon/stop': { unsupported: NO_MAC },
+  'POST /v1/daemon/restart': { unsupported: NO_MAC },
+  'POST /v1/daemon/update': { unsupported: NO_MAC },
+  'GET /v1/openapi.yaml': { unsupported: NO_MAC },
+}
+
+/** The routes as matchers; paths with fewer parameters first, so `/apps/catalog` wins over `/apps/{bundle}`. */
+const MATCHERS = (Object.keys(ROUTES) as DaemonRoute[]).map((key) => {
+  const [method = '', template = ''] = key.split(' ')
+  const names = [...template.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!)
+  const pattern = new RegExp(`^${template.replace(/\{[^}]+\}/g, '([^/]+)')}$`)
+  return { key, method, template, names, pattern }
+}).sort((a, b) => a.names.length - b.names.length)
+
+/** One daemon API request for the org's cloud iPhones. `path` is `/v1/...` with its query. */
+export async function cloudApi({ orgId, request, path }: { orgId: string; request: Request; path: string }): Promise<Response> {
+  const url = new URL(path, 'https://cloud')
+  const ctx: Ctx = { orgId, signal: request.signal }
+  const answer = await route({ ctx, request, url })
+  if (answer instanceof Response) return answer
+  if (answer instanceof CloudProblem) return problemResponse(answer)
+  return Response.json(answer)
+}
+
+async function route({ ctx, request, url }: { ctx: Ctx; request: Request; url: URL }): Promise<Response | CloudProblem | object> {
+  const { pathname, searchParams: query } = url
+  let found: { key: DaemonRoute; template: string; params: Record<string, string> } | undefined
+  for (const m of MATCHERS) {
+    const match = m.method === request.method ? pathname.match(m.pattern) : null
+    if (!match) continue
+    found = { key: m.key, template: m.template, params: Object.fromEntries(m.names.map((name, i) => [name, decodeURIComponent(match[i + 1]!)])) }
+    break
   }
-  const match = pathname.match(/^\/v1\/leases\/([^/]+)(\/.*)?$/)
-  if (!match) return new CloudProblem('unsupported-in-mode', `${method} ${pathname} is not available for cloud iPhones`)
-  const lease = decodeURIComponent(match[1]!)
-  const op = match[2] ?? ''
-  if (op === '' && method === 'DELETE') {
-    const message = await release(ctx, lease)
-    return message instanceof Error ? message : { message }
-  }
-  if (query.has('scale')) return new CloudProblem('unsupported-in-mode', 'cloud iPhones use screen points only: omit scale')
+  if (!found) return new CloudProblem('unsupported-in-mode', `${request.method} ${pathname} is not available for cloud iPhones`)
+  if (found.template.startsWith('/v1/leases/{lease}/') && query.has('scale')) return new CloudProblem('unsupported-in-mode', 'cloud iPhones use screen points only: omit scale')
   const after: After = {
-    waitText: query.get('waitText') || undefined,
+    waitText: query.get('waitText') ?? undefined,
     timeoutMs: numberParam(query.get('timeoutMs')),
     screenshot: query.get('screenshot') === 'png' || query.get('screenshot') === 'jpeg' ? query.get('screenshot') as 'png' | 'jpeg' : undefined,
     screentext: boolParam(query.get('screentext')),
     language: query.get('language') || undefined,
   }
-  const inputRoute = async <T extends z.ZodType>(schema: T, run: (body: z.infer<T>) => Promise<ActionResult | CloudProblem>) => {
-    const body = await parseBody(request, schema)
-    if (body instanceof Error) return body
-    return wantsStream(request) ? eventStream(run(body)) : run(body)
-  }
-  switch (`${method} ${op}`) {
-    case 'GET /screenshot': {
-      if (boolParam(query.get('native'))) return new CloudProblem('unsupported-in-mode', 'cloud iPhones have no native screenshot: their screen capture already shows system dialogs')
-      const shot = await screenshot(ctx, { lease, settle: boolParam(query.get('settle')), screentext: boolParam(query.get('screentext')), language: after.language })
-      if (shot instanceof Error) return shot
-      if (shot.screen) return { screenshot: { format: 'jpeg', width: shot.width, height: shot.height, data: shot.data }, screen: shot.screen } satisfies Schemas['ScreenshotText']
-      const headers: Record<string, string> = { 'content-type': 'image/jpeg', 'x-image-width': String(shot.width), 'x-image-height': String(shot.height) }
-      if (query.get('format') === 'png') headers['x-note'] = 'cloud iPhones send JPEG screenshots'
-      return new Response(base64Bytes(shot.data), { headers })
-    }
-    case 'GET /text':
-      return screenText(ctx, { lease, settle: boolParam(query.get('settle')), language: after.language, waitText: after.waitText, timeoutMs: after.timeoutMs })
-    case 'POST /tap':
-    case 'POST /double-tap':
-    case 'POST /triple-tap': {
-      const command = op.slice(1) as 'tap' | 'double-tap' | 'triple-tap'
-      return inputRoute(tapSchema, (body) => tap(ctx, { lease, command, request: body, after }))
-    }
-    case 'POST /hold':
-      return inputRoute(holdSchema, ({ durationMs, ...body }) => tap(ctx, { lease, command: 'hold', request: { ...body, holdMs: durationMs }, after }))
-    case 'POST /swipe':
-      return inputRoute(BODIES.swipe, (body) => swipe(ctx, { lease, ...body, after }))
-    case 'POST /hold-drag':
-      return inputRoute(BODIES.holdDrag, (body) => swipe(ctx, { lease, ...body, holdMs: body.holdMs ?? DEFAULT_HOLD_MS, after }))
-    case 'POST /scroll':
-      return inputRoute(BODIES.scroll, (body) => scroll(ctx, { lease, ...body, after }))
-    case 'POST /key':
-      return inputRoute(BODIES.key, (body) => key(ctx, { lease, key: body.key, after }))
-    case 'POST /type':
-      return inputRoute(BODIES.type, (body) => type(ctx, { lease, ...body, after }))
-    case 'POST /wake':
-      return wantsStream(request) ? eventStream(wake(ctx, { lease, after })) : wake(ctx, { lease, after })
-    case 'POST /lock':
-      return lock(ctx, { lease })
-    case 'POST /unlock':
-      return inputRoute(BODIES.unlock, (body) => unlock(ctx, { lease, passcode: body.passcode, after }))
-    case 'POST /mute':
-      return inputRoute(BODIES.mute, (body) => mute(ctx, { lease, muted: body.muted }))
-    case 'GET /apps':
-      return listApps(ctx, { lease, system: boolParam(query.get('system')) })
-    case 'POST /apps':
-      return new CloudProblem('unsupported-in-mode', 'cloud iPhones install apps from the catalog only: `ghosthand app catalog`, then `ghosthand app install --app <id>`')
-    case 'GET /apps/catalog':
-      return catalog(ctx, { lease })
-    case 'GET /info':
-      return deviceInfo(ctx, { lease })
-    case 'PUT /name': {
-      const body = await parseBody(request, BODIES.name)
-      if (body instanceof Error) return body
-      const message = await rename(ctx, { lease, name: body.name })
-      return message instanceof Error ? message : { message }
-    }
-    case 'POST /task': {
-      const body = await parseBody(request, BODIES.task)
-      if (body instanceof Error) return body
-      const turn = await startTask(ctx, { lease, prompt: body.prompt, task: body.task })
-      if (turn instanceof Error) return turn
-      if (!wantsStream(request)) {
-        const result = await finishTask(turn)
-        return result instanceof Error ? result : Response.json(result, { headers: { 'ghosthand-task': turn.taskId } })
-      }
-      // Closing the stream stops the turn, like the daemon.
-      const reader = turn.stream.getReader()
-      const stream = new ReadableStream<Uint8Array>({
-        pull: async (controller) => {
-          const { value, done } = await reader.read()
-          if (done) controller.close()
-          else controller.enqueue(value)
-        },
-        cancel: () => {
-          turn.stop()
-          void reader.cancel()
-        },
-      })
-      return new Response(stream, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', 'ghosthand-task': turn.taskId } })
-    }
-  }
-  const app = op.match(/^\/apps\/catalog\/([^/]+)$/)
-  if (app && method === 'POST') {
-    const install = installCatalogApp(ctx, { lease, app: decodeURIComponent(app[1]!) })
-    return wantsStream(request) ? eventStream(install) : install
-  }
-  const bundle = op.match(/^\/apps\/([^/]+)$/)
-  if (bundle && method === 'DELETE') {
-    const message = await uninstallApp(ctx, { lease, bundleId: decodeURIComponent(bundle[1]!) })
-    return message instanceof Error ? message : { message }
-  }
-  return new CloudProblem('unsupported-in-mode', `${method} /v1/leases/{lease}${op} is not available for cloud iPhones`)
+  return runRoute(found.key, { ctx, request, query, params: found.params, after })
+}
+
+function runRoute<R extends DaemonRoute>(key: R, input: Omit<RouteInput<R>, 'params'> & { params: Record<string, string> }): Promise<Response | CloudProblem | object> | CloudProblem {
+  const handler: Route<R> = ROUTES[key]
+  if ('unsupported' in handler) return new CloudProblem('unsupported-in-mode', `${key} is not available for cloud iPhones: ${handler.unsupported}`)
+  // The matcher read exactly the parameters the route's template names.
+  return handler({ ...input, params: input.params as PathParams<R> })
+}
+
+/** An input route: the body, then the input, as a stream when the client asks for one. */
+async function inputRoute<T extends z.ZodType>({ request, schema, run }: { request: Request; schema: T; run: (body: z.infer<T>) => Promise<ActionResult | CloudProblem> }) {
+  const body = await parseBody(request, schema)
+  if (body instanceof Error) return body
+  return wantsStream(request) ? eventStream(run(body)) : run(body)
+}
+
+function messageBody(message: string | CloudProblem): Schemas['Message'] | CloudProblem {
+  return message instanceof Error ? message : { message }
 }
 
 export function deviceSchema(device: CloudDevice): Device {

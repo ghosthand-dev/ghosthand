@@ -1,0 +1,143 @@
+{
+  "$comment": "Cases the daemon and cloud iPhones (website/src/cloud/api.ts) must answer the same. parity-tests.swift runs the daemon, website/src/cloud/parity.test.ts runs the cloud on a copy (pnpm generate-docs writes website/src/fixtures/daemon-parity.json). Change behavior here and in both implementations together. Coordinates are screen points; scroll coordinates compare within 1e-6.",
+  "pickText": [
+    {
+      "name": "two exact lines (case-insensitive) win over one that contains the text, and need an index",
+      "lines": [
+        { "text": "General Settings", "x": 20, "y": 410, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "general", "x": 200, "y": 140, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "General", "x": 20, "y": 140, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "About", "x": 20, "y": 60, "width": 40, "height": 10, "confidence": 1 }
+      ],
+      "text": "General",
+      "expect": {
+        "error": "invalid-request",
+        "message": "2 lines match \"General\"; pick one with index (CLI: --index):\n  1. 20,140 General\n  2. 200,140 general"
+      }
+    },
+    {
+      "name": "index counts top to bottom, then left to right",
+      "lines": [
+        { "text": "General Settings", "x": 20, "y": 410, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "general", "x": 200, "y": 140, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "General", "x": 20, "y": 140, "width": 40, "height": 10, "confidence": 1 }
+      ],
+      "text": "General",
+      "index": 2,
+      "expect": { "line": { "text": "general", "x": 200, "y": 140, "width": 40, "height": 10, "confidence": 1 } }
+    },
+    {
+      "name": "a line that only contains the text matches when no line equals it",
+      "lines": [
+        { "text": "General Settings", "x": 20, "y": 410, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "About", "x": 20, "y": 60, "width": 40, "height": 10, "confidence": 1 }
+      ],
+      "text": "settings",
+      "expect": { "line": { "text": "General Settings", "x": 20, "y": 410, "width": 40, "height": 10, "confidence": 1 } }
+    },
+    {
+      "name": "contained matches are sorted too",
+      "lines": [
+        { "text": "General Settings", "x": 20, "y": 410, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "general info", "x": 200, "y": 140, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "General Info", "x": 20, "y": 140, "width": 40, "height": 10, "confidence": 1 }
+      ],
+      "text": "gen",
+      "index": 3,
+      "expect": { "line": { "text": "General Settings", "x": 20, "y": 410, "width": 40, "height": 10, "confidence": 1 } }
+    },
+    {
+      "name": "an index on a single match is fine",
+      "lines": [{ "text": "About", "x": 20, "y": 60, "width": 40, "height": 10, "confidence": 0.5 }],
+      "text": "about",
+      "index": 1,
+      "expect": { "line": { "text": "About", "x": 20, "y": 60, "width": 40, "height": 10, "confidence": 0.5 } }
+    },
+    {
+      "name": "an index past the matches",
+      "lines": [
+        { "text": "general", "x": 200, "y": 140, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "General", "x": 20, "y": 140, "width": 40, "height": 10, "confidence": 1 }
+      ],
+      "text": "General",
+      "index": 3,
+      "expect": { "error": "invalid-request", "message": "index must be 1...2" }
+    },
+    {
+      "name": "no line has the text",
+      "lines": [
+        { "text": "General", "x": 20, "y": 140, "width": 40, "height": 10, "confidence": 1 },
+        { "text": "About", "x": 20, "y": 60, "width": 40, "height": 10, "confidence": 1 }
+      ],
+      "text": "Wi-Fi",
+      "expect": { "error": "text-not-found", "message": "no text \"Wi-Fi\" on screen (2 OCR lines; run `ghosthand screentext` to see them)" }
+    }
+  ],
+  "waitText": [
+    { "name": "a line contains the text, case-insensitive", "waitText": "wi-fi", "lines": ["Settings", "Wi-Fi Networks"], "expect": { "found": true } },
+    { "name": "no line contains the text", "waitText": "Bluetooth", "lines": ["Settings"], "expect": { "found": false } },
+    { "name": "the longest timeout", "waitText": "Bluetooth", "timeoutMs": 60000, "lines": [], "expect": { "found": false } },
+    { "name": "blank text", "waitText": "   ", "expect": { "error": "invalid-request" } },
+    { "name": "empty text", "waitText": "", "expect": { "error": "invalid-request" } },
+    { "name": "a zero timeout", "waitText": "Settings", "timeoutMs": 0, "expect": { "error": "invalid-request" } },
+    { "name": "a timeout over a minute", "waitText": "Settings", "timeoutMs": 60001, "expect": { "error": "invalid-request" } },
+    { "name": "a timeout without text", "timeoutMs": 1000, "expect": { "error": "invalid-request" } },
+    { "name": "no wait", "expect": { "noWait": true } }
+  ],
+  "scrollStrokes": [
+    {
+      "name": "down from the center: the finger moves up, 100 points per tick",
+      "direction": "down", "ticks": 3, "screen": { "width": 393, "height": 852 },
+      "expect": [{ "from": [196.5, 576], "to": [196.5, 276], "durationMs": 450 }]
+    },
+    {
+      "name": "a long scroll repeats drags of 70% of the screen, kept between 15% and 85%",
+      "direction": "up", "ticks": 10, "at": { "x": 100, "y": 200 }, "screen": { "width": 393, "height": 852 },
+      "expect": [
+        { "from": [100, 127.8], "to": [100, 724.2], "durationMs": 894 },
+        { "from": [100, 127.8], "to": [100, 531.4], "durationMs": 605 }
+      ]
+    },
+    {
+      "name": "right from the center: the finger moves left",
+      "direction": "right", "ticks": 2, "screen": { "width": 393, "height": 852 },
+      "expect": [{ "from": [296.5, 426], "to": [96.5, 426], "durationMs": 300 }]
+    },
+    {
+      "name": "left near the right edge stays inside the screen",
+      "direction": "left", "ticks": 1, "at": { "x": 380, "y": 800 }, "screen": { "width": 393, "height": 852 },
+      "expect": [{ "from": [234.05, 800], "to": [334.05, 800], "durationMs": 150 }]
+    },
+    {
+      "name": "down near the bottom edge stays inside the screen",
+      "direction": "down", "ticks": 1, "at": { "x": 196, "y": 840 }, "screen": { "width": 393, "height": 852 },
+      "expect": [{ "from": [196, 724.2], "to": [196, 624.2], "durationMs": 150 }]
+    }
+  ],
+  "ocrScreen": [
+    {
+      "name": "Vision boxes (0...1, bottom-left origin) become rounded top-left lines, top to bottom, then left to right",
+      "screen": { "width": 393, "height": 852 },
+      "observations": [
+        { "text": "Settings", "confidence": 0.875, "box": { "x": 0.1, "y": 0.8, "width": 0.3, "height": 0.02 } },
+        { "text": "General", "confidence": 1, "box": { "x": 0.52, "y": 0.8, "width": 0.2, "height": 0.02 } },
+        { "text": "Wi-Fi", "confidence": 0.5, "box": { "x": 0.05, "y": 0.9, "width": 0.1, "height": 0.03 } }
+      ],
+      "expect": {
+        "width": 393,
+        "height": 852,
+        "lines": [
+          { "text": "Wi-Fi", "x": 20, "y": 60, "width": 39, "height": 26, "confidence": 0.5 },
+          { "text": "Settings", "x": 39, "y": 153, "width": 118, "height": 17, "confidence": 0.875 },
+          { "text": "General", "x": 204, "y": 153, "width": 79, "height": 17, "confidence": 1 }
+        ]
+      }
+    },
+    {
+      "name": "no text",
+      "screen": { "width": 393, "height": 852 },
+      "observations": [],
+      "expect": { "width": 393, "height": 852, "lines": [] }
+    }
+  ]
+}

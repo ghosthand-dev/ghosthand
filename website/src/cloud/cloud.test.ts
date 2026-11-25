@@ -187,6 +187,7 @@ async function renter(name: string) {
   return { orgId, phoneId, token, api, tool, acquire }
 }
 
+// tsc checks cloud/mcp.ts covers every tool; this checks the hub sends each one there and none crashes.
 test('every MCP tool is answered for cloud iPhones, supported or not', async () => {
   const d = await renter('Coverage iPhone')
   const unknown: string[] = []

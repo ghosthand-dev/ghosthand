@@ -2,19 +2,21 @@
 // leases and `mac: "cloud"`, and `list` fans out here too. Each tool calls the same ops as
 // the REST routes (api.ts) and prints text like the daemon's MCP tools (daemon/.../mcp.swift),
 // so an agent cannot tell a cloud iPhone from a USB one except where a tool is unsupported.
-// Tool and argument names come from mcp-tools.json; mcp.test.ts checks every tool is covered.
+// Tools and arguments are typed from the daemon (src/generated/mcp-tools.ts, pnpm generate-docs):
+// tsc fails until every tool is in HANDLERS or UNSUPPORTED_TOOLS and every argument is decided.
 
+import manual from '../../mcp-tools.json'
+import type { McpToolArgs, McpToolName } from '../generated/mcp-tools.ts'
 import {
   CLOUD_NAME,
   CLOUD_SLUG,
-  CloudProblem,
+  NO_NATIVE_SCREENSHOT,
   acquire,
   catalog,
   deviceInfo,
   finishTask,
   installCatalogApp,
   key,
-  launchApp,
   listApps,
   listDevices,
   lock,
@@ -37,18 +39,17 @@ import {
   type Ctx,
   type ScreenText,
 } from './api.ts'
+import { CloudProblem } from './core.ts'
 import type { LeaseInfo } from './fleet.ts'
 
 export type McpContent = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
 export type McpToolResult = { content: McpContent[]; isError: boolean }
-type Args = Record<string, unknown>
-type Handler = (ctx: Ctx, args: Args) => Promise<McpContent[] | CloudProblem>
 
 const DEFAULT_WAIT_S = 600
 const SECOND_MS = 1_000
 
 /** Tools a cloud iPhone cannot do, with the one-line reason the agent reads. */
-export const UNSUPPORTED_TOOLS: Record<string, string> = {
+export const UNSUPPORTED_TOOLS = {
   'record-start': 'cloud iPhones cannot record video yet; take screenshots instead',
   'record-stop': 'cloud iPhones cannot record video yet',
   assistivetouch: 'cloud iPhones take touches directly; there is no AssistiveTouch pointer',
@@ -68,137 +69,229 @@ export const UNSUPPORTED_TOOLS: Record<string, string> = {
   shutdown: 'cloud iPhones stop by themselves when idle; release the lease instead',
   setup: 'cloud iPhones need no setup: call list, then acquire one',
   account: 'the account runs on a Mac; see https://ghosthand.dev/dashboard for cloud iPhones',
+} satisfies Partial<Record<McpToolName, string>>
+
+type UnsupportedTool = keyof typeof UNSUPPORTED_TOOLS
+type SupportedTool = Exclude<McpToolName, UnsupportedTool>
+
+/** A cloud tool. `args` names every argument of the daemon's tool: `true` when `run` reads it,
+ *  else why the cloud ignores it, so a new daemon argument fails tsc until it is decided. */
+type Tool<T extends McpToolName> = {
+  args: { [K in keyof McpToolArgs[T]]-?: true | string }
+  run: (ctx: Ctx, args: McpToolArgs[T]) => Promise<McpContent[] | CloudProblem>
 }
 
-const HANDLERS: Record<string, Handler> = {
-  list: async (ctx) => [text(listLines(await listDevices(ctx)))],
-  acquire: (ctx, args) => acquireTool(ctx, args, { force: optional(args, 'force', 'boolean') }),
-  wait: (ctx, args) => acquireTool(ctx, args, { waitSeconds: optional(args, 'timeout', 'number') ?? DEFAULT_WAIT_S }),
-  release: async (ctx, args) => message(await release(ctx, lease(args))),
-  screenshot: async (ctx, args) => {
-    const shot = await screenshot(ctx, { lease: lease(args), settle: optional(args, 'settle', 'boolean'), screentext: optional(args, 'screentext', 'boolean'), language: optional(args, 'language', 'string') })
-    if (shot instanceof Error) return shot
-    return [text(`${shot.width}x${shot.height}${shot.screen ? `\n${screenLines(shot.screen)}` : ''}`), image(shot.data)]
+/** Read by the hub, which routes the call by it; never by a tool. */
+const MAC = 'the hub routes by it'
+/** Checked for every tool in callCloudTool. */
+const SCALE = 'callCloudTool refuses it: cloud iPhones use screen points only'
+/** The arguments of every input tool (the daemon's AfterInput). */
+const AFTER = {
+  waitText: true, timeoutMs: true, screenshot: true, screentext: true, language: true, scale: SCALE, mac: MAC,
+  fast: 'the host settles the screen itself, late dialogs included',
+} as const
+const TAP_ARGS = { lease: true, x: true, y: true, text: true, index: true, ...AFTER } as const
+
+const HANDLERS: { [T in SupportedTool]: Tool<T> } = {
+  list: { args: { mac: MAC }, run: async (ctx) => [text(listLines(await listDevices(ctx)))] },
+  acquire: {
+    args: { reason: true, device: true, label: true, idleTimeoutSeconds: true, force: true, mac: MAC },
+    run: (ctx, { reason, device, label, idleTimeoutSeconds, force }) => acquireTool(ctx, { reason, device, label, idleTimeoutSeconds, force }),
   },
-  screentext: async (ctx, args) => {
-    const screen = await screenText(ctx, {
-      lease: lease(args), settle: optional(args, 'settle', 'boolean'), language: optional(args, 'language', 'string'),
-      waitText: optional(args, 'waitText', 'string'), timeoutMs: optional(args, 'timeoutMs', 'number'),
-    })
-    return screen instanceof Error ? screen : [text(screenLines(screen))]
+  wait: {
+    args: { reason: true, device: true, label: true, idleTimeoutSeconds: true, timeout: true, mac: MAC },
+    run: (ctx, { reason, device, label, idleTimeoutSeconds, timeout }) => acquireTool(ctx, { reason, device, label, idleTimeoutSeconds, waitSeconds: timeout ?? DEFAULT_WAIT_S }),
   },
-  tap: (ctx, args) => tapTool(ctx, args, 'tap'),
-  'double-tap': (ctx, args) => tapTool(ctx, args, 'double-tap'),
-  'triple-tap': (ctx, args) => tapTool(ctx, args, 'triple-tap'),
-  hold: (ctx, args) => tapTool(ctx, args, 'hold'),
-  swipe: async (ctx, args) => actionContent(await swipe(ctx, { lease: lease(args), ...line(args), durationMs: optional(args, 'durationMs', 'number'), after: after(args) })),
-  'hold-drag': async (ctx, args) => actionContent(await swipe(ctx, {
-    lease: lease(args), ...line(args), durationMs: optional(args, 'durationMs', 'number'), holdMs: optional(args, 'holdMs', 'number') ?? SECOND_MS, after: after(args),
-  })),
-  scroll: async (ctx, args) => {
-    const direction = required(args, 'direction', 'string')
-    if (!['up', 'down', 'left', 'right'].includes(direction)) return new CloudProblem('invalid-request', 'direction must be up, down, left or right')
-    const x = optional(args, 'x', 'number')
-    const y = optional(args, 'y', 'number')
-    if ((x === undefined) !== (y === undefined)) return new CloudProblem('invalid-request', 'x and y go together')
-    return actionContent(await scroll(ctx, {
-      lease: lease(args), direction: direction as 'up', ticks: required(args, 'ticks', 'number'),
-      at: x !== undefined && y !== undefined ? { x, y } : undefined, after: after(args),
-    }))
+  release: { args: { lease: true, mac: MAC }, run: async (ctx, args) => message(await release(ctx, args.lease)) },
+  screenshot: {
+    args: { lease: true, settle: true, screentext: true, language: true, native: true, scale: SCALE, mac: MAC },
+    run: async (ctx, args) => {
+      if (args.native) return new CloudProblem('unsupported-in-mode', NO_NATIVE_SCREENSHOT)
+      const shot = await screenshot(ctx, args)
+      if (shot instanceof Error) return shot
+      return [text(`${shot.width}x${shot.height}${shot.screen ? `\n${screenLines(shot.screen)}` : ''}`), image(shot.data)]
+    },
   },
-  key: async (ctx, args) => actionContent(await key(ctx, { lease: lease(args), key: required(args, 'key', 'string'), after: after(args) })),
-  type: async (ctx, args) => actionContent(await type(ctx, { lease: lease(args), text: required(args, 'text', 'string'), enter: optional(args, 'enter', 'boolean'), after: after(args) })),
-  mute: async (ctx, args) => actionContent(await mute(ctx, { lease: lease(args), muted: true })),
-  unmute: async (ctx, args) => actionContent(await mute(ctx, { lease: lease(args), muted: false })),
-  wake: async (ctx, args) => actionContent(await wake(ctx, { lease: lease(args), after: after(args) })),
-  lock: async (ctx, args) => actionContent(await lock(ctx, { lease: lease(args) })),
-  unlock: async (ctx, args) => actionContent(await unlock(ctx, { lease: lease(args), passcode: required(args, 'passcode', 'string'), after: after(args) })),
-  rename: async (ctx, args) => message(await rename(ctx, { lease: lease(args), name: required(args, 'name', 'string') })),
-  task: async (ctx, args) => {
-    const turn = await startTask(ctx, { lease: lease(args), prompt: optional(args, 'prompt', 'string'), task: optional(args, 'task', 'string') })
-    if (turn instanceof Error) return turn
-    const result = await finishTask(turn)
-    if (result instanceof Error) return result
-    return [text(`${result.text}\n\ntask ${result.task}: to continue it, call task with task "${result.task}"`)]
+  screentext: {
+    args: { lease: true, settle: true, language: true, waitText: true, timeoutMs: true, scale: SCALE, mac: MAC },
+    run: async (ctx, args) => {
+      const screen = await screenText(ctx, args)
+      return screen instanceof Error ? screen : [text(screenLines(screen))]
+    },
   },
-  'app-list': async (ctx, args) => {
-    const list = await listApps(ctx, { lease: lease(args), system: optional(args, 'system', 'boolean') })
-    if (list instanceof Error) return list
-    return [text(list.apps.length ? list.apps.map((a) => `${a.bundleId}  ${a.name}${a.version ? ` ${a.version}` : ''}${a.system ? '  [system]' : ''}`).join('\n') : 'no apps')]
+  tap: { args: TAP_ARGS, run: (ctx, args) => tapTool(ctx, args, 'tap') },
+  'double-tap': { args: TAP_ARGS, run: (ctx, args) => tapTool(ctx, args, 'double-tap') },
+  'triple-tap': { args: TAP_ARGS, run: (ctx, args) => tapTool(ctx, args, 'triple-tap') },
+  hold: { args: { ...TAP_ARGS, durationMs: true }, run: (ctx, args) => tapTool(ctx, args, 'hold') },
+  swipe: {
+    args: { lease: true, x1: true, y1: true, x2: true, y2: true, durationMs: true, ...AFTER },
+    run: async (ctx, args) => actionContent(await swipe(ctx, { lease: args.lease, ...line(args), durationMs: args.durationMs, after: after(args) })),
   },
-  'app-install': async (ctx, args) => {
-    const app = optional(args, 'app', 'string')
-    if (!app) return new CloudProblem('unsupported-in-mode', 'cloud iPhones install apps from the catalog only: call app-catalog, then app-install with app')
-    return actionContent(await installCatalogApp(ctx, { lease: lease(args), app }))
+  'hold-drag': {
+    args: { lease: true, x1: true, y1: true, x2: true, y2: true, durationMs: true, holdMs: true, ...AFTER },
+    run: async (ctx, args) => actionContent(await swipe(ctx, {
+      lease: args.lease, ...line(args), durationMs: args.durationMs, holdMs: args.holdMs ?? SECOND_MS, after: after(args),
+    })),
   },
-  'app-catalog': async (ctx, args) => {
-    const list = await catalog(ctx, { lease: lease(args) })
-    if (list instanceof Error) return list
-    return [text(list.apps.length ? list.apps.map((a) => `${a.id}  ${a.name}  ${a.bundleId}${a.installed ? '  [installed]' : ''}`).join('\n') : 'the catalog is empty')]
+  scroll: {
+    args: { lease: true, direction: true, ticks: true, x: true, y: true, ...AFTER },
+    run: async (ctx, args) => {
+      const { x, y } = args
+      if ((x === undefined) !== (y === undefined)) return new CloudProblem('invalid-request', 'x and y go together')
+      const at = x !== undefined && y !== undefined ? { x, y } : undefined
+      return actionContent(await scroll(ctx, { lease: args.lease, direction: args.direction, ticks: args.ticks, at, after: after(args) }))
+    },
   },
-  'app-launch': async (ctx, args) => message(await launchApp(ctx, { lease: lease(args), bundleId: required(args, 'bundleId', 'string') })),
-  'app-uninstall': async (ctx, args) => message(await uninstallApp(ctx, { lease: lease(args), bundleId: required(args, 'bundleId', 'string') })),
-  info: async (ctx, args) => {
-    const info = await deviceInfo(ctx, { lease: lease(args) })
-    if (info instanceof Error) return info
-    const lines = [`name: ${info.name}`, `udid: ${info.udid}`]
-    if (info.model) lines.push(`model: ${info.modelName ? `${info.modelName} (${info.model})` : info.model}`)
-    if (info.iosVersion) lines.push(`iOS: ${info.iosVersion}${info.build ? ` (${info.build})` : ''}`)
-    return [text(lines.join('\n'))]
+  key: { args: { lease: true, key: true, ...AFTER }, run: async (ctx, args) => actionContent(await key(ctx, { lease: args.lease, key: args.key, after: after(args) })) },
+  type: {
+    args: { lease: true, text: true, enter: true, ...AFTER },
+    run: async (ctx, args) => actionContent(await type(ctx, { lease: args.lease, text: args.text, enter: args.enter, after: after(args) })),
   },
-  'setup-status': async (ctx) => {
-    const devices = await listDevices(ctx)
-    const ready = devices.some((d) => d.allowed)
-    const next = ready
-      ? `The cloud iPhone is ready: call list, then acquire it with mac "${CLOUD_SLUG}".`
-      : 'The subscription of every cloud iPhone ended. Renew one on https://ghosthand.dev/dashboard: its data is kept.'
-    return [text(JSON.stringify({ ready, next, macs: [{ slug: CLOUD_SLUG, name: CLOUD_NAME, online: true }] }))]
+  mute: { args: { lease: true, mac: MAC }, run: async (ctx, args) => actionContent(await mute(ctx, { lease: args.lease, muted: true })) },
+  unmute: { args: { lease: true, mac: MAC }, run: async (ctx, args) => actionContent(await mute(ctx, { lease: args.lease, muted: false })) },
+  wake: { args: { lease: true, ...AFTER }, run: async (ctx, args) => actionContent(await wake(ctx, { lease: args.lease, after: after(args) })) },
+  lock: { args: { lease: true, mac: MAC }, run: async (ctx, args) => actionContent(await lock(ctx, { lease: args.lease })) },
+  unlock: {
+    args: { lease: true, passcode: true, ...AFTER },
+    run: async (ctx, args) => actionContent(await unlock(ctx, { lease: args.lease, passcode: args.passcode, after: after(args) })),
+  },
+  rename: { args: { lease: true, name: true, mac: MAC }, run: async (ctx, args) => message(await rename(ctx, args)) },
+  task: {
+    args: { lease: true, prompt: true, task: true, mac: MAC },
+    run: async (ctx, args) => {
+      const turn = await startTask(ctx, args)
+      if (turn instanceof Error) return turn
+      const result = await finishTask(turn)
+      if (result instanceof Error) return result
+      return [text(`${result.text}\n\ntask ${result.task}: to continue it, call task with task "${result.task}"`)]
+    },
+  },
+  'app-list': {
+    args: { lease: true, system: true, mac: MAC },
+    run: async (ctx, args) => {
+      const list = await listApps(ctx, args)
+      if (list instanceof Error) return list
+      return [text(list.apps.length ? list.apps.map((a) => `${a.bundleId}  ${a.name}${a.version ? ` ${a.version}` : ''}${a.system ? '  [system]' : ''}`).join('\n') : 'no apps')]
+    },
+  },
+  'app-install': {
+    args: { lease: true, app: true, data: true, mac: MAC },
+    run: async (ctx, args) => {
+      if (args.data !== undefined || !args.app) return new CloudProblem('unsupported-in-mode', 'cloud iPhones install apps from the catalog only: call app-catalog, then app-install with app')
+      return actionContent(await installCatalogApp(ctx, { lease: args.lease, app: args.app }))
+    },
+  },
+  'app-catalog': {
+    args: { lease: true, mac: MAC },
+    run: async (ctx, args) => {
+      const list = await catalog(ctx, args)
+      if (list instanceof Error) return list
+      return [text(list.apps.length ? list.apps.map((a) => `${a.id}  ${a.name}  ${a.bundleId}${a.installed ? '  [installed]' : ''}`).join('\n') : 'the catalog is empty')]
+    },
+  },
+  'app-uninstall': { args: { lease: true, bundleId: true, mac: MAC }, run: async (ctx, args) => message(await uninstallApp(ctx, args)) },
+  info: {
+    args: { lease: true, mac: MAC },
+    run: async (ctx, args) => {
+      const info = await deviceInfo(ctx, args)
+      if (info instanceof Error) return info
+      const lines = [`name: ${info.name}`, `udid: ${info.udid}`]
+      if (info.model) lines.push(`model: ${info.modelName ? `${info.modelName} (${info.model})` : info.model}`)
+      if (info.iosVersion) lines.push(`iOS: ${info.iosVersion}${info.build ? ` (${info.build})` : ''}`)
+      return [text(lines.join('\n'))]
+    },
+  },
+  'setup-status': {
+    args: { device: 'every cloud iPhone is ready once its subscription is active', mac: MAC },
+    run: async (ctx) => {
+      const devices = await listDevices(ctx)
+      const ready = devices.some((d) => d.allowed)
+      const next = ready
+        ? `The cloud iPhone is ready: call list, then acquire it with mac "${CLOUD_SLUG}".`
+        : 'The subscription of every cloud iPhone ended. Renew one on https://ghosthand.dev/dashboard: its data is kept.'
+      return [text(JSON.stringify({ ready, next, macs: [{ slug: CLOUD_SLUG, name: CLOUD_NAME, online: true }] }))]
+    },
   },
 }
-
-/** Tool names this file answers, supported or not. */
-export const CLOUD_TOOL_NAMES = new Set([...Object.keys(HANDLERS), ...Object.keys(UNSUPPORTED_TOOLS)])
 
 /** One `tools/call` on the org's cloud iPhones. Errors are results, as only results reach the model. */
-export async function callCloudTool({ ctx, name, args }: { ctx: Ctx; name: string; args: Args }): Promise<McpToolResult> {
-  const unsupported = UNSUPPORTED_TOOLS[name]
-  const handler = HANDLERS[name]
-  let content: McpContent[] | CloudProblem
-  try {
-    content = unsupported ? new CloudProblem('unsupported-in-mode', unsupported)
-      : handler ? await handler(ctx, args)
-      : new CloudProblem('invalid-request', `unknown tool: ${name}`)
-  } catch (error) {
-    // Argument errors from required() and optional(); anything else is a bug and goes up.
-    if (!(error instanceof CloudProblem)) throw error
-    content = error
-  }
+export async function callCloudTool({ ctx, name, args }: { ctx: Ctx; name: string; args: Record<string, unknown> }): Promise<McpToolResult> {
+  const content = await runTool({ ctx, name, args })
   if (content instanceof CloudProblem) return { content: [text(`error ${content.code}: ${content.message}`)], isError: true }
   return { content, isError: false }
 }
 
-async function acquireTool(ctx: Ctx, args: Args, mode: { force?: boolean; waitSeconds?: number }): Promise<McpContent[] | CloudProblem> {
-  const lease = await acquire(ctx, {
-    reason: required(args, 'reason', 'string'), device: optional(args, 'device', 'string'), label: optional(args, 'label', 'string'),
-    idleTimeoutSeconds: optional(args, 'idleTimeoutSeconds', 'number'), ...mode,
-  })
+async function runTool({ ctx, name, args }: { ctx: Ctx; name: string; args: Record<string, unknown> }): Promise<McpContent[] | CloudProblem> {
+  if (Object.hasOwn(UNSUPPORTED_TOOLS, name)) return new CloudProblem('unsupported-in-mode', UNSUPPORTED_TOOLS[name as UnsupportedTool])
+  if (!isSupported(name)) return new CloudProblem('invalid-request', `unknown tool: ${name}`)
+  return runSupported({ ctx, name, args })
+}
+
+function isSupported(name: string): name is SupportedTool {
+  return Object.hasOwn(HANDLERS, name)
+}
+
+async function runSupported<T extends SupportedTool>({ ctx, name, args }: { ctx: Ctx; name: T; args: Record<string, unknown> }): Promise<McpContent[] | CloudProblem> {
+  const checked = checkArgs({ name, args })
+  if (checked instanceof Error) return checked
+  if ('scale' in checked) return new CloudProblem('unsupported-in-mode', 'cloud iPhones use screen points only: omit scale')
+  const tool: Tool<T> = HANDLERS[name]
+  return tool.run(ctx, checked)
+}
+
+type ArgSchema = { type: string; enum?: string[]; items?: { type: string } }
+const SCHEMAS = new Map<string, { properties: Record<string, ArgSchema | undefined>; required: string[] }>(manual.tools.map((t) => [t.name, t.inputSchema]))
+
+/** The arguments checked against the tool's inputSchema (mcp-tools.json, the source of
+ *  McpToolArgs), with the daemon's messages (`MCPArgs`). Nulls are dropped, `mac` is the hub's. */
+function checkArgs<T extends McpToolName>({ name, args }: { name: T; args: Record<string, unknown> }): McpToolArgs[T] | CloudProblem {
+  const schema = SCHEMAS.get(name)
+  if (!schema) return new CloudProblem('invalid-request', `unknown tool: ${name}`)
+  const checked: Record<string, unknown> = {}
+  for (const key of Object.keys(args).sort()) {
+    const value = args[key]
+    if (key === 'mac' || value === undefined || value === null) continue
+    const arg = schema.properties[key]
+    if (!arg) return new CloudProblem('invalid-request', `unknown argument: ${key}`)
+    // Models often send the lease as a number, like the daemon accepts.
+    const coerced = key === 'lease' && typeof value === 'number' && Number.isInteger(value) ? String(value) : value
+    const problem = argProblem({ key, value: coerced, arg })
+    if (problem) return new CloudProblem('invalid-request', problem)
+    checked[key] = coerced
+  }
+  const missing = schema.required.find((key) => checked[key] === undefined)
+  if (missing) return new CloudProblem('invalid-request', `${missing} is required`)
+  return checked as McpToolArgs[T]
+}
+
+function argProblem({ key, value, arg }: { key: string; value: unknown; arg: ArgSchema }): string | undefined {
+  if (arg.enum && !arg.enum.includes(String(value))) return `${key} must be one of: ${arg.enum.join(', ')}`
+  if (arg.type === 'string' && typeof value !== 'string') return `${key} must be a string`
+  if (arg.type === 'boolean' && typeof value !== 'boolean') return `${key} must be true or false`
+  if ((arg.type === 'number' || arg.type === 'integer') && (typeof value !== 'number' || !Number.isFinite(value))) return `${key} must be a number`
+  if (arg.type === 'integer' && !Number.isInteger(value)) return `${key} must be a whole number`
+  if (arg.type === 'array' && !(Array.isArray(value) && value.every((item) => typeof item === arg.items?.type))) return `${key} must be a list of ${arg.items?.type ?? 'values'}s`
+  return undefined
+}
+
+async function acquireTool(ctx: Ctx, args: { reason: string; device?: string; label?: string; idleTimeoutSeconds?: number; force?: boolean; waitSeconds?: number }): Promise<McpContent[] | CloudProblem> {
+  const lease = await acquire(ctx, args)
   if (lease instanceof Error) return lease
   const replaced = lease.replaced ? `took the iPhone from ${describeLease(lease.replaced)}\n` : ''
   return [text(`${replaced}lease ${lease.id} on ${lease.deviceName} (${lease.phoneId}); it ends after ${lease.idleTimeoutS}s without a call. Pass lease "${lease.id}" to every tool; call release when done.`)]
 }
 
-async function tapTool(ctx: Ctx, args: Args, command: 'tap' | 'double-tap' | 'triple-tap' | 'hold'): Promise<McpContent[] | CloudProblem> {
-  const x = optional(args, 'x', 'number')
-  const y = optional(args, 'y', 'number')
-  const target = optional(args, 'text', 'string')
-  const index = optional(args, 'index', 'number')
+type TapArgs = McpToolArgs['tap'] & { durationMs?: number }
+
+async function tapTool(ctx: Ctx, args: TapArgs, command: 'tap' | 'double-tap' | 'triple-tap' | 'hold'): Promise<McpContent[] | CloudProblem> {
+  const { x, y, text: target, index } = args
   const point = x !== undefined && y !== undefined && target === undefined && index === undefined
   if (!point && (target === undefined || x !== undefined || y !== undefined)) {
     return new CloudProblem('invalid-request', `${command} needs x and y, or text (with an optional index)`)
   }
-  const holdMs = command === 'hold' ? optional(args, 'durationMs', 'number') : undefined
+  const holdMs = command === 'hold' ? args.durationMs : undefined
   const request = point ? { x: x!, y: y!, holdMs } : { text: target!, index, holdMs }
-  return actionContent(await tap(ctx, { lease: lease(args), command, request, after: after(args) }))
+  return actionContent(await tap(ctx, { lease: args.lease, command, request, after: after(args) }))
 }
 
 /** The daemon's input output: progress lines, the message with the screen text, the image. */
@@ -211,19 +304,12 @@ function actionContent(result: ActionResult | CloudProblem): McpContent[] | Clou
 }
 
 /** MCP screenshots are JPEG, like the daemon's. */
-function after(args: Args): After {
-  return {
-    waitText: optional(args, 'waitText', 'string'), timeoutMs: optional(args, 'timeoutMs', 'number'),
-    screenshot: optional(args, 'screenshot', 'boolean') ? 'jpeg' : undefined, screentext: optional(args, 'screentext', 'boolean'),
-    language: optional(args, 'language', 'string'),
-  }
+function after(args: { waitText?: string; timeoutMs?: number; screenshot?: boolean; screentext?: boolean; language?: string }): After {
+  return { waitText: args.waitText, timeoutMs: args.timeoutMs, screenshot: args.screenshot ? 'jpeg' : undefined, screentext: args.screentext, language: args.language }
 }
 
-function line(args: Args) {
-  return {
-    from: { x: required(args, 'x1', 'number'), y: required(args, 'y1', 'number') },
-    to: { x: required(args, 'x2', 'number'), y: required(args, 'y2', 'number') },
-  }
+function line(args: { x1: number; y1: number; x2: number; y2: number }) {
+  return { from: { x: args.x1, y: args.y1 }, to: { x: args.x2, y: args.y2 } }
 }
 
 /** `list` for the hub's fan-out: one header per Mac, then one line per iPhone. */
@@ -264,23 +350,4 @@ function text(value: string): McpContent {
 
 function image(data: string): McpContent {
   return { type: 'image', data, mimeType: 'image/jpeg' }
-}
-
-function lease(args: Args): string {
-  return required(args, 'lease', 'string')
-}
-
-type Kinds = { string: string; number: number; boolean: boolean }
-
-function optional<K extends keyof Kinds>(args: Args, name: string, kind: K): Kinds[K] | undefined {
-  const value = args[name]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== kind) throw new CloudProblem('invalid-request', `${name} must be a ${kind}`)
-  return value as Kinds[K]
-}
-
-function required<K extends keyof Kinds>(args: Args, name: string, kind: K): Kinds[K] {
-  const value = optional(args, name, kind)
-  if (value === undefined) throw new CloudProblem('invalid-request', `missing argument: ${name}`)
-  return value
 }

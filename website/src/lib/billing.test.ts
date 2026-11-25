@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { cloudPhoneUpdate, entitlementFor, leaseDecision, taskDecision, taskMonthStart, type BoundDevice, type SubscriptionKind } from './billing.ts'
+import { cloudPhoneStatus, entitlementFor, linksCloudPhone, leaseDecision, taskDecision, taskMonthStart, type BoundDevice, type SubscriptionKind } from './billing.ts'
 
 const now = new Date('2026-10-27T10:00:00Z')
 const periodEnd = new Date('2026-11-08T00:00:00Z')
@@ -46,29 +46,30 @@ test('cloud phone subscriptions never make an org Pro; an allowed one lifts the 
   `)
 })
 
-test('cloud phone row: its own subscription updates it, a renewal takes over a canceled phone', () => {
-  const show = (label: string, phone: Parameters<typeof cloudPhoneUpdate>[0]['phone'], subscriptionId: string, status: string) => {
-    const update = cloudPhoneUpdate({ phone, subscription: { subscriptionId, status } })
-    return `${label}: ${update ? `${update.subscriptionId} ${update.status}` : 'unchanged'}`
+test('cloud phone row: its linked subscription stays, a renewal takes over a canceled phone', () => {
+  const show = (label: string, phone: Parameters<typeof linksCloudPhone>[0]['phone'], subscriptionId: string, status: string) => {
+    const links = linksCloudPhone({ phone, subscription: { subscriptionId, status } })
+    return `${label}: ${links ? `links ${subscriptionId} (${cloudPhoneStatus(status)})` : 'unchanged'}`
   }
+  const linked = (subscriptionId: string | null, subscriptionStatus: string | null) => ({ subscriptionId, subscriptionStatus })
   expect('\n' + [
     show('checkout done, row missing (cron deleted it)', null, 'sub_1', 'active'),
-    show('pending row, first event incomplete', { subscriptionId: null, status: 'pending' }, 'sub_1', 'incomplete'),
-    show('pending row, active', { subscriptionId: null, status: 'pending' }, 'sub_1', 'active'),
-    show('own sub cancels', { subscriptionId: 'sub_1', status: 'active' }, 'sub_1', 'canceled'),
-    show('own sub unpaid', { subscriptionId: 'sub_1', status: 'past_due' }, 'sub_1', 'unpaid'),
-    show('renewal active on canceled phone', { subscriptionId: 'sub_1', status: 'canceled' }, 'sub_2', 'active'),
-    show('renewal still incomplete', { subscriptionId: 'sub_1', status: 'canceled' }, 'sub_2', 'incomplete'),
-    show('late event of old sub after renewal', { subscriptionId: 'sub_2', status: 'active' }, 'sub_1', 'canceled'),
-    show('second active sub on an active phone', { subscriptionId: 'sub_1', status: 'active' }, 'sub_2', 'active'),
+    show('unpaid row, first event incomplete', linked(null, null), 'sub_1', 'incomplete'),
+    show('unpaid row, active', linked(null, null), 'sub_1', 'active'),
+    show('own sub cancels', linked('sub_1', 'active'), 'sub_1', 'canceled'),
+    show('own sub unpaid', linked('sub_1', 'past_due'), 'sub_1', 'unpaid'),
+    show('renewal active on canceled phone', linked('sub_1', 'canceled'), 'sub_2', 'active'),
+    show('renewal still incomplete', linked('sub_1', 'canceled'), 'sub_2', 'incomplete'),
+    show('late event of old sub after renewal', linked('sub_2', 'active'), 'sub_1', 'canceled'),
+    show('second active sub on an active phone', linked('sub_1', 'active'), 'sub_2', 'active'),
   ].join('\n')).toMatchInlineSnapshot(`
     "
-    checkout done, row missing (cron deleted it): sub_1 active
-    pending row, first event incomplete: sub_1 pending
-    pending row, active: sub_1 active
-    own sub cancels: sub_1 canceled
-    own sub unpaid: sub_1 canceled
-    renewal active on canceled phone: sub_2 active
+    checkout done, row missing (cron deleted it): links sub_1 (active)
+    unpaid row, first event incomplete: links sub_1 (pending)
+    unpaid row, active: links sub_1 (active)
+    own sub cancels: links sub_1 (canceled)
+    own sub unpaid: links sub_1 (canceled)
+    renewal active on canceled phone: links sub_2 (active)
     renewal still incomplete: unchanged
     late event of old sub after renewal: unchanged
     second active sub on an active phone: unchanged"

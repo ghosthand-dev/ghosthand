@@ -3,15 +3,15 @@
 // async Web Crypto provider, the only one that works in Workers.
 // The endpoint belongs to the account in STRIPE_ACCOUNT_ID. A second Stripe account
 // gets its own endpoint and secret.
-// Pro subscriptions sync the daemon repo access; cloud phone subscriptions update their
-// cloud_phone row (syncSubscription) and tell CloudFleet whether the phone may be leased.
+// Pro subscriptions sync the daemon repo access; cloud phone subscriptions may relink their
+// cloud_phone row (syncSubscription). A phone's access is its linked subscription's status,
+// read at every lease and command, so nothing else needs telling.
 
 import { env } from 'cloudflare:workers'
 import { Spiceflow } from 'spiceflow'
 import Stripe from 'stripe'
 import { stripeFor, syncSubscription, type SyncedSubscription } from './lib/stripe.ts'
-import { cloudPhoneAccess } from './lib/billing.ts'
-import { getFleet } from './cloud/fleet.ts'
+import { cloudPhoneStatus, isCloudPhoneAllowed } from './lib/billing.ts'
 import { syncSourceAccess } from './lib/github.ts'
 import { captureException, trackEvent } from './telemetry.ts'
 
@@ -69,20 +69,10 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
     }
     const phone = synced.cloudPhone
     if (!phone) return new Response('ok')
-    const allowed = cloudPhoneAccess(phone.after)
-    const wasAllowed = phone.before !== null && cloudPhoneAccess(phone.before)
+    const [before, after] = [cloudPhoneStatus(phone.before), cloudPhoneStatus(phone.after)]
     const props = { org_id: synced.orgId, cloud_phone_id: phone.cloudPhoneId }
-    if (allowed && !wasAllowed) trackEvent('cloud_phone_activated', props)
-    if (phone.after === 'canceled' && phone.before !== 'canceled') trackEvent('cloud_phone_canceled', props)
-    console.log(`cloud phone ${phone.cloudPhoneId}: ${phone.before ?? 'new'} -> ${phone.after} (${event.type}, ${subscriptionId} ${synced.status})`)
-    // Every event, not only changes: the call is idempotent and repairs a missed one. A failure
-    // answers 500, so Stripe retries until the fleet knows.
-    try {
-      await getFleet().setAccess({ phoneId: phone.cloudPhoneId, orgId: synced.orgId, template: phone.template, allowed })
-    } catch (cause) {
-      console.error(`CloudFleet.setAccess ${phone.cloudPhoneId} failed:`, cause)
-      captureException(cause, { tags: { route: '/api/stripe/webhook', handler: 'CloudFleet.setAccess' } })
-      return new Response('fleet update failed', { status: 500 })
-    }
+    if (isCloudPhoneAllowed(phone.after) && !isCloudPhoneAllowed(phone.before)) trackEvent('cloud_phone_activated', props)
+    if (after === 'canceled' && before !== 'canceled') trackEvent('cloud_phone_canceled', props)
+    console.log(`cloud phone ${phone.cloudPhoneId}: ${before} -> ${after} (${event.type}, ${subscriptionId} ${synced.status})`)
     return new Response('ok')
   })

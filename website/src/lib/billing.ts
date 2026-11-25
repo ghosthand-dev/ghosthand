@@ -166,39 +166,32 @@ export function taskDecision({ entitlement, used, now, subscribeUrl }: {
 /** Stripe statuses that allow leases of a cloud phone. past_due: Stripe is still retrying. */
 export const CLOUD_PHONE_ALLOWED_STATUSES = ['active', 'trialing', 'past_due'] as const
 
-export function isCloudPhoneAllowed(stripeStatus: string): boolean {
-  return CLOUD_PHONE_ALLOWED_STATUSES.some((s) => s === stripeStatus)
+/** The one access rule of a cloud phone: the status of the subscription linked to it (null: none yet). */
+export function isCloudPhoneAllowed(subscriptionStatus: string | null | undefined): boolean {
+  return CLOUD_PHONE_ALLOWED_STATUSES.some((s) => s === subscriptionStatus)
 }
 
 export type CloudPhoneStatus = 'pending' | 'active' | 'past_due' | 'canceled'
 
-/** `cloud_phone.status` for a Stripe subscription status. canceled keeps the storage. */
-export function cloudPhoneStatus(stripeStatus: string): CloudPhoneStatus {
-  if (stripeStatus === 'active' || stripeStatus === 'trialing') return 'active'
-  if (stripeStatus === 'past_due') return 'past_due'
-  if (stripeStatus === 'incomplete') return 'pending'
+/** What the dashboard says about a phone, from its linked subscription. canceled keeps the storage. */
+export function cloudPhoneStatus(subscriptionStatus: string | null | undefined): CloudPhoneStatus {
+  if (!subscriptionStatus || subscriptionStatus === 'incomplete') return 'pending'
+  if (subscriptionStatus === 'past_due') return 'past_due'
+  if (isCloudPhoneAllowed(subscriptionStatus)) return 'active'
   return 'canceled'
 }
 
-/** CloudFleet.setAccess for a phone in this status. */
-export function cloudPhoneAccess(status: CloudPhoneStatus): boolean {
-  return status === 'active' || status === 'past_due'
-}
-
 /**
- * What the webhook writes on a cloud phone row for one of its subscriptions, or null to
- * leave it. The phone's own subscription always updates it. Another one (a renewal after
- * cancel) takes over only when it allows leases and the phone does not, so late events of
- * the old canceled subscription never block the renewed phone.
+ * Whether a subscription of a cloud phone becomes the one linked to its row. The linked
+ * one stays; another (a renewal after cancel) takes over only when it allows leases and the
+ * linked one does not, so late events of the old canceled subscription never block the renewal.
  */
-export function cloudPhoneUpdate({ phone, subscription }: {
-  phone: { subscriptionId: string | null; status: CloudPhoneStatus } | null
+export function linksCloudPhone({ phone, subscription }: {
+  phone: { subscriptionId: string | null; subscriptionStatus: string | null } | null
   subscription: { subscriptionId: string; status: string }
-}): { subscriptionId: string; status: CloudPhoneStatus } | null {
-  const next = { subscriptionId: subscription.subscriptionId, status: cloudPhoneStatus(subscription.status) }
-  if (!phone || phone.subscriptionId === null || phone.subscriptionId === subscription.subscriptionId) return next
-  if (cloudPhoneAccess(next.status) && !cloudPhoneAccess(phone.status)) return next
-  return null
+}): boolean {
+  if (!phone || phone.subscriptionId === null || phone.subscriptionId === subscription.subscriptionId) return true
+  return isCloudPhoneAllowed(subscription.status) && !isCloudPhoneAllowed(phone.subscriptionStatus)
 }
 
 function firstFreeSlot(rows: BoundDevice[], limit: number): number | null {

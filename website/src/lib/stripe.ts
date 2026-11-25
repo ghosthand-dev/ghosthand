@@ -11,8 +11,8 @@ import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import { getDb, type Org } from '../db.ts'
 import {
-  CLOUD_PHONE_PRICE_LOOKUP_KEY, cloudPhoneAccess, cloudPhoneUpdate, EXISTING_STATUSES, isExistingStatus,
-  MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP, subscriptionKind, type CloudPhoneStatus, type SubscriptionKind,
+  CLOUD_PHONE_ALLOWED_STATUSES, CLOUD_PHONE_PRICE_LOOKUP_KEY, EXISTING_STATUSES, isCloudPhoneAllowed, isExistingStatus, linksCloudPhone,
+  MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP, subscriptionKind, type SubscriptionKind,
 } from './billing.ts'
 import { DEFAULT_TEMPLATE } from '../cloud/storage.ts'
 import { captureException } from '../telemetry.ts'
@@ -118,21 +118,21 @@ export async function cloudPhoneCheckoutUrl({ org, email, returnUrl, cloudPhoneI
     if (cloudPhoneId) {
       const existing = org.cloudPhones.find((p) => p.cloudPhoneId === cloudPhoneId)
       if (!existing) throw new Error(`cloud phone ${cloudPhoneId} not found in org ${org.orgId}`)
-      return existing
+      return { cloudPhoneId, allowed: isCloudPhoneAllowed(existing.subscription?.status) }
     }
     // The unique index on the org's unpaid phone makes concurrent clicks share one row. The
-    // daily cron deletes pending rows by updatedAt: a reused one starts its day again.
+    // cron deletes unpaid rows by updatedAt: a reused one starts its day again.
     const [unpaid] = await db.insert(schema.cloudPhone)
       .values({ orgId: org.orgId, name: `Cloud iPhone ${org.cloudPhones.length + 1}`, template: DEFAULT_TEMPLATE })
       .onConflictDoUpdate({
         target: schema.cloudPhone.orgId,
-        targetWhere: orm.sql`${schema.cloudPhone.status} = 'pending' and ${schema.cloudPhone.subscriptionId} is null`,
+        targetWhere: orm.sql`${schema.cloudPhone.subscriptionId} is null`,
         set: { updatedAt: new Date() },
       })
       .returning()
-    return unpaid!
+    return { cloudPhoneId: unpaid!.cloudPhoneId, allowed: false }
   })()
-  if (cloudPhoneAccess(phone.status)) {
+  if (phone.allowed) {
     return { url: await portalUrl({ accountId, customerId, returnUrl }), cloudPhoneId: phone.cloudPhoneId }
   }
   // The webhook can lag behind a finished Checkout: a live subscription for this phone goes
@@ -172,12 +172,13 @@ export async function cloudPhoneCheckoutUrl({ org, email, returnUrl, cloudPhoneI
 
 const PENDING_CLOUD_PHONE_TTL_MS = 24 * 60 * 60 * 1000
 
-/** Daily: drops pending phones nobody paid for within a day. A late payment recreates the row (syncSubscription). */
+/** Cron: drops phones nobody paid for within a day. A late payment recreates the row (syncSubscription). */
 export async function deleteAbandonedCloudPhones(): Promise<number> {
   const deleted = await getDb().delete(schema.cloudPhone)
     .where(orm.and(
-      orm.eq(schema.cloudPhone.status, 'pending'),
       orm.isNull(schema.cloudPhone.subscriptionId),
+      // Never ran: a paid phone whose subscription row is gone keeps its data.
+      orm.eq(schema.cloudPhone.version, 0),
       orm.lt(schema.cloudPhone.updatedAt, new Date(Date.now() - PENDING_CLOUD_PHONE_TTL_MS)),
     ))
     .returning()
@@ -204,15 +205,15 @@ export type SyncedSubscription = {
   status: string
   cancelAtPeriodEnd: boolean
   kind: SubscriptionKind
-  /** Cloud phone subscriptions only: the phone's status before and after this sync. */
-  cloudPhone: { cloudPhoneId: string; template: string; before: CloudPhoneStatus | null; after: CloudPhoneStatus } | null
+  /** Cloud phone subscriptions only: the status of the subscription linked to the phone before and after this sync. */
+  cloudPhone: { cloudPhoneId: string; before: string | null; after: string | null } | null
 }
 
 /**
  * Mirrors one subscription into Postgres. Re-fetches it, because events can arrive out of
  * order. Ignores subscriptions of other apps on the same Stripe account. A cloud phone
- * subscription also updates its `cloud_phone` row (see `cloudPhoneUpdate`). Returns what it
- * wrote, so the webhook can track the change (the daily reconcile must not).
+ * subscription may also become the one linked to its `cloud_phone` row (see
+ * `linksCloudPhone`). Returns what changed, so the webhook can track it (the daily reconcile must not).
  */
 export async function syncSubscription({ accountId, subscriptionId }: { accountId: string; subscriptionId: string }): Promise<SyncedSubscription | null> {
   const stripe = stripeFor(accountId)
@@ -229,6 +230,11 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
     console.warn(`subscription ${sub.id}: no org for customer ${customerId}`)
     return null
   }
+  const kind = subscriptionKind(product.metadata)
+  const cloudPhoneId = kind === 'cloud_phone' ? sub.metadata.cloudPhoneId : undefined
+  if (kind === 'cloud_phone' && !cloudPhoneId) console.warn(`cloud phone subscription ${sub.id} has no metadata.cloudPhoneId`)
+  // Read before the upsert: the linked subscription may be this one.
+  const phone = cloudPhoneId ? await db.query.cloudPhone.findFirst({ where: { cloudPhoneId }, with: { subscription: true } }) : undefined
   const record = {
     orgId,
     stripeAccountId: accountId,
@@ -240,43 +246,38 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
     currentPeriodEnd: item.current_period_end ? new Date(item.current_period_end * 1000) : null,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
     paidMacs: item.quantity ?? 1,
-    kind: subscriptionKind(product.metadata),
+    kind,
     updatedAt: new Date(),
   }
   await db.insert(schema.subscription)
     .values({ subscriptionId: sub.id, ...record })
     .onConflictDoUpdate({ target: schema.subscription.subscriptionId, set: record })
-  const synced = { orgId, status: sub.status, cancelAtPeriodEnd: sub.cancel_at_period_end, kind: record.kind }
-  if (record.kind !== 'cloud_phone') return { ...synced, cloudPhone: null }
-
-  const cloudPhoneId = sub.metadata.cloudPhoneId
-  if (!cloudPhoneId) {
-    console.warn(`cloud phone subscription ${sub.id} has no metadata.cloudPhoneId`)
-    return { ...synced, cloudPhone: null }
-  }
-  const phone = await db.query.cloudPhone.findFirst({ where: { cloudPhoneId } })
+  const synced = { orgId, status: sub.status, cancelAtPeriodEnd: sub.cancel_at_period_end, kind }
+  if (!cloudPhoneId) return { ...synced, cloudPhone: null }
   if (phone && phone.orgId !== orgId) {
     console.warn(`cloud phone ${cloudPhoneId} belongs to org ${phone.orgId}, subscription ${sub.id} to ${orgId}`)
     return { ...synced, cloudPhone: null }
   }
-  const update = cloudPhoneUpdate({ phone: phone ?? null, subscription: { subscriptionId: sub.id, status: sub.status } })
-  const before = phone?.status ?? null
-  if (!update) return { ...synced, cloudPhone: { cloudPhoneId, template: phone?.template ?? DEFAULT_TEMPLATE, before, after: before ?? 'pending' } }
-  const t = schema.cloudPhone
-  const [written] = await db.insert(t)
-    // No row: the cron deleted the pending phone before a late payment.
-    .values({ cloudPhoneId, orgId, name: 'Cloud iPhone', template: DEFAULT_TEMPLATE, ...update })
-    .onConflictDoUpdate({
-      target: t.cloudPhoneId,
-      set: { ...update, updatedAt: new Date() },
-      // cloudPhoneUpdate again, on the row as it is now: two webhooks that read the same
-      // canceled row must not let the old subscription overwrite the renewal.
-      setWhere: orm.sql`${t.orgId} = ${orgId} and (${t.subscriptionId} is null or ${t.subscriptionId} = ${sub.id}
-        or (${cloudPhoneAccess(update.status)} and ${t.status} not in ('active', 'past_due')))`,
-    })
-    .returning()
-  const current = written ?? await db.query.cloudPhone.findFirst({ where: { cloudPhoneId } })
-  return { ...synced, cloudPhone: { cloudPhoneId, template: current?.template ?? DEFAULT_TEMPLATE, before, after: current?.status ?? update.status } }
+  const before = phone?.subscription?.status ?? null
+  const linked = { subscriptionId: phone?.subscriptionId ?? null, subscriptionStatus: phone?.subscription?.status ?? null }
+  if (linksCloudPhone({ phone: phone ? linked : null, subscription: { subscriptionId: sub.id, status: sub.status } })) {
+    const t = schema.cloudPhone
+    const allowed = orm.sql.join(CLOUD_PHONE_ALLOWED_STATUSES.map((status) => orm.sql`${status}`), orm.sql`, `)
+    await db.insert(t)
+      // No row: the cron deleted the pending phone before a late payment.
+      .values({ cloudPhoneId, orgId, name: 'Cloud iPhone', template: DEFAULT_TEMPLATE, subscriptionId: sub.id })
+      .onConflictDoUpdate({
+        target: t.cloudPhoneId,
+        set: { subscriptionId: sub.id, updatedAt: new Date() },
+        // linksCloudPhone again, on the row as it is now: two webhooks that read the same
+        // canceled row must not let the old subscription overwrite the renewal.
+        setWhere: orm.sql`${t.orgId} = ${orgId} and (${t.subscriptionId} is null or ${t.subscriptionId} = ${sub.id}
+          or (${isCloudPhoneAllowed(sub.status)} and not exists (select 1 from ${schema.subscription}
+            where ${schema.subscription.subscriptionId} = ${t.subscriptionId} and ${schema.subscription.status} in (${allowed}))))`,
+      })
+  }
+  const current = await db.query.cloudPhone.findFirst({ where: { cloudPhoneId }, with: { subscription: true } })
+  return { ...synced, cloudPhone: { cloudPhoneId, before, after: current?.subscription?.status ?? null } }
 }
 
 /**

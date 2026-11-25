@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { createAuthClient } from 'better-auth/react'
 import { oauthProviderClient } from '@better-auth/oauth-provider/client'
-import { ErrorBoundary } from 'spiceflow/react'
+import { ErrorBoundary, router } from 'spiceflow/react'
 import { cn } from '../lib/utils.ts'
 import { PRIMARY, SECONDARY } from './button-styles.ts'
 
@@ -66,6 +66,19 @@ export function SignOutButton() {
       }}
     >
       {loading ? 'Signing out…' : 'Sign out'}
+    </button>
+  )
+}
+
+/** Loads the page again: the admin fleet page asks every host for its status on each load. */
+export function RefreshButton() {
+  return (
+    <button
+      type='button'
+      onClick={() => router.refresh()}
+      className='h-7 cursor-pointer rounded-md border border-border px-2.5 text-xs font-medium text-foreground transition-colors outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring'
+    >
+      Refresh
     </button>
   )
 }

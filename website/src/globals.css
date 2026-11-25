@@ -11,6 +11,16 @@
   font-display: block;
 }
 
+/* Admin fleet memory map (components/fleet-page.tsx): an unleased phone is hatched over its
+   org color, the macOS reserve is hatched gray. */
+.fleet-idle {
+  background-image: repeating-linear-gradient(135deg, rgb(255 255 255 / 0.42) 0 2px, transparent 2px 6px);
+}
+.fleet-reserve {
+  background-color: var(--muted);
+  background-image: repeating-linear-gradient(135deg, var(--input) 0 1px, transparent 1px 5px);
+}
+
 /* Surfaces and borders mix --foreground into --background, so cards, borders, inputs and
    popovers match the warm light and neutral dark backgrounds instead of holocron's bluish zinc.
    TODO: drop the color-mix lines once @holocron.so/vite ships neutrals-follow-background (same values). */

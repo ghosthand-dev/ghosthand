@@ -31,13 +31,32 @@ const BLOB_TIMEOUT_MS = 600_000
 /** An input with settle waits up to ~3.5 s on the host; OCR and installs take longer. */
 const SOCK_TIMEOUT_MS = 120_000
 
+/** The host Mac itself, Activity Monitor's numbers. Optional: older `fleet serve` builds do not
+ *  report it, and a field whose kernel call failed is left out. */
+export type HostMachine = {
+  memoryBytes: number
+  cores: number
+  pressure: 'normal' | 'warning' | 'critical'
+  usedBytes?: number
+  compressedBytes?: number
+  swapUsedBytes?: number
+  load1?: number
+  uptimeS?: number
+}
+
 export type HostStatus = {
   host: string
+  /** ⌊(RAM − reserve) / VM memory⌋; the cron copies it to cloud_host.slots. */
   slots: number
   freeDiskBytes: number
   bundleVersion: string
   templates: string[]
   phones: HostPhone[]
+  machine?: HostMachine
+  /** Memory of each VM. */
+  vmMemoryBytes?: number
+  /** Memory kept for macOS. */
+  reserveBytes?: number
 }
 
 export type Json = string | number | boolean | null | Json[] | { [key: string]: Json }

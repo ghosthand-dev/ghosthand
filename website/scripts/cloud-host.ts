@@ -2,7 +2,7 @@
 //
 //   source <(ghosthand tunnel url --new-token)   # GHOSTHAND_URL, GHOSTHAND_TOKEN (your API key)
 //   bun scripts/cloud-host.ts list
-//   bun scripts/cloud-host.ts add mint --address 10.77.0.1:7400 --slots 4
+//   bun scripts/cloud-host.ts add mint --address 10.77.0.1:7400   # slots come from the host's RAM
 //   bun scripts/cloud-host.ts drain mint      # no new starts there
 //   bun scripts/cloud-host.ts enable mint
 //   bun scripts/cloud-host.ts remove mint     # refused while it runs or holds a phone
@@ -15,13 +15,13 @@
 import { parseArgs } from 'node:util'
 
 const REQUEST_TIMEOUT_MS = 30_000
-const USAGE = 'usage: bun scripts/cloud-host.ts list | add <slug> --address <ip:port> --slots <n> | drain <slug> | enable <slug> | remove <slug> | recover <phone> | phones'
+const USAGE = 'usage: bun scripts/cloud-host.ts list | add <slug> --address <ip:port> | drain <slug> | enable <slug> | remove <slug> | recover <phone> | phones'
 
 type HostStatus = 'active' | 'draining'
 type HostView = { slug: string; address: string; slots: number; status: HostStatus; online: boolean; lastSeenAt: number | null; running: number; cached: number }
 
 const { values, positionals } = parseArgs({
-  options: { address: { type: 'string' }, slots: { type: 'string' } },
+  options: { address: { type: 'string' } },
   allowPositionals: true,
 })
 const [command, target] = positionals
@@ -64,7 +64,7 @@ async function setStatus(slug: string, status: HostStatus): Promise<void> {
     console.error(`no host ${slug}; hosts: ${hosts.map((h) => h.slug).join(', ') || 'none'}`)
     process.exit(1)
   }
-  printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${slug}`, { address: host.address, slots: host.slots, status })).hosts)
+  printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${slug}`, { address: host.address, status })).hosts)
 }
 
 switch (command) {
@@ -72,12 +72,11 @@ switch (command) {
     printHosts((await call<{ hosts: HostView[] }>('GET', '/hosts')).hosts)
     break
   case 'add': {
-    const slots = Number(values.slots)
-    if (!target || !values.address || !Number.isInteger(slots)) {
+    if (!target || !values.address) {
       console.error(USAGE)
       process.exit(1)
     }
-    printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${target}`, { address: values.address, slots, status: 'active' })).hosts)
+    printHosts((await call<{ hosts: HostView[] }>('PUT', `/hosts/${target}`, { address: values.address, status: 'active' })).hosts)
     break
   }
   case 'drain':

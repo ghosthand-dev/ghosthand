@@ -20,6 +20,7 @@ import { CLOUD_PHONE_ALLOWED_STATUSES, isCloudPhoneAllowed } from '../lib/billin
 import { captureException, trackEvent } from '../telemetry.ts'
 import { HostError, hostClient, type HostStatus } from './host.ts'
 import { loadBatch, saveBatch } from './storage.ts'
+import type { FleetLeaseRow, FleetRows } from './admin-view.ts'
 import { DEFAULT_START_WAIT_S, HOST_ONLINE_MS, place, reconcile, type HostPhone, type PhoneState, type Placement } from './scheduler.ts'
 
 const SECOND_MS = 1_000
@@ -33,6 +34,8 @@ const CHUNKS_PER_RUN = 500
 /** An acquire copies less per poll, so it answers on time. */
 const CHUNKS_PER_ACQUIRE = 50
 const HTTP_CONFLICT = 409
+/** Leases on the admin page's activity list. */
+const RECENT_LEASES = 30
 
 /** Who holds a phone, like the daemon's LeaseInfo. Never the lease number. */
 export type LeaseInfo = { label?: string; reason: string; acquiredAt: number; lastUsedAt: number; lastCommand?: string; expiresAt: number }
@@ -281,11 +284,12 @@ function advance({ phoneId, budget, saves }: { phoneId: string; budget: number; 
   return work
 }
 
-/** Status of a host; an answer refreshes its last_seen_at. */
+/** Status of a host; an answer refreshes its last_seen_at and its slots (the host derives them
+ *  from its RAM, so it is their only source). */
 async function pollHost({ db, row, signal }: { db: Db; row: HostRow; signal: AbortSignal }): Promise<HostStatus | HostError> {
   const status = await hostClient(row.address).status({ signal: AbortSignal.any([signal, AbortSignal.timeout(POLL_TIMEOUT_MS)]) })
   if (status instanceof Error) return status
-  await db.update(host).set({ lastSeenAt: orm.sql`now()` }).where(orm.eq(host.slug, row.slug))
+  await db.update(host).set({ lastSeenAt: orm.sql`now()`, slots: status.slots }).where(orm.eq(host.slug, row.slug))
   return status
 }
 
@@ -385,10 +389,11 @@ export async function listHosts(): Promise<HostView[]> {
   }))
 }
 
-/** Adds or changes a host of this environment, then asks it for its status once. */
-export async function setHost({ slug, address, slots, status }: { slug: string; address: string; slots: number; status: 'active' | 'draining' }): Promise<HostView[] | Error> {
-  const [row] = await getDb().insert(host).values({ slug, environment: environment(), address, slots, status })
-    .onConflictDoUpdate({ target: host.slug, set: { address, slots, status }, setWhere: orm.eq(host.environment, environment()) })
+/** Adds or changes a host of this environment, then asks it for its status once. A new host has
+ *  0 slots until it answers. */
+export async function setHost({ slug, address, status }: { slug: string; address: string; status: 'active' | 'draining' }): Promise<HostView[] | Error> {
+  const [row] = await getDb().insert(host).values({ slug, environment: environment(), address, slots: 0, status })
+    .onConflictDoUpdate({ target: host.slug, set: { address, status }, setWhere: orm.eq(host.environment, environment()) })
     .returning()
   if (!row) return new Error(`host ${slug} belongs to another environment`)
   // An unreachable host is added anyway: the list shows it offline.
@@ -416,6 +421,43 @@ export async function recover({ phoneId }: { phoneId: string }): Promise<{ versi
   if (!row) return null
   await db.update(lease).set({ endedAt: orm.sql`now()` }).where(orm.and(orm.eq(lease.cloudPhoneId, phoneId), orm.isNull(lease.endedAt)))
   return { version: row.version }
+}
+
+/** Rows of the admin fleet page (admin-view.ts): this environment's hosts, every paid phone
+ *  with its live lease and idle time, the latest lease activity, and each org's emails. */
+export async function readFleet(): Promise<FleetRows> {
+  const db = getDb()
+  // Ordered by its newest event: its end (release, or the idle expiry if that came first) once
+  // passed, else when it was acquired. A recover ends expired leases late; their expiry counts.
+  const endedAt = orm.sql`least(coalesce(${lease.endedAt}, 'infinity'), ${lease.lastUsedAt} + ${lease.idleTimeoutS} * interval '1 second')`
+  const activity = orm.sql`case when ${endedAt} <= now() then ${endedAt} else ${lease.createdAt} end`
+  const [hosts, phones, live, recent] = await Promise.all([
+    db.query.cloudHost.findMany({ where: { environment: environment() }, orderBy: { slug: 'asc' } }),
+    db.select({ phone, subscriptionStatus: schema.subscription.status, idleSince: idleSince() })
+      .from(phone)
+      .leftJoin(schema.subscription, orm.eq(schema.subscription.subscriptionId, phone.subscriptionId))
+      .where(orm.isNotNull(phone.subscriptionId))
+      .orderBy(phone.cloudPhoneId),
+    db.select().from(lease).where(liveLease),
+    db.select().from(lease).orderBy(orm.desc(activity)).limit(RECENT_LEASES),
+  ])
+  const orgIds = [...new Set(phones.map((p) => p.phone.orgId))]
+  const members = orgIds.length ? await db.query.orgMember.findMany({ where: { orgId: { in: orgIds } }, orderBy: { createdAt: 'asc' }, with: { user: true } }) : []
+  const leaseRow = (row: LeaseRow): FleetLeaseRow => ({
+    n: row.cloudLeaseId, phoneId: row.cloudPhoneId, label: row.label, reason: row.reason, idleTimeoutS: row.idleTimeoutS, lastCommand: row.lastCommand,
+    createdAt: row.createdAt.getTime(), lastUsedAt: row.lastUsedAt.getTime(), endedAt: row.endedAt?.getTime() ?? null,
+  })
+  return {
+    environment: environment(),
+    hosts: hosts.map((h) => ({ slug: h.slug, address: h.address, slots: h.slots, status: h.status, lastSeenAt: h.lastSeenAt?.getTime() ?? null })),
+    phones: phones.map(({ phone: p, subscriptionStatus, idleSince }) => ({
+      phoneId: p.cloudPhoneId, name: p.name, orgId: p.orgId, state: p.state, hostSlug: p.hostSlug, version: p.version, savedVersion: p.savedVersion,
+      stateChangedAt: p.stateChangedAt.getTime(), subscriptionStatus, idleSince: idleSince ? new Date(idleSince).getTime() : null,
+    })),
+    liveLeases: live.map(leaseRow),
+    recentLeases: recent.map(leaseRow),
+    orgs: orgIds.map((orgId) => ({ orgId, emails: members.filter((m) => m.orgId === orgId).flatMap((m) => (m.user ? [m.user.email] : [])) })),
+  }
 }
 
 /** Every phone's runtime columns, for debugging a decision. */

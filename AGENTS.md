@@ -203,6 +203,7 @@ Where to change what:
 | A new phone capability | A vphoned RPC or a vphone.sock command in `vphone/`, then map it in `api.ts`. `fleet serve` relays any vphone.sock line, so it needs no change |
 | Scheduling rules | `website/src/cloud/scheduler.ts` plus a row in the tables of `scheduler.test.ts` |
 | Fleet state, acquire, cron | `website/src/cloud/fleet.ts`, schema in `db/src/schema.ts` |
+| Admin fleet page, its problems | `website/src/cloud/admin-view.ts` (pure, `admin-view.test.ts`), page `components/fleet-page.tsx` |
 | Host operations (start, stop, save, restore, blobs) | `vphone/VPhoneExecutable/VPhoneCommand/VPhoneCommand/Fleet/` and its client `website/src/cloud/host.ts`, in the same change |
 | Supported apps | `website/src/cloud/apps.ts`, IPA uploaded to R2 `apps/`. USB iPhones install the same id from the App Store |
 | Templates (phone model, iOS) | `TEMPLATES` in `website/src/cloud/storage.ts`, template loaded to R2 `templates/<key>/` |
@@ -210,10 +211,15 @@ Where to change what:
 
 Scripts (in `website/scripts/`):
 
-- `cloud-host.ts`: operator commands: `list`, `add <slug> --address 10.77.0.<n>:7400 --slots <n>`,
-  `drain`, `enable`, `remove`, `recover <phone>` (host gone: restart from R2), `phones`. Auth is
-  your normal API key (`source <(ghosthand tunnel url --new-token)`); the route checks the user id
-  is in `CLOUD_ADMINS`. Each site manages only its own environment's hosts (`GHOSTHAND_URL`).
+- `cloud-host.ts`: operator commands: `list`, `add <slug> --address 10.77.0.<n>:7400` (slots
+  come from the host's RAM, copied on every poll), `drain`, `enable`, `remove`, `recover <phone>`
+  (host gone: restart from R2), `phones`. Auth is your normal API key
+  (`source <(ghosthand tunnel url --new-token)`); the route checks the user id is in
+  `CLOUD_ADMINS`. Each site manages only its own environment's hosts (`GHOSTHAND_URL`).
+- Fleet health: `/admin/fleet` in the browser (admins only, linked from the dashboard), or
+  `curl -H "authorization: Bearer $GHOSTHAND_TOKEN" $GHOSTHAND_URL/api/cloud-admin/view` for
+  `{ok, problems, ...}`. Both call `loadFleetView()` (`admin.ts`); the pure view and problem rules
+  are in `admin-view.ts`.
 - `stripe-cloud-phone.ts`: creates the cloud phone product and price by lookup key; test mode
   unless `--live`.
 

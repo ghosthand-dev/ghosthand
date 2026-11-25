@@ -9,6 +9,7 @@
 //   /download          Mac installer page (download.mdx)
 //   /download/ghosthand.pkg, /releases/:file   public installers and release manifest (R2)
 //   /login /device /consent /dashboard /subscribe     account pages
+//   /admin/fleet       cloud fleet for CLOUD_ADMINS (cloud/admin.ts loadFleetView), 404 for others
 //   /cloud-phones/new  Checkout for a cloud iPhone, renew (?phone=) or its portal
 //   /pricing /privacy /terms /support   301 to their /docs/* pages
 //   /mcp               remote MCP, OAuth; routed to the user's Macs (tunnel.ts, before spiceflow)
@@ -26,7 +27,7 @@ import { getHub, isHubPath, routeHubRequest } from './tunnel.ts'
 import { cliApp } from './cli-api.ts'
 import { uploadsApp } from './uploads.ts'
 import { stripeWebhookApp } from './stripe-webhook.ts'
-import { cloudAdminApp } from './cloud/admin.ts'
+import { cloudAdminApp, isCloudAdmin, loadFleetView } from './cloud/admin.ts'
 import { runFleetCron } from './cloud/fleet.ts'
 import { getAuth, getBaseUrl, getDb, getMcpResource, getPersonalOrg, getSession, listMacSessions } from './db.ts'
 import { cloudPhoneStatus, entitlementFor, isProStatus } from './lib/billing.ts'
@@ -150,6 +151,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
   .layout('/device', accountLayout)
   .layout('/consent', accountLayout)
   .layout('/dashboard', accountLayout)
+  .layout('/admin/fleet', accountLayout)
 
   .page({
     path: '/login',
@@ -296,6 +298,7 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
       <DashboardPage
         email={session.user.email}
         name={session.user.name}
+        cloudAdmin={isCloudAdmin(session.userId)}
         entitlement={entitlement}
         subscription={subscription}
         cloudPhones={cloudPhones}
@@ -310,6 +313,18 @@ export const app = new Spiceflow({ tracer: spiceflowTracer })
         removeSourceAccess={removeSourceAccessAction}
       />
     )
+  })
+
+  // Operators in CLOUD_ADMINS only. Everyone else, signed in or not, gets a plain 404.
+  // The same loadFleetView() answers GET /api/cloud-admin/view.
+  .loader('/admin/fleet', async ({ request }) => {
+    const session = await getSession(request)
+    if (!session || !isCloudAdmin(session.userId)) throw new Response('Not found', { status: 404 })
+    return { fleet: await loadFleetView({ signal: request.signal }) }
+  })
+  .page('/admin/fleet', async ({ loaderData }) => {
+    const { FleetPage } = await import('./components/fleet-page.tsx')
+    return <FleetPage fleet={loaderData.fleet} />
   })
 
   // A stable link for the daemon's errors and the dashboard: Checkout, or the portal when subscribed.

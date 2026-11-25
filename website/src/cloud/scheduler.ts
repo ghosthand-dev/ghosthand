@@ -39,6 +39,8 @@ export type HostPhone = {
   version: number | null
   /** Why the last start, stop or restore failed. */
   error?: string
+  /** Host memory the VM uses now (`footprint`); absent on older hosts. */
+  footprintBytes?: number
 }
 
 export type HostSlot = {

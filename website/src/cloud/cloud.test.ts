@@ -15,15 +15,17 @@ const DEFAULT_TEMPLATE = '13e3716a2e12'
 
 let runtime: Awaited<ReturnType<typeof startTestRuntime>>
 let host: Awaited<ReturnType<typeof fakeHost>>
+/** API key of a user in CLOUD_ADMINS, for the operator routes. */
+let adminKey: string
 beforeAll(async () => {
   if (!process.env.AI_GATEWAY_API_KEY) throw new Error('AI_GATEWAY_API_KEY is missing: run `sigillo run -- pnpm test`')
   runtime = await startTestRuntime()
-  host = await fakeHost('fake')
+  host = await fakeHost('fake', { slots: 2 })
   await runtime.env.PHONES.put(`templates/${DEFAULT_TEMPLATE}/manifest.json`, JSON.stringify(TEMPLATE_MANIFEST))
   // The operator route scripts/cloud-host.ts calls, with an API key of a user in CLOUD_ADMINS.
   const admin = (token?: string) => runtime.worker.fetch('/api/cloud-admin/hosts/fake', {
     method: 'PUT', headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'content-type': 'application/json' },
-    body: JSON.stringify({ address: host.address, slots: 2, status: 'active' }),
+    body: JSON.stringify({ address: host.address, status: 'active' }),
   })
   const stranger = await (await runtime.worker.fetch('/__test/session', { method: 'POST' })).json() as { session: { token: string } }
   expect([(await admin()).status, (await admin(stranger.session.token)).status]).toEqual([401, 403])
@@ -32,9 +34,11 @@ beforeAll(async () => {
   const key = await (await runtime.worker.fetch('/api/cli/tokens', {
     method: 'POST', headers: { authorization: `Bearer ${operator.session.token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'cloud-host.ts' }),
   })).json() as { token: string }
+  adminKey = key.token
   const added = await admin(key.token)
   expect(added.status).toBe(200)
-  expect(await added.json()).toMatchObject({ hosts: [{ slug: 'fake', online: true, running: 0 }] })
+  // The slots are the ones the host reported, never the operator's.
+  expect(await added.json()).toMatchObject({ hosts: [{ slug: 'fake', online: true, running: 0, slots: 2 }] })
 })
 const hosts: { server: http.Server }[] = []
 afterAll(async () => {
@@ -44,9 +48,13 @@ afterAll(async () => {
 
 /** The fleet's minute cron (saves to R2, host status), run now. */
 const cron = async () => (await runtime.worker.fetch('/__test/cloud-cron')).json()
-const setHost = async (slug: string, body: { address: string; slots: number; status: 'active' | 'draining' }) =>
-  runtime.sql(`INSERT INTO cloud_host (slug, environment, address, slots, status, last_seen_at, created_at) VALUES ($1, 'test', $2, $3, $4, now(), now())
-    ON CONFLICT (slug) DO UPDATE SET address = excluded.address, slots = excluded.slots, status = excluded.status`, [slug, body.address, String(body.slots), body.status])
+/** Adds or changes a host like scripts/cloud-host.ts: the route asks the host for its slots. */
+const setHost = async (fake: { name: string; address: string }, status: 'active' | 'draining') => {
+  const response = await runtime.worker.fetch(`/api/cloud-admin/hosts/${fake.name}`, {
+    method: 'PUT', headers: { authorization: `Bearer ${adminKey}`, 'content-type': 'application/json' }, body: JSON.stringify({ address: fake.address, status }),
+  })
+  expect(response.status).toBe(200)
+}
 
 const SCREENS: Record<string, string[]> = {
   home: ['Settings', 'Photos', 'TikTok'],
@@ -66,11 +74,12 @@ const TEMPLATE_MANIFEST: Manifest = {
   files: { 'config.plist': { sha256: sha(TEMPLATE_BLOBS[2]!), size: TEMPLATE_BLOBS[2]!.length } },
 }
 
-/** One host Mac speaking the fleet API, a Settings app on every phone. Starts, stops and
+/** One host Mac speaking the fleet API, a Settings app on every phone. `slots` is what its
+ *  status reports (a test may change it). Starts, stops and
  *  restores finish at once. A stop hashes the disk as the new version with one changed chunk
  *  and a new nvram.bin. `lines` records each
  *  vphone.sock line, `calls` the storage calls, `puts` each blob the Worker sent. */
-async function fakeHost(name: string) {
+async function fakeHost(name: string, { slots }: { slots: number }) {
   type FakePhone = { state: 'running' | 'stopped'; version: number; savedVersion: number; screen: string; error?: string }
   const phones = new Map<string, FakePhone>()
   const blobs = new Map(TEMPLATE_BLOBS.map((text) => [sha(text), Buffer.from(text)]))
@@ -127,7 +136,7 @@ async function fakeHost(name: string) {
     const url = request.url!
     if (url === '/v1/status') {
       return send(200, {
-        host: name, slots: 2, freeDiskBytes: 100e9, bundleVersion: 'test', templates: [DEFAULT_TEMPLATE],
+        host: name, slots: fake.slots, freeDiskBytes: 100e9, bundleVersion: 'test', templates: [DEFAULT_TEMPLATE],
         phones: [...phones].map(([id, p]) => ({ id, state: p.state, version: p.version, savedVersion: p.savedVersion, ...(p.error ? { error: p.error } : {}) })),
       })
     }
@@ -187,7 +196,7 @@ async function fakeHost(name: string) {
     send(404, { error: 'not found' })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const fake = { name, server, address: `127.0.0.1:${(server.address() as AddressInfo).port}`, phones, lines, calls, puts }
+  const fake = { name, slots, server, address: `127.0.0.1:${(server.address() as AddressInfo).port}`, phones, lines, calls, puts }
   hosts.push(fake)
   return fake
 }
@@ -441,10 +450,10 @@ test('a phone task drives a cloud iPhone through the hub', async () => {
 
 test('the Worker saves a stopped phone to R2, loads it on another host, and sends catalog IPAs', async () => {
   const phoneState = async (phoneId: string) => (await runtime.sql('SELECT state, host_slug, version, saved_version FROM cloud_phone WHERE cloud_phone_id = $1', [phoneId]))[0]
-  const mint = await fakeHost('mint')
+  const mint = await fakeHost('mint', { slots: 1 })
   // Only mint takes new phones, one at a time.
-  await setHost('fake', { address: host.address, slots: 2, status: 'draining' })
-  await setHost('mint', { address: mint.address, slots: 1, status: 'active' })
+  await setHost(host, 'draining')
+  await setHost(mint, 'active')
   const e = await renter('Moving iPhone')
   const first = await e.acquire({ reason: 'first run' })
   expect(first.status).toBe(201)
@@ -469,8 +478,8 @@ test('the Worker saves a stopped phone to R2, loads it on another host, and send
   expect(await (await runtime.env.PHONES.get(`chunks/${sha(`disk ${e.phoneId} v1`)}`))!.text()).toBe(`disk ${e.phoneId} v1`)
 
   // mint is full: E starts on studio, which first gets the blobs it lacks from R2.
-  const studio = await fakeHost('studio')
-  await setHost('studio', { address: studio.address, slots: 1, status: 'active' })
+  const studio = await fakeHost('studio', { slots: 1 })
+  await setHost(studio, 'active')
   const second = await e.acquire({ reason: 'second run' })
   expect(second.status).toBe(201)
   expect(studio.puts).toEqual([
@@ -499,3 +508,49 @@ test('the Worker saves a stopped phone to R2, loads it on another host, and send
   expect(studio.puts).toEqual([{ sha256: '0'.repeat(64), matches: false, bytes: ipa.length }])
   expect(studio.calls.filter((c) => c.startsWith('push'))).toEqual(['push 00000000 /var/mobile/Media/Downloads/reddit.ipa', 'push 00000000 /var/mobile/Media/Downloads/reddit.ipa'])
 }, 90_000)
+
+test('a host runs as many phones as the slots it reports, and the admin view shows it full', async () => {
+  const trio = await fakeHost('trio', { slots: 3 })
+  await runtime.sql(`UPDATE cloud_host SET status = 'draining'`)
+  await setHost(trio, 'active')
+  const renters = await Promise.all([1, 2, 3, 4].map((i) => renter(`Slot iPhone ${i}`)))
+  const acquired = await Promise.all(renters.slice(0, 3).map((r) => r.acquire({ reason: 'fill trio' })))
+  expect(acquired.map((a) => a.status)).toEqual([201, 201, 201])
+  const fourth = await renters[3]!.acquire({ reason: 'one too many', waitSeconds: 1 })
+  expect([fourth.status, fourth.body.code]).toEqual([404, 'no-device'])
+  expect(trio.calls.filter((c) => c.startsWith('start'))).toHaveLength(3)
+
+  const view = async (token?: string) => runtime.worker.fetch('/api/cloud-admin/view', { headers: token ? { authorization: `Bearer ${token}` } : {} })
+  expect((await view()).status).toBe(401)
+  const full = await (await view(adminKey)).json() as any
+  const trioView = full.hosts.find((h: { slug: string }) => h.slug === 'trio')
+  expect({
+    ok: full.ok, problems: full.problems.map((p: { code: string }) => p.code), full: full.contention.full,
+    trio: { slots: trioView.slots, free: trioView.free, placed: trioView.placed.map((p: { name: string; state: string; lease: { reason: string } | null }) => `${p.name} ${p.state} ${p.lease?.reason}`).sort(), ms: typeof trioView.ms },
+  }).toMatchInlineSnapshot(`
+    {
+      "full": [
+        "trio",
+      ],
+      "ok": false,
+      "problems": [
+        "fleet-full",
+      ],
+      "trio": {
+        "free": 0,
+        "ms": "number",
+        "placed": [
+          "Slot iPhone 1 running fill trio",
+          "Slot iPhone 2 running fill trio",
+          "Slot iPhone 3 running fill trio",
+        ],
+        "slots": 3,
+      },
+    }
+  `)
+
+  // The host reports a fourth slot: the cron copies it, and the waiting phone starts.
+  trio.slots = 4
+  await cron()
+  expect((await renters[3]!.acquire({ reason: 'room now' })).status).toBe(201)
+}, 60_000)

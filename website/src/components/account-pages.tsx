@@ -274,6 +274,7 @@ function SourceAccess({ isPro, access, request, remove }: {
 export function DashboardPage({
   email,
   name,
+  cloudAdmin,
   entitlement,
   subscription,
   cloudPhones,
@@ -289,6 +290,8 @@ export function DashboardPage({
 }: {
   email: string
   name: string
+  /** In CLOUD_ADMINS: links the admin fleet page. */
+  cloudAdmin: boolean
   entitlement: Entitlement
   subscription: Subscription | null
   cloudPhones: DashboardCloudPhone[]
@@ -313,6 +316,7 @@ export function DashboardPage({
       <header className='flex items-center justify-between'>
         <Link href='/'><Logo /></Link>
         <nav className='flex items-center gap-6 text-sm text-muted-foreground'>
+          {cloudAdmin ? <Link href='/admin/fleet' className='hover:text-foreground'>Cloud fleet</Link> : null}
           <Link href='/' className='hover:text-foreground'>Docs</Link>
           <SignOutButton />
         </nav>

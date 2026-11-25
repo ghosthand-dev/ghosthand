@@ -172,8 +172,9 @@ expiry and grace are compared with `now()` in SQL.
 | `useLease({orgId, n, command})` | One `UPDATE cloud_lease ... FROM cloud_phone JOIN subscription JOIN cloud_host ... RETURNING`: live lease, this org's phone, running, allowed. Restarts the idle timeout |
 | `release({orgId, n})` | Sets `ended_at` on a live lease of this org |
 | `advance(phoneId)` | Reads the row, asks its host for status, runs `reconcile()`, writes the change with compare-and-set on (state, version, host), and only then makes the host call. Deduplicated per phone in an isolate |
-| `runFleetCron()` | Every minute: status of every host of this environment (refreshes `last_seen_at`), then `advance` for every phone placed on one, and saves to R2, 500 chunks per run |
+| `runFleetCron()` | Every minute: status of every host of this environment (refreshes `last_seen_at` and copies the host's `slots`), then `advance` for every phone placed on one, and saves to R2, 500 chunks per run |
 | `listHosts`, `setHost`, `removeHost`, `recover`, `listFleetPhones` | Operator routes (`admin.ts`) |
+| `readFleet()` | Rows of the admin fleet page: hosts, paid phones with idle time, live and recent leases, org emails |
 
 Host calls happen after commit. After a decision, the acquire runs `advance` of the phones it
 changed in `waitUntil`, so a start or a stop goes out even if the client leaves; the next poll
@@ -252,6 +253,21 @@ MCP tools (same formatters ported: app lines, info lines, lease lines). Tool nam
 names come from `mcp-tools.json`; a test fails if a tool there has no handler or `unsupported`
 entry.
 
+### `admin.ts`, `admin-view.ts`: the operator's view
+
+`/admin/fleet` (signed-in users in `CLOUD_ADMINS`, 404 for everyone else, linked from their
+dashboard) and `GET /api/cloud-admin/view` (API key or session of an admin) both call
+`loadFleetView()` in `admin.ts`: `readFleet()`, then `GET /v1/status` of every host of this
+environment, live and never stored. The pure `buildFleetView()` and `fleetProblems(view, now)` in
+`admin-view.ts` turn that into hosts with slot cells, contention (full hosts, starting and
+stopping phones, idle phones and when the grace lets them stop), lease events, customers, and
+`problems: [{severity, code, host?, phone?, detail}]`. The route answers
+`{ok: problems.length === 0, problems, ...view}`.
+
+```bash
+curl -s -H "authorization: Bearer $GHOSTHAND_TOKEN" https://ghosthand.dev/api/cloud-admin/view | jq '{ok, problems}'
+```
+
 ### `host.ts`, `storage.ts`, `apps.ts`
 
 - `host.ts`: typed client for the fleet API below, through the `HOSTS` VPC binding.
@@ -270,13 +286,13 @@ entry.
 | `tunnel.ts` | The Worker answers `/macs/cloud/v1/...` and MCP calls naming `cloud` itself, before `getHub()`. Other calls go to the hub with the trusted header `x-ghosthand-cloud` (the org has a paid phone), so `GET /macs` adds `{slug: "cloud", name: "Cloud", online: true}` and `list` fans out to `cloud` |
 | `lib/mcp-routing.ts` | Input `cloud: boolean`; `toolCallTarget(message)` is the Mac a call names. Lease prefix `cloud` and `mac: "cloud"` route to `{kind: "cloud"}`. A cloud-only org never gets the no-Mac reply; instructions and `setup-status` say the phone is ready to acquire |
 | `task.ts` | Task tools of a `cloud:<n>` lease call `api.ts` directly, not `hub.daemonFetch` |
-| `server.tsx` | `/cloud-phones/new` route, dashboard data, `scheduled()`: the fleet cron every minute, Stripe and source access daily |
+| `server.tsx` | `/cloud-phones/new` route, dashboard data, `/admin/fleet` loader and page, `scheduled()`: the fleet cron every minute, Stripe and source access daily |
 | `components/account-pages.tsx` | "Cloud iPhones" section after Plan: one row per phone (name, paid status, renews or ended), Rent button, Manage (portal), Rename |
 | `actions.tsx` | `renameCloudPhone` |
 | `telemetry.ts` | `cloud_phone_checkout_opened`, `cloud_phone_activated`, `cloud_phone_canceled`, `cloud_phone_started` (ids and counts only) |
 | `wrangler.jsonc` (top level and `env.preview`) | Cron `* * * * *` in both; R2 `PHONES` (`ghosthand-phones` in both: preview shares the database, so it shares phone storage); `vpc_networks` binding `HOSTS` (separate vnets); var `ENVIRONMENT` (telemetry and `cloud_host.environment`); var `CLOUD_ADMINS` (user ids). No R2 keys, no admin token |
 | `test-runtime-worker.ts` | `/__test/cloud-cron` runs `runFleetCron` now |
-| `scripts/cloud-host.ts` | `add <slug> --address --slots`, `remove`, `drain`, `enable`, `list`, `recover <phone>`, `phones` through admin routes. Auth is the operator's normal ghosthand API key; the route checks the user id is in `CLOUD_ADMINS` |
+| `scripts/cloud-host.ts` | `add <slug> --address` (slots come from the host), `remove`, `drain`, `enable`, `list`, `recover <phone>`, `phones` through admin routes. Auth is the operator's normal ghosthand API key; the route checks the user id is in `CLOUD_ADMINS` |
 
 ## Host: `vphone-cli fleet serve` (VPhone fork)
 

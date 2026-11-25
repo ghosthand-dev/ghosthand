@@ -11,9 +11,10 @@ import * as orm from 'drizzle-orm'
 import * as schema from 'db/schema'
 import { getDb, type Org } from '../db.ts'
 import {
-  CLOUD_PHONE_PRICE_LOOKUP_KEY, CLOUD_PHONE_TEMPLATE, cloudPhoneAccess, cloudPhoneUpdate, EXISTING_STATUSES, isExistingStatus,
+  CLOUD_PHONE_PRICE_LOOKUP_KEY, cloudPhoneAccess, cloudPhoneUpdate, EXISTING_STATUSES, isExistingStatus,
   MAX_PAID_MACS, PRO_PRICE_LOOKUP_KEY, STRIPE_PRODUCT_APP, subscriptionKind, type CloudPhoneStatus, type SubscriptionKind,
 } from './billing.ts'
+import { DEFAULT_TEMPLATE } from '../cloud/storage.ts'
 import { captureException } from '../telemetry.ts'
 
 /** Secret key per Stripe account id. */
@@ -122,7 +123,7 @@ export async function cloudPhoneCheckoutUrl({ org, email, returnUrl, cloudPhoneI
     // The unique index on the org's unpaid phone makes concurrent clicks share one row. The
     // daily cron deletes pending rows by updatedAt: a reused one starts its day again.
     const [unpaid] = await db.insert(schema.cloudPhone)
-      .values({ orgId: org.orgId, name: `Cloud iPhone ${org.cloudPhones.length + 1}`, template: CLOUD_PHONE_TEMPLATE })
+      .values({ orgId: org.orgId, name: `Cloud iPhone ${org.cloudPhones.length + 1}`, template: DEFAULT_TEMPLATE })
       .onConflictDoUpdate({
         target: schema.cloudPhone.orgId,
         targetWhere: orm.sql`${schema.cloudPhone.status} = 'pending' and ${schema.cloudPhone.subscriptionId} is null`,
@@ -260,11 +261,11 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
   }
   const update = cloudPhoneUpdate({ phone: phone ?? null, subscription: { subscriptionId: sub.id, status: sub.status } })
   const before = phone?.status ?? null
-  if (!update) return { ...synced, cloudPhone: { cloudPhoneId, template: phone?.template ?? CLOUD_PHONE_TEMPLATE, before, after: before ?? 'pending' } }
+  if (!update) return { ...synced, cloudPhone: { cloudPhoneId, template: phone?.template ?? DEFAULT_TEMPLATE, before, after: before ?? 'pending' } }
   const t = schema.cloudPhone
   const [written] = await db.insert(t)
     // No row: the cron deleted the pending phone before a late payment.
-    .values({ cloudPhoneId, orgId, name: 'Cloud iPhone', template: CLOUD_PHONE_TEMPLATE, ...update })
+    .values({ cloudPhoneId, orgId, name: 'Cloud iPhone', template: DEFAULT_TEMPLATE, ...update })
     .onConflictDoUpdate({
       target: t.cloudPhoneId,
       set: { ...update, updatedAt: new Date() },
@@ -275,7 +276,7 @@ export async function syncSubscription({ accountId, subscriptionId }: { accountI
     })
     .returning()
   const current = written ?? await db.query.cloudPhone.findFirst({ where: { cloudPhoneId } })
-  return { ...synced, cloudPhone: { cloudPhoneId, template: current?.template ?? CLOUD_PHONE_TEMPLATE, before, after: current?.status ?? update.status } }
+  return { ...synced, cloudPhone: { cloudPhoneId, template: current?.template ?? DEFAULT_TEMPLATE, before, after: current?.status ?? update.status } }
 }
 
 /**

@@ -15,9 +15,6 @@ export const PRO_PRICE_LOOKUP_KEY = 'ghosthand_pro_monthly'
 export const CLOUD_PHONE_PRICE_LOOKUP_KEY = 'ghosthand_cloud_phone_monthly'
 /** USD per cloud phone per month (the Stripe price; only for page text). */
 export const CLOUD_PHONE_PRICE = 49
-/** VPhone template new cloud phones are cloned from. */
-// TODO: read it from the cloud catalog (src/cloud/) once hosts serve a real template key.
-export const CLOUD_PHONE_TEMPLATE = 'default'
 /** Products of other apps share the Stripe account; ours have metadata.app = ghosthand. */
 export const STRIPE_PRODUCT_APP = 'ghosthand'
 /** USD per paid Mac per month (the Stripe price; only for page text). */

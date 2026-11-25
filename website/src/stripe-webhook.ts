@@ -4,13 +4,14 @@
 // The endpoint belongs to the account in STRIPE_ACCOUNT_ID. A second Stripe account
 // gets its own endpoint and secret.
 // Pro subscriptions sync the daemon repo access; cloud phone subscriptions update their
-// cloud_phone row (syncSubscription).
+// cloud_phone row (syncSubscription) and tell CloudFleet whether the phone may be leased.
 
 import { env } from 'cloudflare:workers'
 import { Spiceflow } from 'spiceflow'
 import Stripe from 'stripe'
 import { stripeFor, syncSubscription, type SyncedSubscription } from './lib/stripe.ts'
 import { cloudPhoneAccess } from './lib/billing.ts'
+import { getFleet } from './cloud/fleet.ts'
 import { syncSourceAccess } from './lib/github.ts'
 import { captureException, trackEvent } from './telemetry.ts'
 
@@ -74,5 +75,14 @@ export const stripeWebhookApp = new Spiceflow({ basePath: '/api/stripe' })
     if (allowed && !wasAllowed) trackEvent('cloud_phone_activated', props)
     if (phone.after === 'canceled' && phone.before !== 'canceled') trackEvent('cloud_phone_canceled', props)
     console.log(`cloud phone ${phone.cloudPhoneId}: ${phone.before ?? 'new'} -> ${phone.after} (${event.type}, ${subscriptionId} ${synced.status})`)
+    // Every event, not only changes: the call is idempotent and repairs a missed one. A failure
+    // answers 500, so Stripe retries until the fleet knows.
+    try {
+      await getFleet().setAccess({ phoneId: phone.cloudPhoneId, orgId: synced.orgId, template: phone.template, allowed })
+    } catch (cause) {
+      console.error(`CloudFleet.setAccess ${phone.cloudPhoneId} failed:`, cause)
+      captureException(cause, { tags: { route: '/api/stripe/webhook', handler: 'CloudFleet.setAccess' } })
+      return new Response('fleet update failed', { status: 500 })
+    }
     return new Response('ok')
   })
